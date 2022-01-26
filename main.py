@@ -1,7 +1,7 @@
 """
 Bootleg Response Bot
 Mr.Garlic
-Last Updated: 01/05/2022
+Last Updated: 01/26/2022
 """
 
 from os import environ, path, mkdir
@@ -13,6 +13,7 @@ from colorama import init
 from botutils import process_args, is_command
 from emoji import emojize, demojize
 from random import choice
+import json
 import asyncio
 init()
 
@@ -38,6 +39,9 @@ class Response:
     def __repr__(self):
         return f'<Mention={self.m}> <Trig={self.trig}> <Text={self.text}>'
 
+    def asdict(self):
+        return {'m': self.m, 'trig': self.trig, 'text': self.text}
+
 
 class ListMsg:
     def __init__(self, num, page, guild):
@@ -58,6 +62,13 @@ def guild_add(guild):
     mentions[int(guild_id)] = []
 
 
+def dict_to_rsp(rsp_dict: dict):
+    if not rsp_dict:
+        return None
+    rsp = Response(rsp_dict['m'], rsp_dict['trig'], rsp_dict['text'])
+    return rsp
+
+
 def add_response(guild, rsp):
     f_name = 'mentions.txt' if rsp.m else 'responses.txt'
     rsp.trig, rsp.text = demojize(rsp.trig), demojize(rsp.text)
@@ -65,22 +76,19 @@ def add_response(guild, rsp):
         return True
     try:
         with open(f'Guilds/{guild.id}/{f_name}', 'r') as f:
-            lines = [i.strip('\n') for i in f.readlines()]
-            if rsp.trig in lines:  # Trigger already exists
-                idx = [i for i, x in enumerate(lines) if x == rsp.trig]
-                for i in idx:
-                    if lines[i + 1] == rsp.text:  # Reject identical additions
-                        return True
-
+            lines = json.load(f)
+        duplicates = [next((x for x in lines if x['trig'] == rsp.trig), None)]
+        if duplicates:
+            for x in duplicates:
+                if x['text'] == rsp.text:  # Reject identical additions
+                    return True
+        lines.append(rsp.asdict())
     except FileNotFoundError:
         f = open(f'Guilds/{guild.id}/{f_name}', 'w')
         f.close()
     try:
-        with open(f'Guilds/{guild.id}/{f_name}', 'a') as f:
-            rsp.trig.replace('\n', '')
-            rsp.text.replace('\n', '')
-            f.write(f'{rsp.trig.lower()}\n{rsp.text}\n')
-            return False
+        with open(f'Guilds/{guild.id}/{f_name}', 'w') as f:
+            json.dump(lines, f, indent=4)
     except UnicodeError:
         return True
 
@@ -90,33 +98,39 @@ def rmv_response(guild, rsp):
 
     try:
         with open(f'Guilds/{guild.id}/{f_name}', 'r') as f:
-            lines = f.readlines()
-            to_del = [i for i, x in enumerate(lines[0::2]) if x == demojize(rsp.trig) + '\n']
-            k = 0
-            for i in to_del:
-                lines.pop(i - k + 1)
-                lines.pop(i - k)
-                k += 2
+            lines = json.load(f)
+
+        to_del = [i for i, x in enumerate(lines) if x['trig'] == demojize(rsp.trig)]  # All matching entries
+        if not to_del:
+            return True
+        k = 0
+        for i in to_del:
+            lines.pop(i - k)
+            k += 1
         with open(f'Guilds/{guild.id}/{f_name}', 'w') as f:
-            f.writelines(lines)
-        return False
+            if not lines:
+                f.write('[]')
+            else:
+                json.dump(f, lines)
 
     except FileNotFoundError or ValueError:
         return True
 
 
-def load_responses(file, is_m):
-    resp = []
-    try:  # Load & read mention triggers
+def load_responses(file):
+    lines = []
+    try:
         with open(file, 'r') as f:
-            lines = f.readlines()
-            lines = [i.strip('\n') for i in lines]
-            for i in range(0, len(lines), 2):
-                resp.append(Response(is_m, emojize(lines[i]), emojize(lines[i+1])))
+            lines = json.load(f)
+        for idx, line in enumerate(lines):
+            lines[idx] = dict_to_rsp(line)
+        for rsp in lines:
+            rsp.trig = emojize(rsp.trig)
+            rsp.text = emojize(rsp.text)
     except FileNotFoundError:
         f = open(file, 'w')
         f.close()
-    return resp
+    return lines
 
 
 def gen_resp_list(guild, page, expired):
@@ -175,6 +189,20 @@ async def update_msg(payload):
             message = await channel.fetch_message(payload.message_id)
             await message.edit(embed=gen_resp_list(msg.guild, page, False))
             break
+
+
+def load_responses_old(file, is_m):
+    resp = []
+    try:  # Load & read mention triggers
+        with open(file, 'r') as f:
+            lines = f.readlines()
+            lines = [i.strip('\n') for i in lines]
+            for i in range(0, len(lines), 2):
+                resp.append(Response(is_m, emojize(lines[i]), emojize(lines[i+1])))
+    except FileNotFoundError:
+        f = open(file, 'w')
+        f.close()
+    return resp
 
 
 @client.event
@@ -260,9 +288,9 @@ async def on_message(message):
                 else:
                     await message.add_reaction('❌')
         if cmd == 'say':
-            responses[guild.id] = load_responses(f'Guilds/{guild.id}/{f_name}', is_m)
+            responses[guild.id] = load_responses(f'Guilds/{guild.id}/{f_name}')
         else:
-            mentions[guild.id] = load_responses(f'Guilds/{guild.id}/{f_name}', is_m)
+            mentions[guild.id] = load_responses(f'Guilds/{guild.id}/{f_name}')
         return False
 
 
@@ -283,9 +311,10 @@ async def on_ready():
         colored(strftime("%Y-%m-%d %H:%M:%S") + ' :  ', 'white') + 'Connected to the following guilds: ' +
         colored(', '.join(guild.name for guild in guilds), 'cyan')
     )
+
     for guild in guilds:
-        mentions[guild.id] = load_responses(f'Guilds/{guild.id}/mentions.txt', True)
-        responses[guild.id] = load_responses(f'Guilds/{guild.id}/responses.txt', False)
+        mentions[guild.id] = load_responses(f'Guilds/{guild.id}/mentions.txt')
+        responses[guild.id] = load_responses(f'Guilds/{guild.id}/responses.txt')
         print(
             colored(f'{strftime("%Y-%m-%d %H:%M:%S")} :  ', 'white') +
             colored(f'Responses loaded for {guild.name}', 'green')
@@ -304,7 +333,6 @@ async def on_raw_reaction_remove(payload):
 
 def main():
     token = environ['TOKEN']
-    is_ready = False
 
     client.run(token)
 
