@@ -78,7 +78,7 @@ def add_response(guild, rsp):
         with open(f'Guilds/{guild.id}/{f_name}', 'r') as f:
             lines = json.load(f)
         duplicates = [next((x for x in lines if x['trig'] == rsp.trig), None)]
-        if duplicates:
+        if duplicates != [None]:
             for x in duplicates:
                 if x['text'] == rsp.text:  # Reject identical additions
                     return True
@@ -189,20 +189,6 @@ async def update_msg(payload):
             message = await channel.fetch_message(payload.message_id)
             await message.edit(embed=gen_resp_list(msg.guild, page, False))
             break
-
-
-def load_responses_old(file, is_m):
-    resp = []
-    try:  # Load & read mention triggers
-        with open(file, 'r') as f:
-            lines = f.readlines()
-            lines = [i.strip('\n') for i in lines]
-            for i in range(0, len(lines), 2):
-                resp.append(Response(is_m, emojize(lines[i]), emojize(lines[i+1])))
-    except FileNotFoundError:
-        f = open(file, 'w')
-        f.close()
-    return resp
 
 
 @client.event
