@@ -1,327 +1,445 @@
 """
-Bootleg Response Bot
-Mr.Garlic
-Last Updated: 01/26/2022
+Ben Samans
+BRBot version 3.0.1
+Updated 11/6/2023
 """
 
-from os import environ, path, mkdir
-import discord
-from dotenv import load_dotenv
 from termcolor import colored
 from time import strftime
 from colorama import init
-from botutils import process_args, is_command
-from emoji import emojize, demojize
 from random import choice
-import json
+import botdata as bd
+import botutils as bu
 import asyncio
-init()
-
-load_dotenv()
-del_delay = 5
-bot_id = 887530423826145310
-prefix = 'brbot'
-responses, mentions = {}, {}
-active_msgs = []
-intents = discord.Intents.default()
-intents.typing = False
-intents.invites = False
-intents.voice_states = False
-client = discord.Client(intents=intents)
+import interactions
+import yaml
 
 
-class Response:
-    def __init__(self, m, trig, text):
-        self.m = m
-        self.trig = trig
-        self.text = text
-
-    def __repr__(self):
-        return f'<Mention={self.m}> <Trig={self.trig}> <Text={self.text}>'
-
-    def asdict(self):
-        return {'m': self.m, 'trig': self.trig, 'text': self.text}
+bot = interactions.Client(
+    token=bd.token,
+    intents=interactions.Intents.DEFAULT | interactions.Intents.MESSAGE_CONTENT
+)
 
 
-class ListMsg:
-    def __init__(self, num, page, guild):
-        self.num = num
-        self.page = page
-        self.guild = guild
+@interactions.slash_command(
+    name="response",
+    sub_cmd_name="add",
+    sub_cmd_description="Add a response",
+)
+@interactions.slash_option(
+    name="trigger",
+    description="Message to respond to",
+    required=True,
+    opt_type=interactions.OptionType.STRING
+)
+@interactions.slash_option(
+    name="response",
+    description="What to respond with",
+    required=True,
+    opt_type=interactions.OptionType.STRING,
+)
+@interactions.slash_option(
+    name="exact",
+    description="Only respond if the message is exactly the trigger phrase (default true)",
+    required=False,
+    opt_type=interactions.OptionType.BOOLEAN,
+)
+async def add_response(ctx: interactions.SlashContext, trigger: str = "", response: str = "", exact: bool = True):
+    guild_id = int(ctx.guild.id)
 
-
-def guild_add(guild):
-    guild_id = str(guild.id)
-    if not path.exists(f'Guilds/{guild_id}'):
-        mkdir(f'Guilds/{guild_id}')
-        print(
-            colored(f'{strftime("%Y-%m-%d %H:%M:%S")} :  ', 'white') +
-            colored(f'Guild folder for guild {guild.id} created successfully.', 'green')
+    # Config permission checks
+    if not bd.config[guild_id]["ALLOW_PHRASES"] and not exact:
+        await ctx.send(
+            content=f"The server does not allow for phrase-based responses.",
+            ephemeral=True
         )
-    responses[int(guild_id)] = []
-    mentions[int(guild_id)] = []
-
-
-def dict_to_rsp(rsp_dict: dict):
-    if not rsp_dict:
-        return None
-    rsp = Response(rsp_dict['m'], rsp_dict['trig'], rsp_dict['text'])
-    return rsp
-
-
-def add_response(guild, rsp):
-    f_name = 'mentions.txt' if rsp.m else 'responses.txt'
-    rsp.trig, rsp.text = demojize(rsp.trig), demojize(rsp.text)
-    if not rsp.text:
         return True
-    try:
-        with open(f'Guilds/{guild.id}/{f_name}', 'r') as f:
-            lines = json.load(f)
-        duplicates = [next((x for x in lines if x['trig'] == rsp.trig), None)]
-        if duplicates != [None]:
-            for x in duplicates:
-                if x['text'] == rsp.text:  # Reject identical additions
-                    return True
-        lines.append(rsp.asdict())
-    except FileNotFoundError:
-        f = open(f'Guilds/{guild.id}/{f_name}', 'w')
-        f.close()
-    try:
-        with open(f'Guilds/{guild.id}/{f_name}', 'w') as f:
-            json.dump(lines, f, indent=4)
-    except UnicodeError:
-        return True
-
-
-def rmv_response(guild, rsp):
-    f_name = 'mentions.txt' if rsp.m else 'responses.txt'
-
-    try:
-        with open(f'Guilds/{guild.id}/{f_name}', 'r') as f:
-            lines = json.load(f)
-
-        to_del = [i for i, x in enumerate(lines) if x['trig'] == demojize(rsp.trig)]  # All matching entries
-        if not to_del:
+    if bd.config[guild_id]["LIMIT_USER_RESPONSES"]:
+        user_rsps = 0
+        for rsp in bd.responses[guild_id]:
+            if rsp.user_id == int(ctx.author.id):
+                user_rsps += 1
+        for rsp in bd.mentions[guild_id]:
+            if rsp.user_id == int(ctx.author.id):
+                user_rsps += 1
+        if user_rsps >= bd.config[guild_id]["MAX_USER_RESPONSES"]:
+            await ctx.send(
+                content=f"You currently have the maximum of {bd.config[guild_id]['MAX_USER_RESPONSES']} responses.",
+                ephemeral=True
+            )
             return True
-        k = 0
-        for i in to_del:
-            lines.pop(i - k)
-            k += 1
-        with open(f'Guilds/{guild.id}/{f_name}', 'w') as f:
-            if not lines:
-                f.write('[]')
-            else:
-                json.dump(f, lines)
 
-    except FileNotFoundError or ValueError:
+    error = bu.add_response(guild_id, bu.Response(exact, trigger.lower(), response, int(ctx.author.id)))
+    if not error:
+        await ctx.send(content=bd.pass_str)
+    else:
+        await ctx.send(content=bd.fail_str)
         return True
 
-
-def load_responses(file):
-    lines = []
-    try:
-        with open(file, 'r') as f:
-            lines = json.load(f)
-        for idx, line in enumerate(lines):
-            lines[idx] = dict_to_rsp(line)
-        for rsp in lines:
-            rsp.trig = emojize(rsp.trig)
-            rsp.text = emojize(rsp.text)
-    except FileNotFoundError:
-        f = open(file, 'w')
-        f.close()
-    return lines
+    # Update responses
+    if exact:
+        bd.responses[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/responses.txt")
+    else:
+        bd.mentions[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/mentions.txt")
 
 
-def gen_resp_list(guild, page, expired):
-    list_msg = discord.Embed(
-        description='Your response list, sir.'
-    )
-    guild_trigs = []
-    for rsp in responses[guild.id]:
-        guild_trigs.append(rsp)
-    for mtn in mentions[guild.id]:
-        guild_trigs.append(mtn)
-
-    max_pages = len(guild_trigs) // 10 + 1
-    page = 1 + (page % max_pages)  # Loop back through pages both ways
-
-    footer_end = ' | This message is inactive.' if expired else ' | This message deactivates after 5 minutes.'
-    list_msg.set_author(name=guild.name, icon_url=guild.icon_url)
-    list_msg.set_footer(text=f'Page {page}/{max_pages} {footer_end}')
-    nums = range((page-1)*10, len(guild_trigs)) if page == max_pages else range((page-1)*10, page*10)
-
-    for i in nums:
-        pref = '**Mention:** ' if guild_trigs[i].m else '**Say:** '
-        rsp_field = f'{pref}{guild_trigs[i].trig} \n **Respond:** {guild_trigs[i].text}'
-        if len(rsp_field) >= 1024:
-            rsp_field = f'{pref}{guild_trigs[i].trig} \n **Respond:** *[Really, really, really long response]*'
-
-        list_msg.add_field(
-            name='\u200b',
-            value=rsp_field, inline=False
+@interactions.slash_command(
+    name="response",
+    sub_cmd_name="remove",
+    sub_cmd_description="Remove a response",
+)
+@interactions.slash_option(
+    name="trigger",
+    description="Message trigger to remove",
+    required=True,
+    opt_type=interactions.OptionType.STRING
+)
+@interactions.slash_option(
+    name="exact",
+    description="If the trigger to remove is an exact trigger (default true)",
+    required=False,
+    opt_type=interactions.OptionType.BOOLEAN,
+)
+@interactions.slash_option(
+    name="response",
+    description="Response text to remove if multiple exist on the same trigger, defaults to the first response",
+    required=False,
+    opt_type=interactions.OptionType.STRING
+)
+async def remove_response(ctx: interactions.SlashContext, trigger: str = "", response: str = "", exact: bool = True):
+    # Config permission checks
+    guild_id = int(ctx.guild.id)
+    if bd.config[guild_id]["USER_ONLY_DELETE"] and \
+            bu.get_resp(guild_id, trigger, response, exact).user_id != ctx.author.id:
+        await ctx.send(
+            content=f"The server settings do not allow you to delete other people\'s responses.",
+            ephemeral=True
         )
-    return list_msg
-
-
-async def close_msg(list_msg, delay, channel, guild):
-    await asyncio.sleep(delay)
-    message = await channel.fetch_message(list_msg.num)
-    await message.edit(embed=gen_resp_list(guild, list_msg.page, True))
-    active_msgs.remove(list_msg)
-
-
-async def update_msg(payload):
-    payload.emoji = str(payload.emoji)
-    if payload.emoji not in ('⬅️', '➡️') or payload.user_id == bot_id:
         return True
-    for msg in active_msgs:
-        if payload.message_id == msg.num:
-            if payload.emoji == '⬅️':
-                page = msg.page - 1
-                msg.page -= 1
-            elif payload.emoji == '➡️':
-                page = msg.page + 1
-                msg.page += 1
-            else:
-                break
-            channel = discord.utils.get(client.private_channels, id=payload.channel_id)
-            message = await channel.fetch_message(payload.message_id)
-            await message.edit(embed=gen_resp_list(msg.guild, page, False))
+
+    error = bu.rmv_response(guild_id, bu.Response(exact, trigger.lower(), response, "_"))
+    if not error:
+        await ctx.send(content=bd.pass_str)
+    else:
+        await ctx.send(content=bd.fail_str)
+        return True
+
+    # Update responses
+    if exact:
+        bd.responses[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/responses.txt")
+    else:
+        bd.mentions[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/mentions.txt")
+
+
+@interactions.slash_command(
+    name="listresponses",
+    description="Show list of all responses for the server",
+)
+async def listrsps(ctx: interactions.SlashContext):
+    resp_msg = await ctx.send(
+        embeds=bu.gen_resp_list(ctx.guild, 0, False),
+        components=[bu.prevpg_button(), bu.nextpg_button()]
+    )
+    channel = ctx.channel
+    sent = bu.ListMsg(resp_msg.id, 0, ctx.guild, channel)
+    bd.active_msgs.append(sent)
+    asyncio.create_task(
+        bu.close_msg(sent, 300, ctx, resp_msg)
+    )
+    return False
+
+
+@interactions.slash_command(
+    name="mod",
+    sub_cmd_name="deletedata",
+    sub_cmd_description="Deletes ALL response data from the server",
+    default_member_permissions=interactions.Permissions.ADMINISTRATOR,
+)
+async def delete_data(ctx: interactions.SlashContext):
+    guild_id = int(ctx.guild.id)
+    open(f"{bd.parent}/Guilds/{guild_id}/responses.txt", "w")
+    f = open(f"{bd.parent}/Guilds/{guild_id}/mentions.txt", "w")
+    f.close()
+    bd.responses[guild_id], bd.mentions[guild_id] = [], []
+    await ctx.send(content=bd.pass_str)
+
+
+@interactions.slash_command(
+    name="mod",
+    sub_cmd_name="add",
+    sub_cmd_description="Adds a response (ignores restrictions)",
+    default_member_permissions=interactions.Permissions.ADMINISTRATOR,
+)
+@interactions.slash_option(
+    name="trigger",
+    description="Message to respond to",
+    required=True,
+    opt_type=interactions.OptionType.STRING
+)
+@interactions.slash_option(
+    name="response",
+    description="What to respond with",
+    required=True,
+    opt_type=interactions.OptionType.STRING,
+)
+@interactions.slash_option(
+    name="exact",
+    description="Only respond if the message is exactly the trigger phrase (default true)",
+    required=False,
+    opt_type=interactions.OptionType.BOOLEAN,
+)
+async def mod_add(ctx: interactions.SlashContext, trigger: str = "", response: str = "", exact: bool = True):
+    guild_id = int(ctx.guild.id)
+
+    error = bu.add_response(guild_id, bu.Response(exact, trigger.lower(), response, int(ctx.author.id)))
+    if not error:
+        await ctx.send(content=bd.pass_str)
+    else:
+        await ctx.send(content=bd.fail_str)
+        return True
+
+    # Update responses
+    if exact:
+        bd.responses[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/responses.txt")
+    else:
+        bd.mentions[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/mentions.txt")
+
+
+@interactions.slash_command(
+    name="mod",
+    sub_cmd_name="remove",
+    sub_cmd_description="Remove a response (ignores restrictions)",
+    default_member_permissions=interactions.Permissions.ADMINISTRATOR,
+)
+@interactions.slash_option(
+    name="trigger",
+    description="Message trigger to remove",
+    required=True,
+    opt_type=interactions.OptionType.STRING
+)
+@interactions.slash_option(
+    name="exact",
+    description="If the trigger to remove is an exact trigger (default true)",
+    required=False,
+    opt_type=interactions.OptionType.BOOLEAN,
+)
+@interactions.slash_option(
+    name="response",
+    description="Response text to remove if multiple exist on the same trigger, defaults to the first response",
+    required=False,
+    opt_type=interactions.OptionType.STRING
+)
+async def mod_remove(ctx: interactions.SlashContext, trigger: str = "", response: str = "", exact: bool = True):
+    guild_id = int(ctx.guild.id)
+    error = bu.rmv_response(guild_id, bu.Response(exact, trigger.lower(), response, "_"))
+    if not error:
+        await ctx.send(content=bd.pass_str)
+    else:
+        await ctx.send(content=bd.fail_str)
+        return True
+
+    # Update responses
+    if exact:
+        bd.responses[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/responses.txt")
+    else:
+        bd.mentions[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/mentions.txt")
+
+
+@interactions.slash_command(
+    name="config",
+    sub_cmd_name="reset",
+    sub_cmd_description="Resets ALL server settings to default.",
+    default_member_permissions=interactions.Permissions.ADMINISTRATOR,
+)
+async def cfg_reset(ctx: interactions.SlashContext):
+    guild_id = int(ctx.guild.id)
+    with open(f"{bd.parent}/Guilds/{guild_id}/config.yaml", "w") as f:
+        yaml.dump(bd.default_config, f, Dumper=yaml.Dumper)
+    bd.config[guild_id] = yaml.load(
+        open(f"{bd.parent}/Guilds/{guild_id}/config.yaml"), Loader=yaml.Loader
+    )
+    await ctx.send(content=bd.pass_str)
+
+
+@interactions.slash_command(
+    name="config",
+    sub_cmd_name="view",
+    sub_cmd_description="Views the current server settings.",
+    default_member_permissions=interactions.Permissions.ADMINISTRATOR,
+)
+async def cfg_view(ctx: interactions.SlashContext):
+    guild_id = int(ctx.guild.id)
+    await ctx.send(
+        content=f"Allow Phrases: {bd.config[guild_id]['ALLOW_PHRASES']}\n"
+                f"Limit Responses: {bd.config[guild_id]['LIMIT_USER_RESPONSES']}\n"
+                f"Response Limit # (Only if Limit Responses is True): {bd.config[guild_id]['MAX_USER_RESPONSES']}\n"
+                f"Restrict User Response Deleting: {bd.config[guild_id]['USER_ONLY_DELETE']}\n"
+    )
+
+
+@interactions.slash_command(
+    name="config",
+    sub_cmd_name="userperms",
+    sub_cmd_description="Enables/disables user\'s ability to delete other people\'s responses.",
+    default_member_permissions=interactions.Permissions.ADMINISTRATOR,
+)
+@interactions.slash_option(
+    name="enable",
+    description="True = Can delete, False = Can not delete",
+    opt_type=interactions.OptionType.BOOLEAN,
+    required=True
+)
+async def cfg_user_perms(ctx: interactions.SlashContext, enable: bool = True):
+    guild_id = int(ctx.guild.id)
+    bd.config[guild_id]["USER_ONLY_DELETE"] = not enable
+    with open(f"{bd.parent}/Guilds/{guild_id}/config.yaml", "w") as f:
+        yaml.dump(bd.config[guild_id], f, Dumper=yaml.Dumper)
+    await ctx.send(content=bd.pass_str)
+
+
+@interactions.slash_command(
+    name="config",
+    sub_cmd_name="limitresponses",
+    sub_cmd_description="Sets (or disables) the number of responses each user can have.",
+    default_member_permissions=interactions.Permissions.ADMINISTRATOR,
+)
+@interactions.slash_option(
+    name="enable",
+    description="True = Responses are limited, False = No limit",
+    opt_type=interactions.OptionType.BOOLEAN,
+    required=True
+)
+@interactions.slash_option(
+    name="limit",
+    description="Maximum number of responses per user (limit 10)",
+    opt_type=interactions.OptionType.INTEGER,
+    required=False
+)
+async def cfg_set_limit(ctx: interactions.SlashContext, enable: bool = True, limit: int = 10):
+    guild_id = int(ctx.guild.id)
+    if limit < 1:
+        limit = 1
+    bd.config[guild_id]["LIMIT_USER_RESPONSES"] = enable
+    bd.config[guild_id]["MAX_USER_RESPONSES"] = limit
+    with open(f"{bd.parent}/Guilds/{guild_id}/config.yaml", "w") as f:
+        yaml.dump(bd.config[guild_id], f, Dumper=yaml.Dumper)
+    await ctx.send(content=bd.pass_str)
+
+
+@interactions.slash_command(
+    name="config",
+    sub_cmd_name="allowphrases",
+    sub_cmd_description="Enables/disables responses based on phrases rather than whole messages",
+    default_member_permissions=interactions.Permissions.ADMINISTRATOR,
+)
+@interactions.slash_option(
+    name="enable",
+    description="True = Responses are limited, False = No limit",
+    opt_type=interactions.OptionType.BOOLEAN,
+    required=True
+)
+async def cfg_allow_phrases(ctx: interactions.SlashContext, enable: bool = True):
+    guild_id = int(ctx.guild.id)
+    bd.config[guild_id]["ALLOW_PHRASES"] = enable
+    with open(f"{bd.parent}/Guilds/{guild_id}/config.yaml", "w") as f:
+        yaml.dump(bd.config[guild_id], f, Dumper=yaml.Dumper)
+    await ctx.send(content=bd.pass_str)
+
+
+@interactions.listen()
+async def on_guild_join(event: interactions.api.events.GuildJoin):
+    guild = event.guild
+    bu.guild_add(guild)
+    print(
+        colored(f"{strftime('%Y-%m-%d %H:%M:%S')} :  ", "white") + f"Added to guild {guild.id}."
+    )
+
+
+@interactions.listen()
+async def on_ready():
+    guilds = bot.guilds
+    assert guilds, "Error connecting to Discord, no guilds listed."
+    print(
+        colored(strftime("%Y-%m-%d %H:%M:%S") + " :  ", "white") + "Connected to the following guilds: " +
+        colored(", ".join(guild.name for guild in guilds), "cyan")
+    )
+    for guild in guilds:
+
+        bu.load_config(guild)
+
+        # Load guild responses
+        guild_id = int(guild.id)
+        bd.mentions[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/mentions.txt")
+        bd.responses[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/responses.txt")
+        print(
+            colored(f"{strftime('%Y-%m-%d %H:%M:%S')} :  ", "white") +
+            colored(f"Responses loaded for {guild.name}", "green")
+        )
+    await bot.change_presence(status=interactions.Status.ONLINE, activity="/response")
+
+
+@interactions.listen()
+async def on_message_create(event: interactions.api.events.MessageCreate):
+    message = event.message
+    if message.author.bot:
+        return False
+
+    channel = message.channel
+    if channel.type == 1:  # Ignore DMs
+        return False
+
+    guild_id = int(message.guild.id)
+
+    to_send = []
+    done = False
+
+    for i in bd.responses[guild_id]:
+        if i.trig == message.content.lower():
+            to_send.append(i.text)
+            done = True
+    if done:
+        to_send = choice(to_send) if len(to_send) > 1 else to_send[0]
+        await message.reply(to_send)
+        return False
+
+    if not bd.config[guild_id]["ALLOW_PHRASES"]:
+        return False
+
+    for i in bd.mentions[guild_id]:
+        if i.trig in message.content.lower():
+            to_send.append(i.text)
+            done = True
+    if done:
+        to_send = choice(to_send) if len(to_send) > 1 else to_send[0]
+        await message.reply(to_send)
+
+    return False
+
+
+@interactions.listen(interactions.api.events.Component)
+async def on_component(event: interactions.api.events.Component):
+    ctx = event.ctx
+    for msg in bd.active_msgs:  # Search active messages for correct one
+        if msg.num == int(ctx.message.id):
+            idx = bd.active_msgs.index(msg)
+
+            # Update page num
+            if ctx.custom_id == "prev page":
+                bd.active_msgs[idx].page -= 1
+            elif ctx.custom_id == "next page":
+                bd.active_msgs[idx].page += 1
+
+            await ctx.edit_origin(
+                embeds=bu.gen_resp_list(ctx.guild, bd.active_msgs[idx].page, False),
+                components=[bu.prevpg_button(), bu.nextpg_button()]
+            )
             break
 
 
-@client.event
-async def on_message(message):
-    if isinstance(message.channel, discord.channel.DMChannel):  # Ignore DMs
-        return False
-    guild = message.channel.guild
-
-    if not is_command(message, prefix):  # Any normal message
-        if not message.author.bot:
-            to_send = []
-            done = False
-            for i in responses[guild.id]:
-                if i.trig == message.content.lower():
-                    to_send.append(i.text)
-                    done = True
-            if done:
-                to_send = choice(to_send) if len(to_send) > 1 else to_send[0]
-                await message.channel.send(to_send)
-                return False
-
-            for i in mentions[guild.id]:
-                if i.trig in message.content.lower():
-                    to_send.append(i.text)
-                    done = True
-            if done:
-                to_send = choice(to_send) if len(to_send) > 1 else to_send[0]
-                await message.channel.send(to_send)
-        return False
-
-    print(colored(strftime("%Y-%m-%d %H:%M:%S") + ' :  ', 'white') + f'{message.author}: {message.content}')
-
-    if message.content.lower() == 'brbot list responses':
-        resp_msg = await message.author.send(embed=gen_resp_list(guild, 0, False))
-        await resp_msg.add_reaction('⬅️')
-        await resp_msg.add_reaction('➡️')
-        sent = ListMsg(resp_msg.id, 0, guild)
-        active_msgs.append(sent)
-        asyncio.create_task(
-            close_msg(sent, 300, resp_msg.channel, guild)
-        )
-        return False
-
-    if message.content.lower() == 'brbot delete all data' and \
-            message.author.permissions_in(message.channel).administrator:
-        open(f'Guilds/{guild.id}/responses.txt', 'w')
-        f = open(f'Guilds/{guild.id}/mentions.txt', 'w')
-        f.close()
-        responses[guild.id], mentions[guild.id] = [], []
-        await message.add_reaction('✅')
-        return False
-
-    try:
-        message_list = message.content.split(' ')  # Splits command into command and arguments
-        cmd = message_list[3].lower()
-        args = process_args(message_list[4:])
-    except IndexError:  # weird cases with the prefix but without a proper command
-        return True
-
-    if cmd in ('say', 'mention'):
-        if cmd == 'say':
-            is_m, f_name = False, 'responses.txt'
-        else:
-            is_m, f_name = True, 'mentions.txt'
-
-        if args[1].lower() in ('don\'t', 'dont'):
-            for i, arg in enumerate(args[1:4], 1):
-                args[i] = arg.lower()
-            if args[1:4] == ['don\'t', 'say', 'anything'] or args[1:4] == ['dont', 'say', 'anything']:
-                error = rmv_response(guild, Response(is_m, args[0].lower(), '_'))
-                if not error:
-                    await message.add_reaction('✅')
-                else:
-                    await message.add_reaction('❌')
-
-        elif args[1].lower() == 'you':
-            for i, arg in enumerate(args[1:3], 1):
-                args[i] = arg.lower()
-            if args[1:3] == ['you', 'say']:
-                error = add_response(guild, Response(is_m, args[0].lower(), ' '.join(args[3:])))
-                if not error:
-                    await message.add_reaction('✅')
-                else:
-                    await message.add_reaction('❌')
-        if cmd == 'say':
-            responses[guild.id] = load_responses(f'Guilds/{guild.id}/{f_name}')
-        else:
-            mentions[guild.id] = load_responses(f'Guilds/{guild.id}/{f_name}')
-        return False
-
-
-@client.event
-async def on_guild_join(guild):
-    guild_add(guild)
-    print(
-        colored(f'{strftime("%Y-%m-%d %H:%M:%S")} :  ', 'white') + f'Added to guild {guild.id}.'
-    )
-
-
-@client.event
-async def on_ready():
-    print(colored(strftime("%Y-%m-%d %H:%M:%S") + ' :  ', 'white') + f'{client.user} has connected to Discord!')
-    guilds = client.guilds
-    assert guilds, 'Error connecting to Discord, no guilds listed.'
-    print(
-        colored(strftime("%Y-%m-%d %H:%M:%S") + ' :  ', 'white') + 'Connected to the following guilds: ' +
-        colored(', '.join(guild.name for guild in guilds), 'cyan')
-    )
-
-    for guild in guilds:
-        mentions[guild.id] = load_responses(f'Guilds/{guild.id}/mentions.txt')
-        responses[guild.id] = load_responses(f'Guilds/{guild.id}/responses.txt')
-        print(
-            colored(f'{strftime("%Y-%m-%d %H:%M:%S")} :  ', 'white') +
-            colored(f'Responses loaded for {guild.name}', 'green')
-        )
-
-
-@client.event
-async def on_raw_reaction_add(payload):
-    await update_msg(payload)
-
-
-@client.event
-async def on_raw_reaction_remove(payload):
-    await update_msg(payload)
-
-
 def main():
-    token = environ['TOKEN']
+    init()
+    bot.start()
 
-    client.run(token)
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
