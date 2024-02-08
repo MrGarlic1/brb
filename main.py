@@ -1,7 +1,7 @@
 """
 Ben Samans
-BRBot version 3.0.1
-Updated 11/6/2023
+BRBot version 3.1.2
+Updated 12/24/2023
 """
 
 from termcolor import colored
@@ -13,7 +13,10 @@ import botutils as bu
 import asyncio
 import interactions
 import yaml
-
+from datetime import datetime
+from os import listdir, mkdir, path
+from shutil import rmtree
+import io
 
 bot = interactions.Client(
     token=bd.token,
@@ -22,9 +25,417 @@ bot = interactions.Client(
 
 
 @interactions.slash_command(
+    name="trains",
+    sub_cmd_name="newgame",
+    sub_cmd_description="Create a new trains game",
+    dm_permission=False
+)
+@interactions.slash_option(
+    name="players",
+    description="@ the participating players",
+    required=True,
+    opt_type=interactions.OptionType.STRING
+)
+@interactions.slash_option(
+    name="name",
+    description="Bingo game name",
+    required=True,
+    opt_type=interactions.OptionType.STRING
+)
+@interactions.slash_option(
+    name="width",
+    description="Play area width, must be divisible by 4. Default 16",
+    required=False,
+    opt_type=interactions.OptionType.INTEGER
+)
+@interactions.slash_option(
+    name="height",
+    description="Play area height, must be divisible by 4. Default 16",
+    required=False,
+    opt_type=interactions.OptionType.INTEGER
+)
+async def create_trains(
+        ctx: interactions.SlashContext, name: str, players: str, width: int = 16, height: int = 16
+):
+    await ctx.defer()
+    offset = 1
+    river_ring = 1
+    guild_id = int(ctx.guild_id)
+
+    # Return errors if game is active or invalid name/width/height
+    if guild_id in bd.active_trains:
+        await ctx.send(content=f"There is already an active game ({bd.active_trains[guild_id].name}) in this server.")
+        return True
+    if width % 4 != 0 or height % 4 != 0:
+        await ctx.send(content="Width and height must be divisible by 4.")
+        return True
+    if path.exists(f"{bd.parent}/Guilds/{guild_id}/Trains/{name}"):
+        await ctx.send(content="Name already exists!")
+        return True
+
+    # Create player list and tags
+    members = await bu.get_members_from_str(ctx.guild, players)
+    players = []
+    tags = bu.get_player_tags(members)
+
+    for member, tag in zip(members, tags):
+        dm = await member.fetch_dm(force=False)
+        players.append(
+            bu.TrainPlayer(member=member, tag=tag, dmchannel=dm)
+        )
+    # Return error if player list is empty
+    if not players:
+        await ctx.send(content="No valid players specified.")
+        return True
+
+    try:
+        mkdir(f"{bd.parent}/Guilds/{guild_id}/Trains/{name}")
+    except OSError:
+        await ctx.send(content="Invalid name! Game must not contain the following characters: / \\ : * ? < > |")
+        return True
+
+    # Create game object and set parameters
+    date = datetime.now().strftime(bd.date_format)
+    gameid = int(datetime.now().strftime("%Y%m%d%H%M%S"))
+    master_name = "MASTER"
+
+    game = bu.TrainGame(
+        name=name,
+        date=date,
+        players=players,
+        board=None,
+        gameid=gameid,
+        active=True,
+        size=(width + 2*river_ring, height + 2*river_ring)  # Add space on board for river border
+    )
+    game.gen_trains_board(
+        filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{name}", f_name=master_name,
+        board_size=(width, height), offset=offset, river_ring=river_ring
+    )
+    if type(game.board) is str:
+        await ctx.send(content=game.board)
+        return True
+
+    # Add player start locations
+    game.gen_player_locations(river_ring=river_ring)
+
+    # Unsuccessful board generation
+    if game is True:
+        await ctx.send(content="Unsuccessful board generation. Try making the size larger?")
+        return True
+    # Push updates to player boards
+    await bu.update_boards_after_create(game=game, ctx=ctx, offset=offset)
+    await ctx.send(embed=bu.train_game_embed(ctx=ctx, game=game))
+    return False
+
+
+@interactions.slash_command(
+    name="trains",
+    sub_cmd_name="shot",
+    sub_cmd_description="Make a trains shot",
+    dm_permission=False
+)
+@interactions.slash_option(
+    name="row",
+    description="Shot row",
+    required=True,
+    opt_type=interactions.OptionType.INTEGER
+)
+@interactions.slash_option(
+    name="column",
+    description="Shot column",
+    required=True,
+    opt_type=interactions.OptionType.INTEGER
+)
+@interactions.slash_option(
+    name="genre",
+    description="Genre of show used for shot",
+    required=True,
+    opt_type=interactions.OptionType.STRING,
+    choices=bu.dict_to_choices(bu.genre_colors)
+)
+@interactions.slash_option(
+    name="info",
+    description="Show/stock information",
+    required=True,
+    opt_type=interactions.OptionType.STRING
+)
+async def record_shot(ctx: interactions.SlashContext, row: int, column: int, genre: str, info: str):
+    await ctx.defer(ephemeral=True)
+    try:
+        game = bd.active_trains[ctx.guild_id]
+    except KeyError:
+        await ctx.send(content="There is no active game! To make one, use /trains newgame", ephemeral=True)
+        return True
+
+    # Get player, validate shot
+    sender_idx, player = game.get_player(int(ctx.author_id))
+    valid = game.valid_shot(player, row, column)
+    if not valid:
+        await ctx.send(content=bd.fail_str)
+        return True
+
+    # Update board, player rails
+    game.board[(row, column)]["rails"].append(player.tag)
+    game.players[sender_idx].shots.append(
+        bu.TrainShot(location=(row, column), genre=genre, info=info, time=datetime.now().strftime(bd.date_format))
+    )
+    game.add_visible_tiles(sender_idx, row, column)
+    if game.board[(row, column)]["terrain"] == "river":
+        rails = 2
+    else:
+        rails = 1
+    if game.board[(row, column)]["zone"] == genre:
+        rails = rails*0.5
+    game.players[sender_idx].rails += rails
+    if (row, column) == player.end:
+        game.players[sender_idx].done = True
+        game.players[sender_idx].donetime = datetime.now().strftime("%Y%m%d%H%M%S")
+
+    # Save/update games
+    await bu.update_boards_after_shot(
+        game=game, ctx=ctx, row=row, column=column, sender_idx=sender_idx, offset=1
+    )
+
+
+@interactions.slash_command(
+    name="trains",
+    sub_cmd_name="undo",
+    sub_cmd_description="Undo your last shot.",
+    dm_permission=False
+)
+async def undo_shot(ctx: interactions.SlashContext):
+    await ctx.defer(ephemeral=True)
+    try:
+        game = bd.active_trains[ctx.guild_id]
+    except KeyError:
+        await ctx.send(content="There is no active game! To make one, use /trains newgame", ephemeral=True)
+        return True
+
+    sender_idx, player = game.get_player(int(ctx.author_id))
+    if not player.shots:
+        await ctx.send(content="You have not taken any shots yet!", ephemeral=True)
+        return True
+
+    row = game.players[sender_idx].shots[-1].location[0]
+    column = game.players[sender_idx].shots[-1].location[1]
+    genre = game.players[sender_idx].shots[-1]
+
+    # Delete last shot from record, re-render visible tiles
+    game.board[(row, column)]["rails"].remove(player.tag)
+    del game.players[sender_idx].shots[-1]
+    game.players[sender_idx].vis_tiles = []
+    if game.players[sender_idx].done:
+        game.players[sender_idx].done = False
+        game.players[sender_idx].donetime = None
+
+    for shot in player.shots:
+        game.add_visible_tiles(
+            player_idx=sender_idx, shot_row=shot.location[0], shot_col=shot.location[1]
+        )
+
+    # Update player rails
+    if game.board[(row, column)]["terrain"] == "river":
+        rails = 2
+    else:
+        rails = 1
+    if game.board[(row, column)]["zone"] == genre:
+        rails = rails*0.5
+    game.players[sender_idx].rails -= rails
+
+    # Save/update games
+    await bu.update_boards_after_shot(
+        game=game, ctx=ctx, row=row, column=column, sender_idx=sender_idx, offset=1, undo=True
+    )
+
+
+@interactions.slash_command(
+    name="trains",
+    sub_cmd_name="stats",
+    sub_cmd_description="View limited/full stats for an in-progress/completed game.",
+    dm_permission=False
+)
+@interactions.slash_option(
+    name="name",
+    description="Name of game to get stats of (defaults to active game)",
+    required=False,
+    opt_type=interactions.OptionType.STRING,
+    choices=[]
+)
+async def trains_stats(ctx: interactions.SlashContext, name: str = None):
+    # Logic to get game or return error if no game found
+    if name is None:
+        try:
+            game = bd.active_trains[ctx.guild_id]
+        except KeyError:
+            await ctx.send(content="No active game found, please specify a game name.")
+            return True
+    else:
+        try:
+            game = await bu.load_game(
+                filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{name}", bot=bot, guild=ctx.guild
+            )
+        except FileNotFoundError:
+            await ctx.send(content="Game name does not exist.")
+            return True
+    await ctx.defer()
+    embed, image = bu.gen_stats_embed(ctx=ctx, game=game, page=0, expired=False)
+
+    stats_msg = await ctx.send(embed=embed, file=image, components=[bu.prevpg_trainstats(), bu.nextpg_trainstats()])
+    sent = bu.ListMsg(
+        num=stats_msg.id, page=0, guild=ctx.guild, channel=ctx.channel, msg_type="trainstats", payload=game
+    )
+    bd.active_msgs.append(sent)
+    asyncio.create_task(
+        bu.close_msg(sent, 300, ctx, stats_msg)
+    )
+
+
+@trains_stats.autocomplete("name")
+async def autocomplete(ctx: interactions.AutocompleteContext):
+    games = listdir(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains")
+    choices = []
+    for game in games:
+        choices.append({"name": game, "value": game})
+    await ctx.send(
+        choices=choices
+    )
+
+
+@interactions.slash_command(
+    name="trains",
+    sub_cmd_name="board",
+    sub_cmd_description="View your train board for the active game.",
+    dm_permission=False,
+    scopes=[895549687417958410]
+)
+async def show_trains_board(ctx: interactions.SlashContext):
+    try:
+        game = bd.active_trains[ctx.guild_id]
+    except KeyError:
+        await ctx.send(content="No active game found.", ephemeral=True)
+        return True
+
+    player_idx, player = game.get_player(ctx.author_id)
+    if not player:
+        await ctx.send(content="You are not a player in this game.", ephemeral=True)
+        return True
+
+    try:
+        with open(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{game.name}/{ctx.author_id}.png", "rb") as f:
+            file = io.BytesIO(f.read())
+    except FileNotFoundError:
+        await ctx.send(bd.fail_str, ephemeral=True)
+        return True
+
+    await ctx.send(file=interactions.File(file, file_name="stats_img.png"), ephemeral=True)
+    return False
+
+
+@interactions.slash_command(
+    name="mod",
+    sub_cmd_name="deletetrain",
+    sub_cmd_description="Remove the active trains game. (ADMIN ONLY)",
+    default_member_permissions=interactions.Permissions.ADMINISTRATOR,
+    dm_permission=False
+)
+@interactions.slash_option(
+    name="keep_files",
+    description="Choose whether to archive or completely delete the active game's files",
+    required=True,
+    opt_type=interactions.OptionType.BOOLEAN,
+)
+async def delete_trains_game(ctx: interactions.SlashContext, keep_files: bool):
+    await ctx.defer()
+    try:
+        game = bd.active_trains[ctx.guild_id]
+    except KeyError:
+        await ctx.send(content="There is no active game! To make one, use /trains newgame", ephemeral=True)
+        return True
+
+    if keep_files:
+        game.active = False
+        game.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{game.name}")
+    else:
+        rmtree(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{game.name}")
+
+    del bd.active_trains[ctx.guild_id]
+    await ctx.send(content=bd.pass_str)
+    return False
+
+
+@interactions.slash_command(
+    name="mod",
+    sub_cmd_name="restoretrain",
+    sub_cmd_description="Restore an incomplete, archived game to active status. (ADMIN ONLY)",
+    default_member_permissions=interactions.Permissions.ADMINISTRATOR,
+    dm_permission=False
+)
+@interactions.slash_option(
+    name="name",
+    description="Name of game to be restored",
+    required=True,
+    opt_type=interactions.OptionType.STRING,
+    autocomplete=True
+)
+async def restore_train(ctx: interactions.SlashContext, name: str):
+    guild_id = ctx.guild_id
+    if guild_id in bd.active_trains:
+        await ctx.send("There is already an active game in this server!")
+        return True
+    try:
+        test_game = await bu.load_game(
+            filepath=f"{bd.parent}/Guilds/{guild_id}/Trains/{name}", bot=bot, guild=ctx.guild
+        )
+    except FileNotFoundError:
+        await ctx.send(content="Game name does not exist.")
+        return True
+    if not any(player.done is False for player in test_game.players):
+        await ctx.send("You can not restore a completed game to active status.")
+        return True
+
+    test_game.active = True
+    test_game.save_game(f"{bd.parent}/Guilds/{guild_id}/Trains/{test_game.name}")
+    bd.active_trains[guild_id] = test_game
+    await ctx.send(content=bd.pass_str)
+    return False
+
+
+@restore_train.autocomplete("name")
+async def autocomplete(ctx: interactions.AutocompleteContext):
+    games = listdir(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains")
+    choices = []
+    for game in games:
+        choices.append({"name": game, "value": game})
+    await ctx.send(
+        choices=choices
+    )
+
+
+@interactions.slash_command(
+    name="train",
+    sub_cmd_name="rules",
+    sub_cmd_description="Display the rules for playing trains",
+)
+async def send_rules(ctx: interactions.SlashContext):
+    rules_msg = await ctx.send(
+        embeds=bu.gen_rules_embed(page=0, expired=False),
+        components=[bu.prevpg_trainrules(), bu.nextpg_trainrules()]
+    )
+    channel = ctx.channel
+    sent = bu.ListMsg(rules_msg.id, 0, ctx.guild, channel, "trainrules")
+    bd.active_msgs.append(sent)
+    asyncio.create_task(
+        bu.close_msg(sent, 300, ctx, rules_msg)
+    )
+    return False
+
+
+@interactions.slash_command(
     name="response",
     sub_cmd_name="add",
     sub_cmd_description="Add a response",
+    dm_permission=False
 )
 @interactions.slash_option(
     name="trigger",
@@ -70,11 +481,6 @@ async def add_response(ctx: interactions.SlashContext, trigger: str = "", respon
             return True
 
     error = bu.add_response(guild_id, bu.Response(exact, trigger.lower(), response, int(ctx.author.id)))
-    if not error:
-        await ctx.send(content=bd.pass_str)
-    else:
-        await ctx.send(content=bd.fail_str)
-        return True
 
     # Update responses
     if exact:
@@ -82,11 +488,18 @@ async def add_response(ctx: interactions.SlashContext, trigger: str = "", respon
     else:
         bd.mentions[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/mentions.txt")
 
+    if not error:
+        await ctx.send(content=bd.pass_str)
+    else:
+        await ctx.send(content=bd.fail_str)
+        return True
+
 
 @interactions.slash_command(
     name="response",
     sub_cmd_name="remove",
     sub_cmd_description="Remove a response",
+    dm_permission=False
 )
 @interactions.slash_option(
     name="trigger",
@@ -134,14 +547,15 @@ async def remove_response(ctx: interactions.SlashContext, trigger: str = "", res
 @interactions.slash_command(
     name="listresponses",
     description="Show list of all responses for the server",
+    dm_permission=False
 )
 async def listrsps(ctx: interactions.SlashContext):
     resp_msg = await ctx.send(
         embeds=bu.gen_resp_list(ctx.guild, 0, False),
-        components=[bu.prevpg_button(), bu.nextpg_button()]
+        components=[bu.prevpg_rsp(), bu.nextpg_rsp()]
     )
     channel = ctx.channel
-    sent = bu.ListMsg(resp_msg.id, 0, ctx.guild, channel)
+    sent = bu.ListMsg(resp_msg.id, 0, ctx.guild, channel, "rsplist")
     bd.active_msgs.append(sent)
     asyncio.create_task(
         bu.close_msg(sent, 300, ctx, resp_msg)
@@ -151,9 +565,10 @@ async def listrsps(ctx: interactions.SlashContext):
 
 @interactions.slash_command(
     name="mod",
-    sub_cmd_name="deletedata",
+    sub_cmd_name="deleterspdata",
     sub_cmd_description="Deletes ALL response data from the server",
     default_member_permissions=interactions.Permissions.ADMINISTRATOR,
+    dm_permission=False
 )
 async def delete_data(ctx: interactions.SlashContext):
     guild_id = int(ctx.guild.id)
@@ -169,6 +584,7 @@ async def delete_data(ctx: interactions.SlashContext):
     sub_cmd_name="add",
     sub_cmd_description="Adds a response (ignores restrictions)",
     default_member_permissions=interactions.Permissions.ADMINISTRATOR,
+    dm_permission=False
 )
 @interactions.slash_option(
     name="trigger",
@@ -210,6 +626,7 @@ async def mod_add(ctx: interactions.SlashContext, trigger: str = "", response: s
     sub_cmd_name="remove",
     sub_cmd_description="Remove a response (ignores restrictions)",
     default_member_permissions=interactions.Permissions.ADMINISTRATOR,
+    dm_permission=False
 )
 @interactions.slash_option(
     name="trigger",
@@ -250,6 +667,7 @@ async def mod_remove(ctx: interactions.SlashContext, trigger: str = "", response
     sub_cmd_name="reset",
     sub_cmd_description="Resets ALL server settings to default.",
     default_member_permissions=interactions.Permissions.ADMINISTRATOR,
+    dm_permission=False
 )
 async def cfg_reset(ctx: interactions.SlashContext):
     guild_id = int(ctx.guild.id)
@@ -266,6 +684,7 @@ async def cfg_reset(ctx: interactions.SlashContext):
     sub_cmd_name="view",
     sub_cmd_description="Views the current server settings.",
     default_member_permissions=interactions.Permissions.ADMINISTRATOR,
+    dm_permission=False
 )
 async def cfg_view(ctx: interactions.SlashContext):
     guild_id = int(ctx.guild.id)
@@ -282,6 +701,7 @@ async def cfg_view(ctx: interactions.SlashContext):
     sub_cmd_name="userperms",
     sub_cmd_description="Enables/disables user\'s ability to delete other people\'s responses.",
     default_member_permissions=interactions.Permissions.ADMINISTRATOR,
+    dm_permission=False
 )
 @interactions.slash_option(
     name="enable",
@@ -302,6 +722,7 @@ async def cfg_user_perms(ctx: interactions.SlashContext, enable: bool = True):
     sub_cmd_name="limitresponses",
     sub_cmd_description="Sets (or disables) the number of responses each user can have.",
     default_member_permissions=interactions.Permissions.ADMINISTRATOR,
+    dm_permission=False
 )
 @interactions.slash_option(
     name="enable",
@@ -311,7 +732,7 @@ async def cfg_user_perms(ctx: interactions.SlashContext, enable: bool = True):
 )
 @interactions.slash_option(
     name="limit",
-    description="Maximum number of responses per user (limit 10)",
+    description="Maximum number of responses per user (default 10)",
     opt_type=interactions.OptionType.INTEGER,
     required=False
 )
@@ -331,6 +752,7 @@ async def cfg_set_limit(ctx: interactions.SlashContext, enable: bool = True, lim
     sub_cmd_name="allowphrases",
     sub_cmd_description="Enables/disables responses based on phrases rather than whole messages",
     default_member_permissions=interactions.Permissions.ADMINISTRATOR,
+    dm_permission=False
 )
 @interactions.slash_option(
     name="enable",
@@ -351,7 +773,7 @@ async def on_guild_join(event: interactions.api.events.GuildJoin):
     guild = event.guild
     bu.guild_add(guild)
     print(
-        colored(f"{strftime('%Y-%m-%d %H:%M:%S')} :  ", "white") + f"Added to guild {guild.id}."
+        colored(f"{strftime(bd.date_format)} :  ", "white") + f"Added to guild {guild.id}."
     )
 
 
@@ -359,12 +781,12 @@ async def on_guild_join(event: interactions.api.events.GuildJoin):
 async def on_ready():
     guilds = bot.guilds
     assert guilds, "Error connecting to Discord, no guilds listed."
+    bu.load_fonts(f"{bd.parent}/Data")
     print(
-        colored(strftime("%Y-%m-%d %H:%M:%S") + " :  ", "white") + "Connected to the following guilds: " +
+        colored(strftime(bd.date_format) + " :  ", "white") + "Connected to the following guilds: " +
         colored(", ".join(guild.name for guild in guilds), "cyan")
     )
     for guild in guilds:
-
         bu.load_config(guild)
 
         # Load guild responses
@@ -372,9 +794,29 @@ async def on_ready():
         bd.mentions[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/mentions.txt")
         bd.responses[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/responses.txt")
         print(
-            colored(f"{strftime('%Y-%m-%d %H:%M:%S')} :  ", "white") +
+            colored(f"{strftime(bd.date_format)} :  ", "white") +
             colored(f"Responses loaded for {guild.name}", "green")
         )
+
+        # Load trains games
+        for name in listdir(f"{bd.parent}/Guilds/{guild_id}/Trains"):
+            try:
+                game = await bu.load_game(
+                    filepath=f"{bd.parent}/Guilds/{guild_id}/Trains/{name}", bot=bot, guild=guild, active_only=True
+                )
+                if game.active:
+                    bd.active_trains[guild_id] = game
+                    break
+            except FileNotFoundError:
+                try:
+                    rmtree(f"{bd.parent}/Guilds/{guild_id}/Trains/{name}")
+                except PermissionError:
+                    pass
+                print(
+                    colored(strftime(bd.date_format) + " :  ", "white") +
+                    colored(f"Invalid game \"{name}\" in guild {guild_id}, attempted delete.", "yellow")
+                )
+
     await bot.change_presence(status=interactions.Status.ONLINE, activity="/response")
 
 
@@ -424,14 +866,45 @@ async def on_component(event: interactions.api.events.Component):
             idx = bd.active_msgs.index(msg)
 
             # Update page num
-            if ctx.custom_id == "prev page":
+            image = None
+            if ctx.custom_id == "prevpg_rsp":
                 bd.active_msgs[idx].page -= 1
-            elif ctx.custom_id == "next page":
+                embed = bu.gen_resp_list(ctx.guild, bd.active_msgs[idx].page, False)
+                components = [bu.prevpg_rsp(), bu.nextpg_rsp()]
+            elif ctx.custom_id == "nextpg_rsp":
                 bd.active_msgs[idx].page += 1
-
+                embed = bu.gen_resp_list(ctx.guild, bd.active_msgs[idx].page, False)
+                components = [bu.prevpg_rsp(), bu.nextpg_rsp()]
+            elif ctx.custom_id == "prevpg_trainrules":
+                bd.active_msgs[idx].page -= 1
+                embed = bu.gen_rules_embed(bd.active_msgs[idx].page, False)
+                components = [bu.prevpg_trainrules(), bu.nextpg_trainrules()]
+            elif ctx.custom_id == "nextpg_trainrules":
+                bd.active_msgs[idx].page += 1
+                embed = bu.gen_rules_embed(bd.active_msgs[idx].page, False)
+                components = [bu.prevpg_trainrules(), bu.nextpg_trainrules()]
+            elif ctx.custom_id == "prevpg_trainstats":
+                await ctx.defer(edit_origin=True)
+                bd.active_msgs[idx].page -= 1
+                embed, image = bu.gen_stats_embed(
+                    ctx=ctx, page=bd.active_msgs[idx].page, expired=False, game=msg.payload
+                )
+                components = [bu.prevpg_trainstats(), bu.nextpg_trainstats()]
+            elif ctx.custom_id == "nextpg_trainstats":
+                await ctx.defer(edit_origin=True)
+                bd.active_msgs[idx].page += 1
+                embed, image = bu.gen_stats_embed(
+                    ctx=ctx, page=bd.active_msgs[idx].page, expired=False, game=msg.payload
+                )
+                components = [bu.prevpg_trainstats(), bu.nextpg_trainstats()]
+            else:
+                embed = None
+                components = None
+            print(image)
             await ctx.edit_origin(
-                embeds=bu.gen_resp_list(ctx.guild, bd.active_msgs[idx].page, False),
-                components=[bu.prevpg_button(), bu.nextpg_button()]
+                embeds=embed,
+                components=components,
+                file=image,
             )
             break
 
@@ -439,7 +912,6 @@ async def on_component(event: interactions.api.events.Component):
 def main():
     init()
     bot.start()
-
 
 if __name__ == "__main__":
     main()
