@@ -1,6 +1,6 @@
 # Bot functions
-# Version 3.1
-# Ben Samans, Updated 12/24/2023
+# Version 3.2.2
+# Ben Samans, Updated 2/10/2024
 
 import interactions
 from emoji import emojize, demojize
@@ -8,22 +8,20 @@ import json
 import botdata as bd
 from time import strftime
 from termcolor import colored
-from colorama import init
 import yaml
 import asyncio
-from os import path, mkdir, remove
 from random import randint, shuffle
-from openpyxl import Workbook, load_workbook
-from openpyxl.utils import get_column_letter
-from openpyxl.styles import PatternFill, Font, Alignment, borders
-from excel2img import export_img
 from random import choice
 from typing import Union
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 import io
 import matplotlib.font_manager
-init()
+from PIL import Image
+from PIL import ImageFont
+from PIL import ImageDraw
+from pilmoji import Pilmoji
+from pilmoji.source import MicrosoftEmojiSource
 
 # Class Definitions
 
@@ -177,8 +175,7 @@ class TrainGame:
             json.dump(self.asdict(), f, indent=4)
 
     def gen_trains_board(
-            self, filepath: str = "", f_name: str = "board.xlsx",
-            board_size: tuple[int, int] = (16, 16), offset: int = 1, river_ring: int = 0
+            self, board_size: tuple[int, int] = (16, 16), river_ring: int = 0
     ):
         width = board_size[0] + 2*river_ring
         height = board_size[1] + 2*river_ring
@@ -430,58 +427,6 @@ class TrainGame:
                 self.board[pos]["terrain"] = "river"
             return self.board
 
-        def export_grid(row_height=50):
-            wb = Workbook()
-            ws = wb.active
-            for pos, tile in self.board.items():
-
-                # Export resources (text layer)
-                ws.cell(pos[0] + offset, pos[1] + offset).value = tile["resource"]
-                # ws.cell(pos[0] + offset, pos[1] + offset).font = Font(size="18")
-
-                # Export zones/terrain (pattern layer)
-                try:
-                    zone_color = genre_colors[tile["zone"]]
-                except KeyError:
-                    zone_color = "FFFFFF"
-
-                if tile["terrain"] is None:
-                    ws.cell(pos[0] + offset, pos[1] + offset).fill = PatternFill(
-                        patternType="solid",
-                        fgColor=zone_color
-                    )
-                elif tile["terrain"] == "river":
-                    ws.cell(pos[0] + offset, pos[1] + offset).fill = PatternFill(
-                        patternType="darkGrid",
-                        fgColor="666666",
-                        bgColor=zone_color
-                    )
-
-            # Format row height, alignment, font size
-
-            for row in range(offset, height+1 + offset):
-                ws.row_dimensions[row].height = row_height
-
-                for col in range(offset, offset + width + 1):
-                    ws.cell(row, col).font = Font(size="20", bold=True)
-                    ws.cell(row, col).alignment = Alignment(horizontal="center", vertical="center")
-                    ws.cell(row, col).border = borders.Border(
-                        left=borders.Side(style="dotted", color="555555"),
-                        right=borders.Side(style="dotted", color="555555"),
-                        top=borders.Side(style="dotted", color="555555"),
-                        bottom=borders.Side(style="dotted", color="555555"),
-                    )
-                    if row == offset and col != offset:
-                        ws.cell(row, col).value = col - offset
-                    if col == offset and row != offset:
-                        ws.cell(row, col).value = row - offset
-
-            try:
-                wb.save(f"{filepath}/{f_name}.xlsx")
-            except PermissionError:
-                return "Could not write the board. Try again in a few seconds..."
-            return self.board
-
         # For zones to generate, both board dimensions must be divisible by 4
 
         # Generate empty board
@@ -518,8 +463,6 @@ class TrainGame:
 
         # Add genre zones
         self.board = generate_zones()
-
-        self.board = export_grid()
         return None
 
     def add_visible_tiles(self, player_idx,  shot_row: int, shot_col: int):
@@ -632,19 +575,428 @@ class TrainGame:
                     return False
         return True
 
-    def get_spreadsheet_image(self, filepath: str, board_name: str, offset: int) -> str:
-        image_path = f"{filepath}/{board_name}.png"
-        min_row = offset
-        min_col = get_column_letter(offset)
-        max_row = offset + self.size[1]
-        max_col = get_column_letter(offset + self.size[0])
+    async def push_player_update(self, ctx: interactions.SlashContext, p: TrainPlayer, p_idx: int):
+        try:
+            board_name = str(p.member.id)
+            self.draw_board_img(
+                filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}",
+                board_name=str(p.member.id),
+                player_idx=p_idx, player_board=True
+            )
+            board_img_path = f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}/{board_name}.png"
+            await p.dmchannel.send(
+                file=interactions.File(board_img_path),
+                content=f"## Train board update for \"{self.name}\" in {ctx.guild.name}!"
+            )
+        except AttributeError:
+            print(colored(f"Could not find user with ID {p.member.id}", "yellow"))
+            del self.players[p_idx]
 
-        cell_range = f"{min_col}{min_row}:{max_col}{max_row}"
-        export_img(f"{filepath}/{board_name}.xlsx", image_path, "Sheet", cell_range)
-        return image_path
+    async def update_boards_after_shot(
+            self, ctx: interactions.SlashContext,
+            row: int, column: int
+    ) -> None:
+
+        # Push updates to player boards, check if game is finished
+
+        tasks = []
+        for player_idx, player in enumerate(self.players):
+            if (row, column) in player.vis_tiles:
+                tasks.append(asyncio.create_task(self.push_player_update(ctx, player, player_idx)))
+
+        await asyncio.gather(*tasks)
+        active = not self.is_done()
+        self.active = active
+        if self.active:
+            bd.active_trains[ctx.guild_id] = self
+        else:
+            del bd.active_trains[ctx.guild_id]
+
+        await ctx.send(content=bd.pass_str, ephemeral=True)
+        self.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}")
+        return None
+
+    async def update_boards_after_create(
+            self, ctx: interactions.SlashContext
+    ) -> None:
+
+        tasks = []
+
+        for player_idx, player in enumerate(self.players):
+            tasks.append(asyncio.create_task(self.push_player_update(ctx, player, player_idx)))
+        await asyncio.gather(*tasks)
+
+        # Update master board/game state
+        self.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}")
+        bd.active_trains[ctx.guild_id] = self
+
+        return None
+
+    def gen_stats_embed(self, ctx: Union[interactions.SlashContext, interactions.ComponentContext],
+                        page: int, expired: bool) -> tuple[interactions.Embed, Union[None, interactions.File]]:
+        embed = interactions.Embed()
+        embed.set_author(name=f"Anime Trains", icon_url=bd.bot_avatar_url)
+        footer_end = ' | This message is inactive.' if expired else ' | This message deactivates after 5 minutes.'
+
+        max_pages = len(self.players) + 1
+        page = 1 + (page % max_pages)  # Loop back through pages both ways
+        embed.set_footer(text=f'Page {page}/{max_pages} {footer_end}')
+
+        # Game stats page
+        if page == 1:
+            resource_count = {}
+            claimed_resource_count = {}
+            rail_count = 0
+            intersection_count = 0
+            for coord, tile in self.board.items():
+                if tile["resource"]:
+                    try:
+                        resource_count[tile["resource"]] += 1
+                    except KeyError:
+                        resource_count[tile["resource"]] = 1
+                if tile["rails"]:
+                    rail_count += 1
+                    if tile["resource"]:
+                        try:
+                            claimed_resource_count[tile["resource"]] += 1
+                        except KeyError:
+                            claimed_resource_count[tile["resource"]] = 1
+                    if len(tile["rails"]) > 1:
+                        intersection_count += 1
+
+            embed.title = "Game Stats"
+            embed.description = f"*{self.name}*\n\u200b"
+            embed.set_thumbnail(url=ctx.guild.icon.url)
+            embed.add_field(name="🚂 Active?", value="✅" if self.active else "❌", inline=True)
+            embed.add_field(name="🚂 Complete?", value="✅" if self.is_done() else "❌", inline=True)
+            embed.add_field(name="\u200b", value="\u200b", inline=False)
+
+            for resource, count in resource_count.items():
+                if resource not in claimed_resource_count.keys():
+                    claimed_resource_count[resource] = 0
+
+                embed.add_field(
+                    name=f"# of {resource} Claimed/Total",
+                    value=f"{claimed_resource_count[resource]}/{count}", inline=True
+                )
+
+            embed.add_field(name="🛤️ Total Rails", value=rail_count, inline=True)
+            embed.add_field(name="🔀 # of Crossings", value=intersection_count, inline=True)
+
+            if self.is_done():
+                self.draw_board_img(
+                    filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}",
+                    board_name="MASTER", player_board=False
+                )
+                board_img_path = f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}/MASTER.png"
+                image = interactions.File(board_img_path, file_name="MASTER.png")
+                embed.set_image(
+                    url="attachment://MASTER.png"
+                )
+            else:
+                with open(f"{bd.parent}/Data/nothing.png", "rb") as f:
+                    file = io.BytesIO(f.read())
+                image = interactions.File(file, file_name="there is nothing here")
+            return embed, image
+
+        # Player stats page
+        player_idx = page - 2
+        player = self.players[player_idx]
+
+        if len(player.shots) == 0:
+            embed.description = f"### {player.member.mention} has not placed any rails yet!"
+            with open(f"{bd.parent}/Data/nothing.png", "rb") as f:
+                file = io.BytesIO(f.read())
+            image = interactions.File(file, file_name="there is nothing here")
+            return embed, image
+
+        embed.set_thumbnail(url=player.member.avatar_url)
+        embed.description = f"### Stats for {player.member.mention}"
+        embed.add_field(name="\u200b", value="\u200b", inline=False)
+
+        # Total shots/in-zone shots
+        total_shots = len(player.shots)
+        in_zone_shots = 0
+        shot_time = datetime.strptime(self.date, bd.date_format)
+        time_between_shots_list = []
+        for shot_idx, shot in enumerate(player.shots):
+            if shot.genre == self.board[shot.location]["zone"]:
+                in_zone_shots += 1
+
+            time_between_shots_list.append((datetime.strptime(shot.time, bd.date_format) - shot_time).total_seconds())
+            shot_time = datetime.strptime(shot.time, bd.date_format)
+
+        avg_secs_between_shots = round(sum(time_between_shots_list)/len(time_between_shots_list))
+
+        embed.add_field(name="🧮 Total Shots", value=total_shots, inline=True)
+        embed.add_field(name="🍥 % in Zone", value=f"{round(in_zone_shots/total_shots*100)}%", inline=True)
+        embed.add_field(name="🚂 Done?", value="✅" if player.done else "❌", inline=True)
+        embed.add_field(
+            name="⏳ Avg. Time Between Shots", value=str(timedelta(seconds=avg_secs_between_shots)), inline=False
+        )
+
+        # Projected completion time
+        last_shot = player.shots[-1]
+        dist_left = abs(last_shot.location[0] - player.end[0]) + abs(last_shot.location[1] - player.end[1])
+        projected_time = datetime.now() + timedelta(seconds=round(dist_left*1.5)*avg_secs_between_shots)
+
+        embed.add_field(
+            name="🗓️ Projected Completion Date", value=projected_time.strftime("%Y/%m/%d at %H:%M:%S"), inline=False
+        )
+
+        # Shot genre pie chart
+
+        genre_counts = self.players[player_idx].get_shot_genre_count()
+        plt.style.use("dark_background")
+        fig, ax = plt.subplots()
+
+        plt.rcParams["font.size"] = 14
+        plt.rcParams["font.family"] = "gg sans"
+        plt.rcParams["font.weight"] = "bold"
+
+        wedges, text, autotexts = ax.pie(genre_counts.values(), autopct="%1.1f%%")
+        plt.setp(autotexts, size=16, weight="medium", color="black")
+        plt.title(
+            label="Shot Genre Percentages              ",
+            weight="bold", size=17, family="gg sans", horizontalalignment="right"
+        )
+        plt.legend(
+            genre_counts.keys(), title="Genres", loc="lower left", framealpha=0, bbox_to_anchor=(-0.45, 0.6, 0.75, 1),
+            prop=matplotlib.font_manager.FontProperties(family="gg sans", weight="medium", size=15, style="italic"),
+            title_fontproperties=matplotlib.font_manager.FontProperties(family="gg sans", weight="medium", size=17)
+        )
+        filepath = f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}/stats_img.png"
+        plt.savefig(filepath, transparent=True)
+        plt.close(fig)
+
+        with open(filepath, "rb") as f:
+            file = io.BytesIO(f.read())
+        image = interactions.File(file, file_name="stats_img.png")
+
+        embed.set_image(
+            url="attachment://stats_img.png"
+        )
+        return embed, image
+
+    def draw_board_img(
+            self, filepath: str, board_name: str, player_board: bool = False, player_idx: int = 0,
+
+    ):
+        # Generate board image. If player board: only generate tiles which are rendered.
+        # Grey out other tiles.
+
+        # Adjustments
+        label_offset = 1
+        label_font_size = 24
+        font = ImageFont.truetype(f"{bd.parent}/Data/ggsans/ggsans-Bold.ttf", label_font_size)
+        tile_pixels = 50
+        hidden_tile_color = (255, 255, 255)
+        border_color = (190, 190, 190)
+        font_color = (0, 0, 0)
+
+        player = self.players[player_idx]
+        board_img = Image.new(
+            mode="RGB",
+            size=((self.size[0]+label_offset)*tile_pixels, (self.size[1]+label_offset)*tile_pixels),
+            color=0xFFFFFF
+        )
+        draw = ImageDraw.Draw(board_img)
+        pilmoji = Pilmoji(board_img, source=MicrosoftEmojiSource)
+
+        def draw_hatch_pattern(row: int, col: int):
+            row += label_offset
+            col += label_offset
+            hatch_color = (40, 40, 40)
+            padding = 1
+
+            x_start = tile_pixels*(col - 1)
+            y_start = tile_pixels*(row - 1)
+
+            x, y = x_start, y_start
+            while y < y_start + tile_pixels:
+                xy = ((x_start+padding, y+padding), (x+tile_pixels-padding, y_start+tile_pixels-padding))
+                draw.line(xy=xy, fill=hatch_color, width=1)
+                x -= 4
+                y += 4
+
+            x, y = x_start, y_start
+            while x < x_start + tile_pixels:
+                xy = ((x+padding, y_start+padding), (x_start+tile_pixels-padding, y+tile_pixels-padding))
+                draw.line(xy=xy, fill=hatch_color, width=1)
+                x += 4
+                y -= 4
+
+        # Draw column labels/tile borders
+
+        for label_x in range(1, self.size[0]+1):
+
+            draw.rectangle(
+                xy=((label_x*tile_pixels, 1), ((label_x+1)*tile_pixels, tile_pixels)),
+                fill=hidden_tile_color, outline=border_color, width=1
+            )
+            draw.text(
+                xy=(label_x*tile_pixels + tile_pixels/2, tile_pixels/2), text=str(label_x), font=font, anchor="mm",
+                fill=font_color
+            )
+        # Draw row labels/tile borders
+        for label_y in range(1, self.size[1]+1):
+            draw.rectangle(
+                xy=((1, label_y*tile_pixels), (tile_pixels, (label_y+1)*tile_pixels)),
+                fill=hidden_tile_color, outline=border_color, width=1
+            )
+            draw.text(
+                xy=(round(tile_pixels/2), label_y*tile_pixels + round(tile_pixels/2)),
+                text=str(label_y), font=font, anchor="mm", fill=font_color
+            )
+
+        # Draw game tiles
+
+        font_size = 24
+        emoji_pixels = font_size - 4
+        font = ImageFont.truetype(f"{bd.parent}/Data/ggsans/ggsans-Bold.ttf", font_size)
+
+        for coords in self.board.keys():
+            (row, col) = coords
+
+            # Draw hidden tile as gray, skip to next tile
+            if player_board and coords not in player.vis_tiles:
+                draw.rectangle(
+                    xy=((col*tile_pixels, row*tile_pixels), ((col+1)*tile_pixels, (row+1)*tile_pixels)),
+                    fill=hidden_tile_color, outline=border_color, width=1
+                )
+                continue
+
+            # Draw non-hidden tiles
+
+            tile_zone = self.board[coords]["zone"]
+            if tile_zone is None:
+                tile_color = (255, 255, 255)
+            else:
+                tile_color = genre_colors[tile_zone]
+
+            draw.rectangle(
+                xy=((col*tile_pixels, row*tile_pixels), (col*tile_pixels+tile_pixels, row*tile_pixels+tile_pixels)),
+                fill=tile_color, outline=border_color, width=1
+            )
+            if self.board[coords]["terrain"] == "river":
+                draw_hatch_pattern(row, col)
+
+            resource_text = self.board[coords]["resource"] if self.board[coords]["resource"] else ""
+
+            # Draw start/end text
+            if coords == player.start and not self.board[coords]["rails"]:
+                rail_text = "Start"
+            elif coords == player.end and not self.board[coords]["rails"]:
+                rail_text = "End"
+            else:
+                rail_text = "".join(self.board[coords]["rails"])
+            text_pixels = draw.textlength(text=resource_text+rail_text, font=font)
+
+            # Dynamic font/emoji sizing depending on length of text
+            if resource_text and rail_text:
+                text_pixels += emoji_pixels
+                text_offset = round(emoji_pixels*0.4)
+            else:
+                text_offset = 0
+
+            while text_pixels > 0.8*tile_pixels and font_size > 6:
+                font_size -= 2
+                emoji_pixels -= 2
+                font = ImageFont.truetype(f"{bd.parent}/Data/ggsans/ggsans-Bold.ttf", font_size)
+                text_pixels = draw.textlength(text=resource_text + rail_text, font=font)
+                if resource_text:
+                    text_pixels += emoji_pixels
+
+            # Draw tile resource and rails
+            pilmoji.text(
+                xy=(col*tile_pixels + round(tile_pixels/2) - text_offset, row*tile_pixels + round(tile_pixels/2)),
+                text=rail_text+resource_text, anchor="mm", fill=font_color, font=font,
+                emoji_position_offset=(-round(font_size/2), -round(font_size/2)), emoji_scale_factor=1.1
+            )
+            if font_size != 24:
+                font_size = 24
+                emoji_pixels = font_size - 4
+                font = ImageFont.truetype(f"{bd.parent}/Data/ggsans/ggsans-Bold.ttf", font_size)
+
+        try:
+            board_img.save(f"{filepath}/{board_name}.png")
+        except PermissionError:
+            return "Could not write the board. Try again in a few seconds..."
+        return None
 
 
 # Function Definitions
+
+
+# Manually call to make a zone image if needed
+"""
+def save_zones_img(filepath: str) -> None:
+    wb = Workbook()
+    ws = wb.active
+    for idx, key in enumerate(genre_colors):
+        row = idx // 4 + 1
+        col = idx % 4 + 1
+        ws.cell(row, col).value = key
+        ws.cell(row, col).fill = PatternFill(patternType="solid", fgColor=genre_colors[key])
+        ws.cell(row, col).font = Font(size=18, bold=True)
+        ws.cell(row, col).alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        ws.row_dimensions[row].height = 75
+        ws.column_dimensions[get_column_letter(col)].width = 14
+
+    wb.save(f"{filepath}/zones.xlsx")
+    export_img(f"{filepath}/zones.xlsx", f"{filepath}/zones.png", "Sheet", "A1:D4")
+    remove(f"{filepath}/zones.xlsx")
+"""
+
+
+async def load_game(
+        filepath: str, bot: interactions.Client, guild: interactions.Guild, active_only: bool = False
+) -> TrainGame:
+    with open(f"{filepath}/gamedata.json", "r") as f:
+        game_dict = json.load(f)
+
+    if active_only and not game_dict["active"]:  # Skip loading inactive games if specified for faster loads
+        return TrainGame(active=False)
+
+    # Convert str/list keys back into tuple for use in game
+    board = {}
+    for key in game_dict["board"].keys():
+        coords = key[1:-1].split(",")
+        coords[0] = int(coords[0])
+        coords[1] = int(coords[1])
+        coords = tuple(coords)
+        board[coords] = game_dict["board"][key]
+
+    # Convert player dicts back into player classes
+    player_list = []
+    for player in game_dict["players"]:
+
+        shot_list = []
+        for shot in player["shots"]:
+            shot_list.append(
+                TrainShot(location=tuple(shot["location"]), genre=shot["genre"], info=shot["info"], time=shot["time"])
+            )
+        member = await guild.fetch_member(player["member_id"])
+        player_list.append(
+            TrainPlayer(
+                member=member, tag=player["tag"], done=player["done"],
+                rails=player["rails"], dmchannel=await bot.fetch_channel(player["dmchannel"]),
+                start=tuple(player["start"]), end=tuple(player["end"]), score=player["score"], shots=shot_list,
+                vis_tiles=[tuple(tile) for tile in player["vis_tiles"]], donetime=player["donetime"]
+            )
+        )
+
+    game = TrainGame(
+        name=game_dict["name"],
+        date=game_dict["date"],
+        players=player_list,
+        board=board,
+        gameid=game_dict["gameid"],
+        active=game_dict["active"],
+        size=tuple(game_dict["size"])
+    )
+    return game
+
 
 def dict_to_rsp(rsp_dict: dict):
     if not rsp_dict:
@@ -779,7 +1131,7 @@ def load_config(guild: interactions.Guild):
             if key not in bd.config[int(guild.id)].keys():
                 bd.config[int(guild.id)][key] = bd.default_config[key]
                 print(
-                    colored(f'{strftime("%Y-%m-%d %H:%M:%S")} :  ', 'white') +
+                    colored(f'{strftime("%Y-%m-%d %H:%M:%S")}:  ', 'white') +
                     colored(f'Config file for {guild.name} missing {key}, set to default.', 'yellow')
                 )
                 with open(f'{bd.parent}/Guilds/{int(guild.id)}/config.yaml', 'w') as f:
@@ -792,7 +1144,7 @@ def load_config(guild: interactions.Guild):
                 temp = dict(bd.config[int(guild.id)])
                 del temp[key]
                 print(
-                    colored(f'{strftime("%Y-%m-%d %H:%M:%S")} :  ', 'white') +
+                    colored(f'{strftime("%Y-%m-%d %H:%M:%S")}:  ', 'white') +
                     colored(f'Invalid key {key} in {guild.name} config, removed.', 'yellow')
                 )
                 with open(f'{bd.parent}/Guilds/{int(guild.id)}/config.yaml', 'w') as f:
@@ -804,25 +1156,10 @@ def load_config(guild: interactions.Guild):
         with open(f'{bd.parent}/Guilds/{int(guild.id)}/config.yaml', 'w') as f:
             yaml.dump(bd.default_config, f, Dumper=yaml.Dumper)
         print(
-            colored(f'{strftime("%Y-%m-%d %H:%M:%S")} :  ', 'white') +
+            colored(f'{strftime("%Y-%m-%d %H:%M:%S")}:  ', 'white') +
             colored(f'No config file found for {guild.name}, created default config file.', 'yellow')
         )
         bd.config[int(guild.id)] = yaml.load(open(f'{bd.parent}/Guilds/{guild.id}/config.yaml'), Loader=yaml.Loader)
-
-
-def guild_add(guild: interactions.Guild):
-    if not path.exists(f'{bd.parent}/Guilds/{guild.id}'):
-        mkdir(f'{bd.parent}/Guilds/{guild.id}')
-        mkdir(f'{bd.parent}/Guilds/{guild.id}/Trains')
-        print(
-            colored(f'{strftime("%Y-%m-%d %H:%M:%S")} :  ', 'white') +
-            colored(f'Guild folder for guild {guild.id} created successfully.', 'green')
-        )
-        with open(f'{bd.parent}/Guilds/{int(guild.id)}/config.yaml', 'w') as f:
-            yaml.dump(bd.default_config, f, Dumper=yaml.Dumper)
-        bd.config[int(guild.id)] = bd.default_config
-        bd.responses[int(guild.id)] = []
-        bd.mentions[int(guild.id)] = []
 
 
 def gen_resp_list(guild: interactions.Guild, page: int, expired: bool) -> interactions.Embed:
@@ -846,9 +1183,9 @@ def gen_resp_list(guild: interactions.Guild, page: int, expired: bool) -> intera
     nums = range((page-1)*10, len(guild_trigs)) if page == max_pages else range((page-1)*10, page*10)
     for i in nums:
         pref = '**Exact Trigger:** ' if guild_trigs[i].exact else '**Phrase Trigger:** '
-        rsp_field = f'{pref}{guild_trigs[i].trig} \n **Respond:** {guild_trigs[i].text}'
+        rsp_field = f'{pref}{guild_trigs[i].trig} \n **Respond: ** {guild_trigs[i].text}'
         if len(rsp_field) >= 1024:
-            rsp_field = f'{pref}{guild_trigs[i].trig} \n **Respond:** *[Really, really, really long response]*'
+            rsp_field = f'{pref}{guild_trigs[i].trig} \n **Respond: ** *[Really, really, really long response]*'
 
         list_msg.add_field(
             name='\u200b',
@@ -927,260 +1264,6 @@ def get_player_tags(users: list[interactions.Member]) -> list[str]:
     return tags
 
 
-# Manually call to make a zone image if needed
-def save_zones_img(filepath: str) -> None:
-    wb = Workbook()
-    ws = wb.active
-    for idx, key in enumerate(genre_colors):
-        row = idx // 4 + 1
-        col = idx % 4 + 1
-        ws.cell(row, col).value = key
-        ws.cell(row, col).fill = PatternFill(patternType="solid", fgColor=genre_colors[key])
-        ws.cell(row, col).font = Font(size=18, bold=True)
-        ws.cell(row, col).alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        ws.row_dimensions[row].height = 75
-        ws.column_dimensions[get_column_letter(col)].width = 14
-
-    wb.save(f"{filepath}/zones.xlsx")
-    export_img(f"{filepath}/zones.xlsx", f"{filepath}/zones.png", "Sheet", "A1:D4")
-    remove(f"{filepath}/zones.xlsx")
-
-
-async def load_game(
-        filepath: str, bot: interactions.Client, guild: interactions.Guild, active_only: bool = False
-) -> TrainGame:
-    with open(f"{filepath}/gamedata.json", "r") as f:
-        game_dict = json.load(f)
-
-    if active_only and not game_dict["active"]:  # Skip loading inactive games if specified for faster loads
-        return TrainGame(active=False)
-
-    # Convert str/list keys back into tuple for use in game
-    board = {}
-    for key in game_dict["board"].keys():
-        coords = key[1:-1].split(",")
-        coords[0] = int(coords[0])
-        coords[1] = int(coords[1])
-        coords = tuple(coords)
-        board[coords] = game_dict["board"][key]
-
-    # Convert player dicts back into player classes
-    player_list = []
-    for player in game_dict["players"]:
-
-        shot_list = []
-        for shot in player["shots"]:
-            shot_list.append(
-                TrainShot(location=tuple(shot["location"]), genre=shot["genre"], info=shot["info"], time=shot["time"])
-            )
-        member = await guild.fetch_member(player["member_id"])
-        player_list.append(
-            TrainPlayer(
-                member=member, tag=player["tag"], done=player["done"],
-                rails=player["rails"], dmchannel=await bot.fetch_channel(player["dmchannel"]),
-                start=tuple(player["start"]), end=tuple(player["end"]), score=player["score"], shots=shot_list,
-                vis_tiles=[tuple(tile) for tile in player["vis_tiles"]], donetime=player["donetime"]
-            )
-        )
-
-    game = TrainGame(
-        name=game_dict["name"],
-        date=game_dict["date"],
-        players=player_list,
-        board=board,
-        gameid=game_dict["gameid"],
-        active=game_dict["active"],
-        size=tuple(game_dict["size"])
-    )
-    return game
-
-
-def export_board_update(
-        game: TrainGame, filepath: str, board_name: str, offset, player_idx: int,  row: int = 0, column: int = 0,
-        player_board: bool = False, row_height: int = 50, undo: bool = False
-):
-    if not player_board:  # Master board
-        wb = load_workbook(f"{filepath}/{board_name}.xlsx")
-        ws = wb.active
-        if ws.cell(row + offset, column + offset).value is None:  # Empty tile
-            new_val = game.players[player_idx].tag
-        elif undo:  # Remove player tag instead of adding
-            new_val = ws.cell(row + offset, column + offset).value.replace(game.players[player_idx].tag, "")
-        else:
-            new_val = ws.cell(row + offset, column + offset).value + game.players[player_idx].tag
-
-        ws.cell(row + offset, column + offset).value = new_val
-
-    else:  # Player board, has fog
-        player = game.players[player_idx]
-        wb = Workbook()
-        ws = wb.active
-        tiles = {}
-
-        # Blank out non-visible tiles
-        for coord in game.board.keys():
-            if coord in player.vis_tiles:
-                tiles[coord] = game.board[coord]
-            else:
-                tiles[coord] = None
-
-        for pos, tile in tiles.items():
-            if tile is None:
-                ws.cell(pos[0] + offset, pos[1] + offset).fill = PatternFill(
-                    patternType="solid",
-                    fgColor="FFFFFF"
-                )
-            else:
-                # Export text layer (rails and resources)
-                rail_str = "".join(tile["rails"]) if tile["rails"] else ""
-                resource_str = tile["resource"] if tile["resource"] else ""
-                if rail_str:
-                    start_str = ""
-                elif pos == player.start:
-                    start_str = "Start"
-                elif pos == player.end:
-                    start_str = "End"
-                else:
-                    start_str = ""
-
-                ws.cell(pos[0] + offset, pos[1] + offset).value = f"{resource_str}{rail_str}{start_str}"
-
-                # Export zones/terrain (pattern layer)
-                try:
-                    zone_color = genre_colors[tile["zone"]]
-                except KeyError:
-                    zone_color = "FFFFFF"
-
-                if tile["terrain"] is None:
-                    ws.cell(pos[0] + offset, pos[1] + offset).fill = PatternFill(
-                        patternType="solid",
-                        fgColor=zone_color
-                    )
-                elif tile["terrain"] == "river":
-                    ws.cell(pos[0] + offset, pos[1] + offset).fill = PatternFill(
-                        patternType="darkGrid",
-                        fgColor="666666",
-                        bgColor=zone_color
-                    )
-
-        # Add labels, format alignment/font size
-        for row in range(offset, offset + game.size[1] + 1):
-            ws.row_dimensions[row].height = row_height
-
-            for col in range(offset, offset + game.size[0] + 1):
-                if ws.cell(row, col).value is None or len(ws.cell(row, col).value) <= 2:
-                    ws.cell(row, col).font = Font(size="20", bold=True)
-                else:  # Low font size for more text
-                    ws.cell(row, col).font = Font(size="14", bold=False)
-
-                ws.cell(row, col).alignment = Alignment(horizontal="center", vertical="center")
-                ws.cell(row, col).border = borders.Border(
-                    left=borders.Side(style="dotted", color="555555"),
-                    right=borders.Side(style="dotted", color="555555"),
-                    top=borders.Side(style="dotted", color="555555"),
-                    bottom=borders.Side(style="dotted", color="555555"),
-                )
-                if row == offset and col != offset:
-                    ws.cell(row, col).value = col - offset
-                if col == offset and row != offset:
-                    ws.cell(row, col).value = row - offset
-    # Format row height
-    for row in range(1, game.size[1]+1 + offset):
-        ws.row_dimensions[row].height = row_height
-
-    try:
-        wb.save(f"{filepath}/{board_name}.xlsx")
-    except PermissionError:
-        return "Could not write the board. Try again in a few seconds..."
-    return None
-
-
-async def update_boards_after_create(
-        game: TrainGame, ctx: interactions.SlashContext,
-        offset: int
-) -> None:
-
-    async def push_player_update(p: TrainPlayer, p_idx: int):
-
-        try:
-            export_board_update(
-                game=game, filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{game.name}",
-                board_name=str(p.member.id), offset=offset,
-                player_idx=p_idx, player_board=True
-            )
-            board_img = game.get_spreadsheet_image(
-                filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{game.name}",
-                board_name=str(p.member.id), offset=offset
-            )
-            await p.dmchannel.send(
-                file=interactions.File(board_img),
-                content=f"### You have been added to the trains game \"{game.name}\" in {ctx.guild.name}!"
-            )
-        except AttributeError:
-            print(colored(f"Could not find user with ID {p.member.id}", "yellow"))
-            del game.players[p_idx]
-
-    tasks = []
-
-    for player_idx, player in enumerate(game.players):
-        tasks.append(asyncio.create_task(push_player_update(player, player_idx)))
-    await asyncio.gather(*tasks)
-
-    # Update master board/game state
-    game.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{game.name}")
-    bd.active_trains[ctx.guild_id] = game
-
-    return None
-
-
-async def update_boards_after_shot(
-        game: TrainGame, ctx: interactions.SlashContext,
-        row: int, column: int, sender_idx: int, offset: int, undo: bool = False
-) -> None:
-    export_board_update(
-        game=game, filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{game.name}", board_name="MASTER", offset=offset,
-        row=row, column=column, player_idx=sender_idx, undo=undo
-    )
-
-    async def push_player_update(p: TrainPlayer, p_idx: int):
-        if (row, column) in p.vis_tiles:
-            try:
-                export_board_update(
-                    game=game, filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{game.name}",
-                    board_name=str(p.member.id), offset=offset, row=row, column=column,
-                    player_idx=p_idx, player_board=True
-                )
-                board_img = game.get_spreadsheet_image(
-                    filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{game.name}",
-                    board_name=str(p.member.id), offset=offset
-                )
-                await p.dmchannel.send(
-                    file=board_img,
-                    content=f"### Board update for \"{game.name}\" in {ctx.guild.name}!"
-                )
-            except AttributeError:
-                print(colored(f"Could not find user with ID {p.member.id}", "yellow"))
-                del game.players[p_idx]
-
-    # Push updates to player boards, check if game is finished
-
-    tasks = []
-    for player_idx, player in enumerate(game.players):
-        tasks.append(asyncio.create_task(push_player_update(player, player_idx)))
-
-    await asyncio.gather(*tasks)
-    active = not game.is_done()
-    game.active = active
-    if game.active:
-        bd.active_trains[ctx.guild_id] = game
-    else:
-        del bd.active_trains[ctx.guild_id]
-
-    await ctx.send(content=bd.pass_str, ephemeral=True)
-    game.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{game.name}")
-    return None
-
-
 def gen_rules_embed(page: int, expired: bool) -> interactions.Embed:
     max_pages = 5
     page = 1 + (page % max_pages)  # Loop back through pages both ways
@@ -1197,152 +1280,6 @@ def gen_rules_embed(page: int, expired: bool) -> interactions.Embed:
         embed = train_scoring_embed()
     embed.set_footer(text=f'Page {page}/{max_pages} {footer_end}')
     return embed
-
-
-def gen_stats_embed(ctx: Union[interactions.SlashContext, interactions.ComponentContext], game: TrainGame,
-                    page: int, expired: bool) -> tuple[interactions.Embed, Union[None, interactions.File]]:
-    embed = interactions.Embed()
-    embed.set_author(name=f"Anime Trains", icon_url=bd.bot_avatar_url)
-    footer_end = ' | This message is inactive.' if expired else ' | This message deactivates after 5 minutes.'
-
-    max_pages = len(game.players) + 1
-    page = 1 + (page % max_pages)  # Loop back through pages both ways
-    embed.set_footer(text=f'Page {page}/{max_pages} {footer_end}')
-
-    # Game stats page
-    if page == 1:
-        resource_count = {}
-        claimed_resource_count = {}
-        rail_count = 0
-        intersection_count = 0
-        for coord, tile in game.board.items():
-            if tile["resource"]:
-                try:
-                    resource_count[tile["resource"]] += 1
-                except KeyError:
-                    resource_count[tile["resource"]] = 1
-            if tile["rails"]:
-                rail_count += 1
-                if tile["resource"]:
-                    try:
-                        claimed_resource_count[tile["resource"]] += 1
-                    except KeyError:
-                        claimed_resource_count[tile["resource"]] = 1
-                if len(tile["rails"]) > 1:
-                    intersection_count += 1
-
-        embed.title = "Game Stats"
-        embed.description = f"*{game.name}*\n\u200b"
-        embed.set_thumbnail(url=ctx.guild.icon.url)
-        embed.add_field(name="🚂 Active?", value="✅" if game.active else "❌", inline=True)
-        embed.add_field(name="🚂 Complete?", value="✅" if game.is_done() else "❌", inline=True)
-        embed.add_field(name="\u200b", value="\u200b", inline=False)
-
-        for resource, count in resource_count.items():
-            if resource not in claimed_resource_count.keys():
-                claimed_resource_count[resource] = 0
-
-            embed.add_field(
-                name=f"# of {resource} Claimed/Total",
-                value=f"{claimed_resource_count[resource]}/{count}", inline=True
-            )
-
-        embed.add_field(name="🛤️ Total Rails", value=rail_count, inline=True)
-        embed.add_field(name="🔀 # of Crossings", value=intersection_count, inline=True)
-
-        if game.is_done():
-            board_img = game.get_spreadsheet_image(
-                filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{game.name}",
-                board_name="MASTER", offset=1
-            )
-            image = interactions.File(board_img, file_name="MASTER.png")
-            embed.set_image(
-                url="attachment://MASTER.png"
-            )
-        else:
-            with open(f"{bd.parent}/Data/nothing.png", "rb") as f:
-                file = io.BytesIO(f.read())
-            image = interactions.File(file, file_name="there is nothing here")
-        return embed, image
-
-    # Player stats page
-    player_idx = page - 2
-    player = game.players[player_idx]
-
-    if len(player.shots) == 0:
-        embed.description = f"### {player.member.mention} has not placed any rails yet!"
-        with open(f"{bd.parent}/Data/nothing.png", "rb") as f:
-            file = io.BytesIO(f.read())
-        image = interactions.File(file, file_name="there is nothing here")
-        return embed, image
-
-    embed.set_thumbnail(url=player.member.avatar_url)
-    embed.description = f"### Stats for {player.member.mention}"
-    embed.add_field(name="\u200b", value="\u200b", inline=False)
-
-    # Total shots/in-zone shots
-    total_shots = len(player.shots)
-    in_zone_shots = 0
-    shot_time = datetime.strptime(game.date, bd.date_format)
-    time_between_shots_list = []
-    for shot_idx, shot in enumerate(player.shots):
-        if shot.genre == game.board[shot.location]["zone"]:
-            in_zone_shots += 1
-
-        time_between_shots_list.append((datetime.strptime(shot.time, bd.date_format) - shot_time).total_seconds())
-        shot_time = datetime.strptime(shot.time, bd.date_format)
-
-    avg_secs_between_shots = round(sum(time_between_shots_list)/len(time_between_shots_list))
-
-    embed.add_field(name="🧮 Total Shots", value=total_shots, inline=True)
-    embed.add_field(name="🍥 % in Zone", value=f"{round(in_zone_shots/total_shots*100)}%", inline=True)
-    embed.add_field(name="🚂 Done?", value="✅" if player.done else "❌", inline=True)
-    embed.add_field(
-        name="⏳ Avg. Time Between Shots", value=str(timedelta(seconds=avg_secs_between_shots)), inline=False
-    )
-
-    # Projected completion time
-    last_shot = player.shots[-1]
-    dist_left = abs(last_shot.location[0] - player.end[0]) + abs(last_shot.location[1] - player.end[1])
-    projected_time = datetime.now() + timedelta(seconds=round(dist_left*1.5)*avg_secs_between_shots)
-
-    embed.add_field(
-        name="🗓️ Projected Completion Date", value=projected_time.strftime("%Y/%m/%d at %H:%M:%S"), inline=False
-    )
-
-    # Shot genre pie chart
-
-    genre_counts = game.players[player_idx].get_shot_genre_count()
-    plt.style.use("dark_background")
-    fig, ax = plt.subplots()
-
-    plt.rcParams["font.size"] = 14
-    plt.rcParams["font.family"] = "gg sans"
-    plt.rcParams["font.weight"] = "bold"
-
-    wedges, text, autotexts = ax.pie(genre_counts.values(), autopct="%1.1f%%")
-    plt.setp(autotexts, size=16, weight="medium", color="black")
-    plt.title(
-        label="Shot Genre Percentages              ",
-        weight="bold", size=17, family="gg sans", horizontalalignment="right"
-    )
-    plt.legend(
-        genre_counts.keys(), title="Genres", loc="lower left", framealpha=0, bbox_to_anchor=(-0.45, 0.6, 0.75, 1),
-        prop=matplotlib.font_manager.FontProperties(family="gg sans", weight="medium", size=15, style="italic"),
-        title_fontproperties=matplotlib.font_manager.FontProperties(family="gg sans", weight="medium", size=17)
-    )
-    filepath = f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{game.name}/stats_img.png"
-    plt.savefig(filepath, transparent=True)
-    plt.close(fig)
-
-    with open(filepath, "rb") as f:
-        file = io.BytesIO(f.read())
-    image = interactions.File(file, file_name="stats_img.png")
-
-    embed.set_image(
-        url="attachment://stats_img.png"
-    )
-    return embed, image
 
 
 # Embed/Component Definitions
@@ -1603,23 +1540,23 @@ def nextpg_trainstats():
 
 
 genre_colors = {
-    'Action': 'FF7D7D',
-    'Adventure': '66FF99',
-    # 'Comedy': '88FF88',
-    'Drama': 'F5C5FF',
-    'Ecchi': 'FFCCCC',
-    'Fantasy': '9BC2E6',
-    # 'Hentai': 'FF00FF'
-    'Horror': 'A9D08E',
-    # 'Mahou_Shoujo': 'FFFF88',
-    'Mecha': 'D9D9D9',
-    'Music': 'DDEBF7',
-    'Mystery': 'AEAAAA',
-    'Psychological': 'FFD966',
-    'Romance': 'D07DA3',
-    'Sci-Fi': 'FFF2CC',
-    'SoL': '8EA9DB',
-    'Sports': 'ED7D31',
-    'Supernatural': 'F4B084',
-    'Thriller': 'E2EFDA',
+    'Action': (255, 125, 125),
+    'Adventure': (102, 255, 153),
+    # 'Comedy': (136, 255, 136)),
+    'Drama': (245, 197, 255),
+    'Ecchi': (255, 204, 204),
+    'Fantasy': (155, 194, 230),
+    # 'Hentai': (255, 0, 255),
+    'Horror': (169, 208, 142),
+    # 'Mahou_Shoujo': (255, 255, 136),
+    'Mecha': (217, 217, 217),
+    'Music': (221, 235, 247),
+    'Mystery': (174, 170, 170),
+    'Psychological': (255, 217, 102),
+    'Romance': (208, 125, 163),
+    'Sci-Fi': (255, 242, 204),
+    'SoL': (142, 169, 219),
+    'Sports': (237, 125, 49),
+    'Supernatural': (244, 176, 132),
+    'Thriller': (226, 239, 218),
 }
