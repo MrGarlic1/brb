@@ -1,7 +1,7 @@
 """
 Ben Samans
-BRBot version 3.1.2
-Updated 12/24/2023
+BRBot version 3.2.1
+Updated 2/10/2024
 """
 
 from termcolor import colored
@@ -58,7 +58,6 @@ async def create_trains(
         ctx: interactions.SlashContext, name: str, players: str, width: int = 16, height: int = 16
 ):
     await ctx.defer()
-    offset = 1
     river_ring = 1
     guild_id = int(ctx.guild_id)
 
@@ -97,7 +96,6 @@ async def create_trains(
     # Create game object and set parameters
     date = datetime.now().strftime(bd.date_format)
     gameid = int(datetime.now().strftime("%Y%m%d%H%M%S"))
-    master_name = "MASTER"
 
     game = bu.TrainGame(
         name=name,
@@ -109,8 +107,7 @@ async def create_trains(
         size=(width + 2*river_ring, height + 2*river_ring)  # Add space on board for river border
     )
     game.gen_trains_board(
-        filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{name}", f_name=master_name,
-        board_size=(width, height), offset=offset, river_ring=river_ring
+        board_size=(width, height), river_ring=river_ring
     )
     if type(game.board) is str:
         await ctx.send(content=game.board)
@@ -124,7 +121,7 @@ async def create_trains(
         await ctx.send(content="Unsuccessful board generation. Try making the size larger?")
         return True
     # Push updates to player boards
-    await bu.update_boards_after_create(game=game, ctx=ctx, offset=offset)
+    await game.update_boards_after_create(ctx=ctx)
     await ctx.send(embed=bu.train_game_embed(ctx=ctx, game=game))
     return False
 
@@ -193,8 +190,8 @@ async def record_shot(ctx: interactions.SlashContext, row: int, column: int, gen
         game.players[sender_idx].donetime = datetime.now().strftime("%Y%m%d%H%M%S")
 
     # Save/update games
-    await bu.update_boards_after_shot(
-        game=game, ctx=ctx, row=row, column=column, sender_idx=sender_idx, offset=1
+    await game.update_boards_after_shot(
+        ctx=ctx, row=row, column=column
     )
 
 
@@ -206,6 +203,8 @@ async def record_shot(ctx: interactions.SlashContext, row: int, column: int, gen
 )
 async def undo_shot(ctx: interactions.SlashContext):
     await ctx.defer(ephemeral=True)
+
+    # Determine if undo is valid
     try:
         game = bd.active_trains[ctx.guild_id]
     except KeyError:
@@ -244,8 +243,8 @@ async def undo_shot(ctx: interactions.SlashContext):
     game.players[sender_idx].rails -= rails
 
     # Save/update games
-    await bu.update_boards_after_shot(
-        game=game, ctx=ctx, row=row, column=column, sender_idx=sender_idx, offset=1, undo=True
+    await game.update_boards_after_shot(
+        ctx=ctx, row=row, column=column
     )
 
 
@@ -279,7 +278,9 @@ async def trains_stats(ctx: interactions.SlashContext, name: str = None):
             await ctx.send(content="Game name does not exist.")
             return True
     await ctx.defer()
-    embed, image = bu.gen_stats_embed(ctx=ctx, game=game, page=0, expired=False)
+
+    # Send stats
+    embed, image = game.gen_stats_embed(ctx=ctx, page=0, expired=False)
 
     stats_msg = await ctx.send(embed=embed, file=image, components=[bu.prevpg_trainstats(), bu.nextpg_trainstats()])
     sent = bu.ListMsg(
@@ -328,7 +329,7 @@ async def show_trains_board(ctx: interactions.SlashContext):
         await ctx.send(bd.fail_str, ephemeral=True)
         return True
 
-    await ctx.send(file=interactions.File(file, file_name="stats_img.png"), ephemeral=True)
+    await ctx.send(file=interactions.File(file, file_name="board_img.png"), ephemeral=True)
     return False
 
 
@@ -357,8 +358,11 @@ async def delete_trains_game(ctx: interactions.SlashContext, keep_files: bool):
         game.active = False
         game.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{game.name}")
     else:
-        rmtree(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{game.name}")
-
+        try:
+            rmtree(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{game.name}")
+        except PermissionError:
+            await ctx.send(content="Could not delete files. Try again in a couple of minutes.")
+            return True
     del bd.active_trains[ctx.guild_id]
     await ctx.send(content=bd.pass_str)
     return False
@@ -689,10 +693,11 @@ async def cfg_reset(ctx: interactions.SlashContext):
 async def cfg_view(ctx: interactions.SlashContext):
     guild_id = int(ctx.guild.id)
     await ctx.send(
-        content=f"Allow Phrases: {bd.config[guild_id]['ALLOW_PHRASES']}\n"
-                f"Limit Responses: {bd.config[guild_id]['LIMIT_USER_RESPONSES']}\n"
-                f"Response Limit # (Only if Limit Responses is True): {bd.config[guild_id]['MAX_USER_RESPONSES']}\n"
-                f"Restrict User Response Deleting: {bd.config[guild_id]['USER_ONLY_DELETE']}\n"
+        content=
+        f"Allow Phrases: {bd.config[guild_id]['ALLOW_PHRASES']}\n"
+        f"Limit Responses: {bd.config[guild_id]['LIMIT_USER_RESPONSES']}\n"
+        f"Response Limit # (Only if Limit Responses is True): {bd.config[guild_id]['MAX_USER_RESPONSES']}\n"
+        f"Restrict User Response Deleting: {bd.config[guild_id]['USER_ONLY_DELETE']}\n"
     )
 
 
@@ -771,7 +776,18 @@ async def cfg_allow_phrases(ctx: interactions.SlashContext, enable: bool = True)
 @interactions.listen()
 async def on_guild_join(event: interactions.api.events.GuildJoin):
     guild = event.guild
-    bu.guild_add(guild)
+    if not path.exists(f'{bd.parent}/Guilds/{guild.id}'):
+        mkdir(f'{bd.parent}/Guilds/{guild.id}')
+        mkdir(f'{bd.parent}/Guilds/{guild.id}/Trains')
+        print(
+            colored(f'{strftime("%Y-%m-%d %H:%M:%S")} :  ', 'white') +
+            colored(f'Guild folder for guild {guild.id} created successfully.', 'green')
+        )
+        with open(f'{bd.parent}/Guilds/{int(guild.id)}/config.yaml', 'w') as f:
+            yaml.dump(bd.default_config, f, Dumper=yaml.Dumper)
+        bd.config[int(guild.id)] = bd.default_config
+        bd.responses[int(guild.id)] = []
+        bd.mentions[int(guild.id)] = []
     print(
         colored(f"{strftime(bd.date_format)} :  ", "white") + f"Added to guild {guild.id}."
     )
@@ -864,6 +880,7 @@ async def on_component(event: interactions.api.events.Component):
     for msg in bd.active_msgs:  # Search active messages for correct one
         if msg.num == int(ctx.message.id):
             idx = bd.active_msgs.index(msg)
+            game = msg.payload
 
             # Update page num
             image = None
@@ -886,21 +903,20 @@ async def on_component(event: interactions.api.events.Component):
             elif ctx.custom_id == "prevpg_trainstats":
                 await ctx.defer(edit_origin=True)
                 bd.active_msgs[idx].page -= 1
-                embed, image = bu.gen_stats_embed(
-                    ctx=ctx, page=bd.active_msgs[idx].page, expired=False, game=msg.payload
+                embed, image = game.gen_stats_embed(
+                    ctx=ctx, page=bd.active_msgs[idx].page, expired=False
                 )
                 components = [bu.prevpg_trainstats(), bu.nextpg_trainstats()]
             elif ctx.custom_id == "nextpg_trainstats":
                 await ctx.defer(edit_origin=True)
                 bd.active_msgs[idx].page += 1
-                embed, image = bu.gen_stats_embed(
-                    ctx=ctx, page=bd.active_msgs[idx].page, expired=False, game=msg.payload
+                embed, image = game.gen_stats_embed(
+                    ctx=ctx, page=bd.active_msgs[idx].page, expired=False
                 )
                 components = [bu.prevpg_trainstats(), bu.nextpg_trainstats()]
             else:
                 embed = None
                 components = None
-            print(image)
             await ctx.edit_origin(
                 embeds=embed,
                 components=components,
@@ -912,6 +928,7 @@ async def on_component(event: interactions.api.events.Component):
 def main():
     init()
     bot.start()
+
 
 if __name__ == "__main__":
     main()
