@@ -287,7 +287,7 @@ async def trains_stats(ctx: interactions.SlashContext, name: str = None):
         num=stats_msg.id, page=0, guild=ctx.guild, channel=ctx.channel, msg_type="trainstats", payload=game
     )
     bd.active_msgs.append(sent)
-    asyncio.create_task(
+    _ = asyncio.create_task(
         bu.close_msg(sent, 300, ctx, stats_msg)
     )
 
@@ -429,7 +429,7 @@ async def send_rules(ctx: interactions.SlashContext):
     channel = ctx.channel
     sent = bu.ListMsg(rules_msg.id, 0, ctx.guild, channel, "trainrules")
     bd.active_msgs.append(sent)
-    asyncio.create_task(
+    _ = asyncio.create_task(
         bu.close_msg(sent, 300, ctx, rules_msg)
     )
     return False
@@ -561,7 +561,7 @@ async def listrsps(ctx: interactions.SlashContext):
     channel = ctx.channel
     sent = bu.ListMsg(resp_msg.id, 0, ctx.guild, channel, "rsplist")
     bd.active_msgs.append(sent)
-    asyncio.create_task(
+    _ = asyncio.create_task(
         bu.close_msg(sent, 300, ctx, resp_msg)
     )
     return False
@@ -693,8 +693,7 @@ async def cfg_reset(ctx: interactions.SlashContext):
 async def cfg_view(ctx: interactions.SlashContext):
     guild_id = int(ctx.guild.id)
     await ctx.send(
-        content=
-        f"Allow Phrases: {bd.config[guild_id]['ALLOW_PHRASES']}\n"
+        content=f"Allow Phrases: {bd.config[guild_id]['ALLOW_PHRASES']}\n"
         f"Limit Responses: {bd.config[guild_id]['LIMIT_USER_RESPONSES']}\n"
         f"Response Limit # (Only if Limit Responses is True): {bd.config[guild_id]['MAX_USER_RESPONSES']}\n"
         f"Restrict User Response Deleting: {bd.config[guild_id]['USER_ONLY_DELETE']}\n"
@@ -780,7 +779,7 @@ async def on_guild_join(event: interactions.api.events.GuildJoin):
         mkdir(f'{bd.parent}/Guilds/{guild.id}')
         mkdir(f'{bd.parent}/Guilds/{guild.id}/Trains')
         print(
-            colored(f'{strftime("%Y-%m-%d %H:%M:%S")} :  ', 'white') +
+            colored(f'{strftime("%Y-%m-%d %H:%M:%S")}:  ', 'white') +
             colored(f'Guild folder for guild {guild.id} created successfully.', 'green')
         )
         with open(f'{bd.parent}/Guilds/{int(guild.id)}/config.yaml', 'w') as f:
@@ -789,7 +788,7 @@ async def on_guild_join(event: interactions.api.events.GuildJoin):
         bd.responses[int(guild.id)] = []
         bd.mentions[int(guild.id)] = []
     print(
-        colored(f"{strftime(bd.date_format)} :  ", "white") + f"Added to guild {guild.id}."
+        colored(f"{strftime(bd.date_format)}:  ", "white") + f"Added to guild {guild.id}."
     )
 
 
@@ -810,7 +809,7 @@ async def on_ready():
         bd.mentions[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/mentions.txt")
         bd.responses[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/responses.txt")
         print(
-            colored(f"{strftime(bd.date_format)} :  ", "white") +
+            colored(f"{strftime(bd.date_format)}:  ", "white") +
             colored(f"Responses loaded for {guild.name}", "green")
         )
 

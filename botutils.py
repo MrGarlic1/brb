@@ -1,6 +1,6 @@
 # Bot functions
-# Version 3.1
-# Ben Samans, Updated 12/24/2023
+# Version 3.2.2
+# Ben Samans, Updated 2/10/2024
 
 import interactions
 from emoji import emojize, demojize
@@ -8,15 +8,9 @@ import json
 import botdata as bd
 from time import strftime
 from termcolor import colored
-from colorama import init
 import yaml
 import asyncio
-from os import path, mkdir, remove
 from random import randint, shuffle
-from openpyxl import Workbook, load_workbook
-from openpyxl.utils import get_column_letter
-from openpyxl.styles import PatternFill, Font, Alignment, borders
-from excel2img import export_img
 from random import choice
 from typing import Union
 from datetime import datetime, timedelta
@@ -26,8 +20,8 @@ import matplotlib.font_manager
 from PIL import Image
 from PIL import ImageFont
 from PIL import ImageDraw
-from PIL import ImageColor
-init()
+from pilmoji import Pilmoji
+from pilmoji.source import MicrosoftEmojiSource
 
 # Class Definitions
 
@@ -788,25 +782,30 @@ class TrainGame:
             self, filepath: str, board_name: str, player_board: bool = False, player_idx: int = 0,
 
     ):
-        # Generate board image. Full board, if player board: only generate tiles which are rendered.
+        # Generate board image. If player board: only generate tiles which are rendered.
         # Grey out other tiles.
 
+        # Adjustments
         label_offset = 1
         label_font_size = 24
         font = ImageFont.truetype(f"{bd.parent}/Data/ggsans/ggsans-Bold.ttf", label_font_size)
         tile_pixels = 50
+        hidden_tile_color = (255, 255, 255)
+        border_color = (190, 190, 190)
+        font_color = (0, 0, 0)
 
+        player = self.players[player_idx]
         board_img = Image.new(
             mode="RGB",
             size=((self.size[0]+label_offset)*tile_pixels, (self.size[1]+label_offset)*tile_pixels),
             color=0xFFFFFF
         )
         draw = ImageDraw.Draw(board_img)
-        hidden_tile_color = (255, 255, 255)
-        border_color = (190, 190, 190)
-        font_color = (0, 0, 0)
+        pilmoji = Pilmoji(board_img, source=MicrosoftEmojiSource)
 
         def draw_hatch_pattern(row: int, col: int):
+            row += label_offset
+            col += label_offset
             hatch_color = (40, 40, 40)
             padding = 1
 
@@ -828,16 +827,15 @@ class TrainGame:
                 y -= 4
 
         # Draw column labels/tile borders
-        label_padding = tile_pixels/2 - label_font_size/2
+
         for label_x in range(1, self.size[0]+1):
 
             draw.rectangle(
                 xy=((label_x*tile_pixels, 1), ((label_x+1)*tile_pixels, tile_pixels)),
                 fill=hidden_tile_color, outline=border_color, width=1
             )
-            horizontal_offset = tile_pixels/2 - draw.textlength(text=str(label_x), font=font)/2
             draw.text(
-                xy=(label_x*tile_pixels + horizontal_offset, label_padding), text=str(label_x), font=font, anchor="mm",
+                xy=(label_x*tile_pixels + tile_pixels/2, tile_pixels/2), text=str(label_x), font=font, anchor="mm",
                 fill=font_color
             )
         # Draw row labels/tile borders
@@ -846,24 +844,24 @@ class TrainGame:
                 xy=((1, label_y*tile_pixels), (tile_pixels, (label_y+1)*tile_pixels)),
                 fill=hidden_tile_color, outline=border_color, width=1
             )
-            horizontal_offset = tile_pixels/2 - draw.textlength(text=str(label_y), font=font)/2
             draw.text(
-                xy=(horizontal_offset, label_y*tile_pixels + label_padding), text=str(label_y), font=font, anchor="mm",
-                fill=font_color
+                xy=(round(tile_pixels/2), label_y*tile_pixels + round(tile_pixels/2)),
+                text=str(label_y), font=font, anchor="mm", fill=font_color
             )
 
         # Draw game tiles
-        player = self.players[player_idx]
+
+        font_size = 24
+        emoji_pixels = font_size - 4
+        font = ImageFont.truetype(f"{bd.parent}/Data/ggsans/ggsans-Bold.ttf", font_size)
 
         for coords in self.board.keys():
-
-            # Add label offset to leave space for row/col labels
-            (row, col) = coords[0]+label_offset, coords[1]+label_offset
+            (row, col) = coords
 
             # Draw hidden tile as gray, skip to next tile
             if player_board and coords not in player.vis_tiles:
                 draw.rectangle(
-                    xy=((col*tile_pixels, row*tile_pixels), (col*tile_pixels+tile_pixels, row*tile_pixels+tile_pixels)),
+                    xy=((col*tile_pixels, row*tile_pixels), ((col+1)*tile_pixels, (row+1)*tile_pixels)),
                     fill=hidden_tile_color, outline=border_color, width=1
                 )
                 continue
@@ -880,13 +878,45 @@ class TrainGame:
                 xy=((col*tile_pixels, row*tile_pixels), (col*tile_pixels+tile_pixels, row*tile_pixels+tile_pixels)),
                 fill=tile_color, outline=border_color, width=1
             )
-
-            resource_text = demojize(self.board[coords]["resource"]) if self.board[coords]["resource"] else ""
-            rail_text = "".join(self.board[coords]["rails"])
-
             if self.board[coords]["terrain"] == "river":
                 draw_hatch_pattern(row, col)
-            draw.text(xy=(col*tile_pixels, row*tile_pixels), text=rail_text+resource_text, anchor="mm", fill=font_color)
+
+            resource_text = self.board[coords]["resource"] if self.board[coords]["resource"] else ""
+
+            # Draw start/end text
+            if coords == player.start and not self.board[coords]["rails"]:
+                rail_text = "Start"
+            elif coords == player.end and not self.board[coords]["rails"]:
+                rail_text = "End"
+            else:
+                rail_text = "".join(self.board[coords]["rails"])
+            text_pixels = draw.textlength(text=resource_text+rail_text, font=font)
+
+            # Dynamic font/emoji sizing depending on length of text
+            if resource_text and rail_text:
+                text_pixels += emoji_pixels
+                text_offset = round(emoji_pixels*0.4)
+            else:
+                text_offset = 0
+
+            while text_pixels > 0.8*tile_pixels and font_size > 6:
+                font_size -= 2
+                emoji_pixels -= 2
+                font = ImageFont.truetype(f"{bd.parent}/Data/ggsans/ggsans-Bold.ttf", font_size)
+                text_pixels = draw.textlength(text=resource_text + rail_text, font=font)
+                if resource_text:
+                    text_pixels += emoji_pixels
+
+            # Draw tile resource and rails
+            pilmoji.text(
+                xy=(col*tile_pixels + round(tile_pixels/2) - text_offset, row*tile_pixels + round(tile_pixels/2)),
+                text=rail_text+resource_text, anchor="mm", fill=font_color, font=font,
+                emoji_position_offset=(-round(font_size/2), -round(font_size/2)), emoji_scale_factor=1.1
+            )
+            if font_size != 24:
+                font_size = 24
+                emoji_pixels = font_size - 4
+                font = ImageFont.truetype(f"{bd.parent}/Data/ggsans/ggsans-Bold.ttf", font_size)
 
         try:
             board_img.save(f"{filepath}/{board_name}.png")
@@ -1101,7 +1131,7 @@ def load_config(guild: interactions.Guild):
             if key not in bd.config[int(guild.id)].keys():
                 bd.config[int(guild.id)][key] = bd.default_config[key]
                 print(
-                    colored(f'{strftime("%Y-%m-%d %H:%M:%S")} :  ', 'white') +
+                    colored(f'{strftime("%Y-%m-%d %H:%M:%S")}:  ', 'white') +
                     colored(f'Config file for {guild.name} missing {key}, set to default.', 'yellow')
                 )
                 with open(f'{bd.parent}/Guilds/{int(guild.id)}/config.yaml', 'w') as f:
@@ -1114,7 +1144,7 @@ def load_config(guild: interactions.Guild):
                 temp = dict(bd.config[int(guild.id)])
                 del temp[key]
                 print(
-                    colored(f'{strftime("%Y-%m-%d %H:%M:%S")} :  ', 'white') +
+                    colored(f'{strftime("%Y-%m-%d %H:%M:%S")}:  ', 'white') +
                     colored(f'Invalid key {key} in {guild.name} config, removed.', 'yellow')
                 )
                 with open(f'{bd.parent}/Guilds/{int(guild.id)}/config.yaml', 'w') as f:
@@ -1126,7 +1156,7 @@ def load_config(guild: interactions.Guild):
         with open(f'{bd.parent}/Guilds/{int(guild.id)}/config.yaml', 'w') as f:
             yaml.dump(bd.default_config, f, Dumper=yaml.Dumper)
         print(
-            colored(f'{strftime("%Y-%m-%d %H:%M:%S")} :  ', 'white') +
+            colored(f'{strftime("%Y-%m-%d %H:%M:%S")}:  ', 'white') +
             colored(f'No config file found for {guild.name}, created default config file.', 'yellow')
         )
         bd.config[int(guild.id)] = yaml.load(open(f'{bd.parent}/Guilds/{guild.id}/config.yaml'), Loader=yaml.Loader)
@@ -1153,9 +1183,9 @@ def gen_resp_list(guild: interactions.Guild, page: int, expired: bool) -> intera
     nums = range((page-1)*10, len(guild_trigs)) if page == max_pages else range((page-1)*10, page*10)
     for i in nums:
         pref = '**Exact Trigger:** ' if guild_trigs[i].exact else '**Phrase Trigger:** '
-        rsp_field = f'{pref}{guild_trigs[i].trig} \n **Respond:** {guild_trigs[i].text}'
+        rsp_field = f'{pref}{guild_trigs[i].trig} \n **Respond: ** {guild_trigs[i].text}'
         if len(rsp_field) >= 1024:
-            rsp_field = f'{pref}{guild_trigs[i].trig} \n **Respond:** *[Really, really, really long response]*'
+            rsp_field = f'{pref}{guild_trigs[i].trig} \n **Respond: ** *[Really, really, really long response]*'
 
         list_msg.add_field(
             name='\u200b',
