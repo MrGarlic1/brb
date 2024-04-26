@@ -1,18 +1,17 @@
 """
 Ben Samans
-BRBot version 3.2.1
-Updated 2/10/2024
+BRBot version 3.2.3
+Updated 4/24/2024
 """
 
-from termcolor import colored
 from time import strftime
-from colorama import init
+from colorama import init, Fore
 from random import choice
 import botdata as bd
 import botutils as bu
 import asyncio
 import interactions
-import yaml
+import json
 from datetime import datetime
 from os import listdir, mkdir, path
 from shutil import rmtree
@@ -20,7 +19,7 @@ import io
 
 bot = interactions.Client(
     token=bd.token,
-    intents=interactions.Intents.DEFAULT | interactions.Intents.MESSAGE_CONTENT
+    intents=interactions.Intents.DEFAULT | interactions.Intents.MESSAGE_CONTENT | interactions.Intents.GUILDS
 )
 
 
@@ -58,8 +57,8 @@ async def create_trains(
         ctx: interactions.SlashContext, name: str, players: str, width: int = 16, height: int = 16
 ):
     await ctx.defer()
-    river_ring = 1
-    guild_id = int(ctx.guild_id)
+    river_ring: int = 1
+    guild_id: int = int(ctx.guild_id)
 
     # Return errors if game is active or invalid name/width/height
     if guild_id in bd.active_trains:
@@ -74,8 +73,8 @@ async def create_trains(
 
     # Create player list and tags
     members = await bu.get_members_from_str(ctx.guild, players)
-    players = []
-    tags = bu.get_player_tags(members)
+    players: list = []
+    tags: list = bu.get_player_tags(members)
 
     for member, tag in zip(members, tags):
         dm = await member.fetch_dm(force=False)
@@ -107,7 +106,7 @@ async def create_trains(
         size=(width + 2*river_ring, height + 2*river_ring)  # Add space on board for river border
     )
     game.gen_trains_board(
-        board_size=(width, height), river_ring=river_ring
+        play_area_size=(width, height), river_ring=river_ring
     )
     if type(game.board) is str:
         await ctx.send(content=game.board)
@@ -164,7 +163,6 @@ async def record_shot(ctx: interactions.SlashContext, row: int, column: int, gen
     except KeyError:
         await ctx.send(content="There is no active game! To make one, use /trains newgame", ephemeral=True)
         return True
-
     # Get player, validate shot
     sender_idx, player = game.get_player(int(ctx.author_id))
     valid = game.valid_shot(player, row, column)
@@ -173,16 +171,16 @@ async def record_shot(ctx: interactions.SlashContext, row: int, column: int, gen
         return True
 
     # Update board, player rails
-    game.board[(row, column)]["rails"].append(player.tag)
+    game.board[(row, column)].rails.append(player.tag)
     game.players[sender_idx].shots.append(
-        bu.TrainShot(location=(row, column), genre=genre, info=info, time=datetime.now().strftime(bd.date_format))
+        bu.TrainShot(row=row, col=column, genre=genre, info=info, time=datetime.now().strftime(bd.date_format))
     )
     game.add_visible_tiles(sender_idx, row, column)
-    if game.board[(row, column)]["terrain"] == "river":
+    if game.board[(row, column)].terrain == "river":
         rails = 2
     else:
         rails = 1
-    if game.board[(row, column)]["zone"] == genre:
+    if game.board[(row, column)].zone == genre:
         rails = rails*0.5
     game.players[sender_idx].rails += rails
     if (row, column) == player.end:
@@ -216,12 +214,12 @@ async def undo_shot(ctx: interactions.SlashContext):
         await ctx.send(content="You have not taken any shots yet!", ephemeral=True)
         return True
 
-    row = game.players[sender_idx].shots[-1].location[0]
-    column = game.players[sender_idx].shots[-1].location[1]
+    row = game.players[sender_idx].shots[-1].row
+    column = game.players[sender_idx].shots[-1].col
     genre = game.players[sender_idx].shots[-1]
 
     # Delete last shot from record, re-render visible tiles
-    game.board[(row, column)]["rails"].remove(player.tag)
+    game.board[(row, column)].rails.remove(player.tag)
     del game.players[sender_idx].shots[-1]
     game.players[sender_idx].vis_tiles = []
     if game.players[sender_idx].done:
@@ -230,15 +228,15 @@ async def undo_shot(ctx: interactions.SlashContext):
 
     for shot in player.shots:
         game.add_visible_tiles(
-            player_idx=sender_idx, shot_row=shot.location[0], shot_col=shot.location[1]
+            player_idx=sender_idx, shot_row=shot.row, shot_col=shot.col
         )
 
     # Update player rails
-    if game.board[(row, column)]["terrain"] == "river":
+    if game.board[(row, column)].terrain == "river":
         rails = 2
     else:
         rails = 1
-    if game.board[(row, column)]["zone"] == genre:
+    if game.board[(row, column)].zone == genre:
         rails = rails*0.5
     game.players[sender_idx].rails -= rails
 
@@ -294,8 +292,8 @@ async def trains_stats(ctx: interactions.SlashContext, name: str = None):
 
 @trains_stats.autocomplete("name")
 async def autocomplete(ctx: interactions.AutocompleteContext):
-    games = listdir(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains")
-    choices = []
+    games: list = listdir(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains")
+    choices: list = []
     for game in games:
         choices.append({"name": game, "value": game})
     await ctx.send(
@@ -308,7 +306,6 @@ async def autocomplete(ctx: interactions.AutocompleteContext):
     sub_cmd_name="board",
     sub_cmd_description="View your train board for the active game.",
     dm_permission=False,
-    scopes=[895549687417958410]
 )
 async def show_trains_board(ctx: interactions.SlashContext):
     try:
@@ -408,7 +405,7 @@ async def restore_train(ctx: interactions.SlashContext, name: str):
 @restore_train.autocomplete("name")
 async def autocomplete(ctx: interactions.AutocompleteContext):
     games = listdir(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains")
-    choices = []
+    choices: list = []
     for game in games:
         choices.append({"name": game, "value": game})
     await ctx.send(
@@ -488,9 +485,9 @@ async def add_response(ctx: interactions.SlashContext, trigger: str = "", respon
 
     # Update responses
     if exact:
-        bd.responses[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/responses.txt")
+        bd.responses[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/responses.json")
     else:
-        bd.mentions[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/mentions.txt")
+        bd.mentions[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/mentions.json")
 
     if not error:
         await ctx.send(content=bd.pass_str)
@@ -543,9 +540,9 @@ async def remove_response(ctx: interactions.SlashContext, trigger: str = "", res
 
     # Update responses
     if exact:
-        bd.responses[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/responses.txt")
+        bd.responses[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/responses.json")
     else:
-        bd.mentions[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/mentions.txt")
+        bd.mentions[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/mentions.json")
 
 
 @interactions.slash_command(
@@ -576,8 +573,8 @@ async def listrsps(ctx: interactions.SlashContext):
 )
 async def delete_data(ctx: interactions.SlashContext):
     guild_id = int(ctx.guild.id)
-    open(f"{bd.parent}/Guilds/{guild_id}/responses.txt", "w")
-    f = open(f"{bd.parent}/Guilds/{guild_id}/mentions.txt", "w")
+    open(f"{bd.parent}/Guilds/{guild_id}/responses.json", "w")
+    f = open(f"{bd.parent}/Guilds/{guild_id}/mentions.json", "w")
     f.close()
     bd.responses[guild_id], bd.mentions[guild_id] = [], []
     await ctx.send(content=bd.pass_str)
@@ -620,9 +617,9 @@ async def mod_add(ctx: interactions.SlashContext, trigger: str = "", response: s
 
     # Update responses
     if exact:
-        bd.responses[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/responses.txt")
+        bd.responses[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/responses.json")
     else:
-        bd.mentions[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/mentions.txt")
+        bd.mentions[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/mentions.json")
 
 
 @interactions.slash_command(
@@ -661,9 +658,9 @@ async def mod_remove(ctx: interactions.SlashContext, trigger: str = "", response
 
     # Update responses
     if exact:
-        bd.responses[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/responses.txt")
+        bd.responses[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/responses.json")
     else:
-        bd.mentions[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/mentions.txt")
+        bd.mentions[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/mentions.json")
 
 
 @interactions.slash_command(
@@ -675,11 +672,9 @@ async def mod_remove(ctx: interactions.SlashContext, trigger: str = "", response
 )
 async def cfg_reset(ctx: interactions.SlashContext):
     guild_id = int(ctx.guild.id)
-    with open(f"{bd.parent}/Guilds/{guild_id}/config.yaml", "w") as f:
-        yaml.dump(bd.default_config, f, Dumper=yaml.Dumper)
-    bd.config[guild_id] = yaml.load(
-        open(f"{bd.parent}/Guilds/{guild_id}/config.yaml"), Loader=yaml.Loader
-    )
+    with open(f"{bd.parent}/Guilds/{guild_id}/config.json", "w") as f:
+        json.dump(bd.default_config, f, indent=4)
+    bd.config[guild_id] = bd.default_config
     await ctx.send(content=bd.pass_str)
 
 
@@ -716,8 +711,8 @@ async def cfg_view(ctx: interactions.SlashContext):
 async def cfg_user_perms(ctx: interactions.SlashContext, enable: bool = True):
     guild_id = int(ctx.guild.id)
     bd.config[guild_id]["USER_ONLY_DELETE"] = not enable
-    with open(f"{bd.parent}/Guilds/{guild_id}/config.yaml", "w") as f:
-        yaml.dump(bd.config[guild_id], f, Dumper=yaml.Dumper)
+    with open(f"{bd.parent}/Guilds/{guild_id}/config.json", "w") as f:
+        json.dump(bd.config[guild_id], f, indent=4)
     await ctx.send(content=bd.pass_str)
 
 
@@ -746,8 +741,8 @@ async def cfg_set_limit(ctx: interactions.SlashContext, enable: bool = True, lim
         limit = 1
     bd.config[guild_id]["LIMIT_USER_RESPONSES"] = enable
     bd.config[guild_id]["MAX_USER_RESPONSES"] = limit
-    with open(f"{bd.parent}/Guilds/{guild_id}/config.yaml", "w") as f:
-        yaml.dump(bd.config[guild_id], f, Dumper=yaml.Dumper)
+    with open(f"{bd.parent}/Guilds/{guild_id}/config.json", "w") as f:
+        json.dump(bd.config[guild_id], f, indent=4)
     await ctx.send(content=bd.pass_str)
 
 
@@ -767,8 +762,8 @@ async def cfg_set_limit(ctx: interactions.SlashContext, enable: bool = True, lim
 async def cfg_allow_phrases(ctx: interactions.SlashContext, enable: bool = True):
     guild_id = int(ctx.guild.id)
     bd.config[guild_id]["ALLOW_PHRASES"] = enable
-    with open(f"{bd.parent}/Guilds/{guild_id}/config.yaml", "w") as f:
-        yaml.dump(bd.config[guild_id], f, Dumper=yaml.Dumper)
+    with open(f"{bd.parent}/Guilds/{guild_id}/config.json", "w") as f:
+        json.dump(bd.config[guild_id], f, indent=4)
     await ctx.send(content=bd.pass_str)
 
 
@@ -779,16 +774,16 @@ async def on_guild_join(event: interactions.api.events.GuildJoin):
         mkdir(f'{bd.parent}/Guilds/{guild.id}')
         mkdir(f'{bd.parent}/Guilds/{guild.id}/Trains')
         print(
-            colored(f'{strftime("%Y-%m-%d %H:%M:%S")}:  ', 'white') +
-            colored(f'Guild folder for guild {guild.id} created successfully.', 'green')
+            Fore.WHITE + '{strftime("%Y-%m-%d %H:%M:%S")}:  ' +
+            Fore.GREEN + f'Guild folder for guild {guild.id} created successfully.' + Fore.RESET
         )
-        with open(f'{bd.parent}/Guilds/{int(guild.id)}/config.yaml', 'w') as f:
-            yaml.dump(bd.default_config, f, Dumper=yaml.Dumper)
+        with open(f'{bd.parent}/Guilds/{int(guild.id)}/config.json', 'w') as f:
+            json.dump(bd.default_config, f, indent=4)
         bd.config[int(guild.id)] = bd.default_config
         bd.responses[int(guild.id)] = []
         bd.mentions[int(guild.id)] = []
     print(
-        colored(f"{strftime(bd.date_format)}:  ", "white") + f"Added to guild {guild.id}."
+        Fore.WHITE + f"{strftime(bd.date_format)}:  " + Fore.RESET + f"Added to guild {guild.id}."
     )
 
 
@@ -798,19 +793,20 @@ async def on_ready():
     assert guilds, "Error connecting to Discord, no guilds listed."
     bu.load_fonts(f"{bd.parent}/Data")
     print(
-        colored(strftime(bd.date_format) + " :  ", "white") + "Connected to the following guilds: " +
-        colored(", ".join(guild.name for guild in guilds), "cyan")
+        Fore.WHITE + f'{strftime(bd.date_format)} :  Connected to the following guilds: ' +
+        Fore.CYAN + ", ".join(guild.name for guild in guilds) + Fore.RESET
     )
     for guild in guilds:
         bu.load_config(guild)
 
         # Load guild responses
         guild_id = int(guild.id)
-        bd.mentions[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/mentions.txt")
-        bd.responses[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/responses.txt")
+
+        bd.mentions[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/mentions.json")
+        bd.responses[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/responses.json")
         print(
-            colored(f"{strftime(bd.date_format)}:  ", "white") +
-            colored(f"Responses loaded for {guild.name}", "green")
+            Fore.WHITE + f"{strftime(bd.date_format)}:  " +
+            Fore.GREEN + f"Responses loaded for {guild.name}" + Fore.RESET
         )
 
         # Load trains games
@@ -828,8 +824,8 @@ async def on_ready():
                 except PermissionError:
                     pass
                 print(
-                    colored(strftime(bd.date_format) + " :  ", "white") +
-                    colored(f"Invalid game \"{name}\" in guild {guild_id}, attempted delete.", "yellow")
+                    Fore.WHITE + f'{strftime(bd.date_format)} :  ' +
+                    Fore.YELLOW + f"Invalid game \"{name}\" in guild {guild_id}, attempted delete." + Fore.RESET
                 )
 
     await bot.change_presence(status=interactions.Status.ONLINE, activity="/response")

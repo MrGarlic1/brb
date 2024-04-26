@@ -1,25 +1,34 @@
-# File containing global variables for botutils.py.
+# File containing global variables for bot.
 
 from os import environ
 from dotenv import load_dotenv
 
 load_dotenv()
-pass_str = "✅\u200b"
-fail_str = "❌\u200b"
-default_config = {
+pass_str: str = "✅\u200b"
+fail_str: str = "❌\u200b"
+default_config: dict = {
     "ALLOW_PHRASES": True,
     "LIMIT_USER_RESPONSES": False,
     "MAX_USER_RESPONSES": 10,
     "USER_ONLY_DELETE": False,
 }
-token = environ["TOKEN"]
-parent = environ["PARENT"]
-bot_id = 887530423826145310
-bot_avatar_url = "https://cdn.discordapp.com/attachments/895549688026124321/1103188621193924708/ursa_cm.png"
-train_zones_url = "https://i.imgur.com/AmbDhB7.png"
-date_format = "%Y/%m/%d %H:%M:%S"
+token: str = environ["TOKEN"]
+parent: str = environ["PARENT"]
+bot_id: int = 887530423826145310
+bot_avatar_url: str = "https://cdn.discordapp.com/attachments/895549688026124321/1103188621193924708/ursa_cm.png"
+train_zones_url: str = "https://i.imgur.com/AmbDhB7.png"
+date_format: str = "%Y/%m/%d %H:%M:%S"
 
+emoji: dict = {
+    "wheat": "🌾",
+    "wood": "🌳",
+    "gems": "💎",
+    "city": "🌃",
+    "prison": "🔒",
+    "house": "🏠",
+    "river": "🏞"
+}
 
 responses, mentions, config = {}, {}, {}
-active_msgs = []
-active_trains = {}
+active_msgs: list = []
+active_trains: dict = {}
