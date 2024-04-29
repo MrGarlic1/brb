@@ -133,7 +133,7 @@ class TrainTile:
 class TrainGame:
     def __init__(
             self, name: str = None, date: str = None, players: list[TrainPlayer] = None,
-            board: dict[tuple: TrainTile] = None, gameid: int = None, active: bool = True, size: tuple = None
+            board: dict[tuple[int, int]: TrainTile] = None, gameid: int = None, active: bool = True, size: tuple = None
     ):
         self.name = name
         self.date = date
@@ -158,6 +158,9 @@ class TrainGame:
     def __repr__(self) -> str:
         return f"<name={self.name}> <date={self.date}> <players={self.players}> <gameid={self.gameid}> " \
                f"<active={self.active}> <size={self.size}> <board={self.board}> "
+
+    class BoardGenError(Exception):
+        pass
 
     def is_done(self) -> bool:
         done = True
@@ -188,7 +191,7 @@ class TrainGame:
 
     def gen_trains_board(
             self, play_area_size: tuple[int, int] = (16, 16), river_ring: int = 0
-    ):
+    ) -> None:
 
         width = self.size[0]
         height = self.size[1]
@@ -300,7 +303,7 @@ class TrainGame:
             '''
             return None
 
-        def generate_count_resource(count, resource, min_spread=0):
+        def generate_count_resource(count, resource, min_spread=0) -> dict[tuple[int, int]: TrainTile]:
             # Grid Size is (x, y), or (row, col)
             added = 0
             attempts = 0
@@ -324,7 +327,7 @@ class TrainGame:
                     break
             return self.board
 
-        def generate_zones():
+        def generate_zones() -> dict[tuple[int, int]: TrainTile]:
             # Adds genre zones in randomized order to grid. Both dimensions of the grid must be divisible by 4 to allow
             # for 16 zones.
 
@@ -334,7 +337,7 @@ class TrainGame:
                         self.board[(row, col)].zone = genre
 
             if play_width % 4 != 0 or play_height % 4 != 0:
-                return self.board
+                raise self.BoardGenError("Width and height must be divisible by 4.")
 
             zone_width: int = play_width//4
             zone_height: int = play_height//4
@@ -349,7 +352,7 @@ class TrainGame:
                 add_zone(zone_width, zone_height, zone_pos, zone_order[i])
             return self.board
 
-        def generate_river(direction: str = ''):
+        def generate_river(direction: str = '') -> dict[tuple[int, int]: TrainTile]:
 
             # Chance of river ending: [0, 1]
             base_chance: float = 0.9
@@ -481,18 +484,22 @@ class TrainGame:
         self.board = generate_zones()
         return None
 
-    def add_visible_tiles(self, player_idx,  shot_row: int, shot_col: int):
+    def update_visible_tiles(self, player_idx: int,  shot_row: int, shot_col: int, remove: bool = False):
         render_dist: int = 2
         for row in range(shot_row - render_dist, shot_row + render_dist + 1):
             for col in range(shot_col - render_dist, shot_col + render_dist + 1):
                 if (row, col) in self.players[player_idx].vis_tiles:  # Already rendered tiles
-                    continue
+                    if remove:
+                        self.players[player_idx].vis_tiles.remove((row, col))
+                    else:
+                        continue
                 elif self.in_bounds(row, col):
                     self.players[player_idx].vis_tiles.append((row, col))
 
-    def gen_player_locations(self, river_ring: int) -> Union[None, bool]:
+    def gen_player_locations(self, river_ring: int) -> None:
         row_bounds: tuple[int, int] = (1+river_ring, self.size[1]-river_ring)
         col_bounds: tuple[int, int] = (1+river_ring, self.size[0]-river_ring)
+
         for player_idx, player in enumerate(self.players):
             quadrant: str = choice(("Left", "Top"))
             taken_spaces: list = []
@@ -514,8 +521,8 @@ class TrainGame:
                     break
                 attempts += 1
             if start_loc is None or attempts > 40:  # Error catch
-                return True
-            self.add_visible_tiles(player_idx, start_loc[0], start_loc[1])
+                raise self.BoardGenError("Failed generating board. Try increasing the board size?")
+            self.update_visible_tiles(player_idx, start_loc[0], start_loc[1])
 
             # Generate end locations
             attempts = 0
@@ -534,10 +541,10 @@ class TrainGame:
                     break
                 attempts += 1
             if end_loc is None or attempts > 40:  # Error catch
-                return True
-            self.add_visible_tiles(player_idx, end_loc[0], end_loc[1])
+                raise self.BoardGenError("Failed generating board. Try increasing the board size?")
+            self.update_visible_tiles(player_idx, end_loc[0], end_loc[1])
 
-    def valid_shot(self, player: TrainPlayer, shot_row: int, shot_col: int) -> bool:
+    def is_valid_shot(self, player: TrainPlayer, shot_row: int, shot_col: int) -> bool:
         if player is None:  # Player not in game
             return False
 
@@ -592,16 +599,12 @@ class TrainGame:
                 player_idx=p_idx, player_board=True
             )
             board_img_path: str = f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}/{board_name}.png"
-            if p.member.id == ctx.author_id:
-                await ctx.send(
-                    file=interactions.File(board_img_path),
-                    content=f"## Train board update for \"{self.name}\" in {ctx.guild.name}!"
-                )
-            else:
-                await p.dmchannel.send(
-                    file=interactions.File(board_img_path),
-                    content=f"## Train board update for \"{self.name}\" in {ctx.guild.name}!"
-                )
+            await ctx.send(content=bd.pass_str, ephemeral=False)
+            await p.dmchannel.send(
+                file=interactions.File(board_img_path),
+                content=f"## Train board update for \"{self.name}\" in {ctx.guild.name}!"
+            )
+
         except AttributeError:
             print(Fore.YELLOW + f"Could not find user with ID {p.member.id}" + Fore.RESET)
             del self.players[p_idx]

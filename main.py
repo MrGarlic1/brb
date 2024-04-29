@@ -64,9 +64,6 @@ async def create_trains(
     if guild_id in bd.active_trains:
         await ctx.send(content=f"There is already an active game ({bd.active_trains[guild_id].name}) in this server.")
         return True
-    if width % 4 != 0 or height % 4 != 0:
-        await ctx.send(content="Width and height must be divisible by 4.")
-        return True
     if path.exists(f"{bd.parent}/Guilds/{guild_id}/Trains/{name}"):
         await ctx.send(content="Name already exists!")
         return True
@@ -105,20 +102,14 @@ async def create_trains(
         active=True,
         size=(width + 2*river_ring, height + 2*river_ring)  # Add space on board for river border
     )
-    game.gen_trains_board(
-        play_area_size=(width, height), river_ring=river_ring
-    )
-    if type(game.board) is str:
-        await ctx.send(content=game.board)
-        return True
+    try:
+        game.gen_trains_board(
+            play_area_size=(width, height), river_ring=river_ring
+        )
+        game.gen_player_locations(river_ring=river_ring)
+    except game.BoardGenError as e:
+        await ctx.send(content=str(e))
 
-    # Add player start locations
-    game.gen_player_locations(river_ring=river_ring)
-
-    # Unsuccessful board generation
-    if game is True:
-        await ctx.send(content="Unsuccessful board generation. Try making the size larger?")
-        return True
     # Push updates to player boards
     await game.update_boards_after_create(ctx=ctx)
     await ctx.send(embed=bu.train_game_embed(ctx=ctx, game=game))
@@ -157,16 +148,16 @@ async def create_trains(
     opt_type=interactions.OptionType.STRING
 )
 async def record_shot(ctx: interactions.SlashContext, row: int, column: int, genre: str, info: str):
-    await ctx.defer(ephemeral=True)
-    try:
-        game = bd.active_trains[ctx.guild_id]
-    except KeyError:
+    await ctx.defer(ephemeral=False)
+    if ctx.guild_id not in bd.active_trains:
         await ctx.send(content="There is no active game! To make one, use /trains newgame", ephemeral=True)
         return True
+
+    game = bd.active_trains[ctx.guild_id]
+
     # Get player, validate shot
     sender_idx, player = game.get_player(int(ctx.author_id))
-    valid = game.valid_shot(player, row, column)
-    if not valid:
+    if not game.is_valid_shot(player, row, column):
         await ctx.send(content=bd.fail_str)
         return True
 
@@ -175,7 +166,7 @@ async def record_shot(ctx: interactions.SlashContext, row: int, column: int, gen
     game.players[sender_idx].shots.append(
         bu.TrainShot(row=row, col=column, genre=genre, info=info, time=datetime.now().strftime(bd.date_format))
     )
-    game.add_visible_tiles(sender_idx, row, column)
+    game.update_visible_tiles(sender_idx, row, column)
     if game.board[(row, column)].terrain == "river":
         rails = 2
     else:
@@ -203,13 +194,13 @@ async def undo_shot(ctx: interactions.SlashContext):
     await ctx.defer(ephemeral=True)
 
     # Determine if undo is valid
-    try:
-        game = bd.active_trains[ctx.guild_id]
-    except KeyError:
+    if ctx.guild_id not in bd.active_trains:
         await ctx.send(content="There is no active game! To make one, use /trains newgame", ephemeral=True)
         return True
 
-    sender_idx, player = game.get_player(int(ctx.author_id))
+    game = bd.active_trains[ctx.guild_id]
+
+    sender_idx, player = game.get_player(ctx.author_id)
     if not player.shots:
         await ctx.send(content="You have not taken any shots yet!", ephemeral=True)
         return True
@@ -218,18 +209,21 @@ async def undo_shot(ctx: interactions.SlashContext):
     column = game.players[sender_idx].shots[-1].col
     genre = game.players[sender_idx].shots[-1]
 
-    # Delete last shot from record, re-render visible tiles
+    # Delete last shot from record, update active player status
     game.board[(row, column)].rails.remove(player.tag)
     del game.players[sender_idx].shots[-1]
-    game.players[sender_idx].vis_tiles = []
     if game.players[sender_idx].done:
         game.players[sender_idx].done = False
         game.players[sender_idx].donetime = None
 
-    for shot in player.shots:
-        game.add_visible_tiles(
-            player_idx=sender_idx, shot_row=shot.row, shot_col=shot.col
-        )
+    # Update rendering of tiles to remove the latest shot and re-render the shot before
+    game.update_visible_tiles(
+        player_idx=sender_idx, shot_row=row, shot_col=column, remove=True
+    )
+    game.update_visible_tiles(
+        player_idx=sender_idx, shot_row=game.players[sender_idx].shots[-1].row,
+        shot_col=game.players[sender_idx].shots[-1].col, remove=True
+    )
 
     # Update player rails
     if game.board[(row, column)].terrain == "river":
@@ -262,11 +256,11 @@ async def undo_shot(ctx: interactions.SlashContext):
 async def trains_stats(ctx: interactions.SlashContext, name: str = None):
     # Logic to get game or return error if no game found
     if name is None:
-        try:
-            game = bd.active_trains[ctx.guild_id]
-        except KeyError:
+        if ctx.guild_id not in bd.active_trains:
             await ctx.send(content="No active game found, please specify a game name.")
             return True
+        game = bd.active_trains[ctx.guild_id]
+
     else:
         try:
             game = await bu.load_game(
@@ -308,13 +302,13 @@ async def autocomplete(ctx: interactions.AutocompleteContext):
     dm_permission=False,
 )
 async def show_trains_board(ctx: interactions.SlashContext):
-    try:
-        game = bd.active_trains[ctx.guild_id]
-    except KeyError:
+    if ctx.guild_id not in bd.active_trains:
         await ctx.send(content="No active game found.", ephemeral=True)
         return True
 
+    game = bd.active_trains[ctx.guild_id]
     player_idx, player = game.get_player(ctx.author_id)
+
     if not player:
         await ctx.send(content="You are not a player in this game.", ephemeral=True)
         return True
@@ -345,11 +339,11 @@ async def show_trains_board(ctx: interactions.SlashContext):
 )
 async def delete_trains_game(ctx: interactions.SlashContext, keep_files: bool):
     await ctx.defer()
-    try:
-        game = bd.active_trains[ctx.guild_id]
-    except KeyError:
+    if ctx.guild_id not in bd.active_trains:
         await ctx.send(content="There is no active game! To make one, use /trains newgame", ephemeral=True)
         return True
+
+    game = bd.active_trains[ctx.guild_id]
 
     if keep_files:
         game.active = False
@@ -358,7 +352,7 @@ async def delete_trains_game(ctx: interactions.SlashContext, keep_files: bool):
         try:
             rmtree(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{game.name}")
         except PermissionError:
-            await ctx.send(content="Could not delete files. Try again in a couple of minutes.")
+            await ctx.send(content="Could not delete game. Try again in a couple of minutes.")
             return True
     del bd.active_trains[ctx.guild_id]
     await ctx.send(content=bd.pass_str)
