@@ -554,7 +554,7 @@ async def autocomplete(ctx: interactions.AutocompleteContext):
     if len(choices) > 25:
         choices = choices[0:24]
     await ctx.send(
-        choices=choices
+         choices=choices
     )
 
 
@@ -660,19 +660,21 @@ async def mod_add(ctx: interactions.SlashContext, trigger: str = "", response: s
     name="trigger",
     description="Message trigger to remove",
     required=True,
-    opt_type=interactions.OptionType.STRING
+    opt_type=interactions.OptionType.STRING,
+    autocomplete=True
+)
+@interactions.slash_option(
+    name="response",
+    description="Response text to remove if multiple exist on the same trigger, defaults to the first response",
+    required=False,
+    opt_type=interactions.OptionType.STRING,
+    autocomplete=True
 )
 @interactions.slash_option(
     name="exact",
     description="If the trigger to remove is an exact trigger (default true)",
     required=False,
     opt_type=interactions.OptionType.BOOLEAN,
-)
-@interactions.slash_option(
-    name="response",
-    description="Response text to remove if multiple exist on the same trigger, defaults to the first response",
-    required=False,
-    opt_type=interactions.OptionType.STRING
 )
 async def mod_remove(ctx: interactions.SlashContext, trigger: str = "", response: str = "", exact: bool = True):
     
@@ -688,6 +690,36 @@ async def mod_remove(ctx: interactions.SlashContext, trigger: str = "", response
         bd.responses[ctx.guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/responses.json")
     else:
         bd.mentions[ctx.guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/mentions.json")
+
+
+@remove_response.autocomplete("trigger")
+async def autocomplete(ctx: interactions.AutocompleteContext):
+    trigs: list = []
+    # Add autocomplete options if they match input text, remove duplicates. 25 maximum values (discord limit)
+    for rsp in bd.responses[ctx.guild_id] + bd.mentions[ctx.guild_id]:
+        if rsp.trig not in trigs and ctx.input_text in rsp.trig:
+            trigs.append(rsp.trig)
+    choices = list(map(bu.autocomplete_filter, trigs))
+    if len(choices) > 25:
+        choices = choices[0:24]
+    await ctx.send(
+         choices=choices
+    )
+
+
+@remove_response.autocomplete("response")
+async def autocomplete(ctx: interactions.AutocompleteContext):
+    # Add autocomplete response options for the specified trigger.
+    responses = [
+        rsp.text for rsp in bd.mentions[ctx.guild_id] + bd.responses[ctx.guild_id]
+        if rsp.trig == ctx.kwargs.get("trigger")
+        ]
+    choices = list(map(bu.autocomplete_filter, responses))
+    if len(choices) > 25:
+        choices = choices[0:24]
+    await ctx.send(
+        choices=choices
+    )
 
 
 @interactions.slash_command(
