@@ -21,9 +21,8 @@ from pilmoji import Pilmoji
 
 
 # Class Definitions
-@dataclass
 class Response:
-    def __init__(self, exact, trig, text, user_id):
+    def __init__(self, exact: bool, trig: str, text: str, user_id: int = 0):
         self.exact = exact
         self.trig = trig
         self.text = text
@@ -36,6 +35,9 @@ class Response:
         if not isinstance(self.text, list):
             self.text = list(self.text)
         self.text.append(new_text)
+
+    def __repr__(self):
+        return f"Trigger: {self.trig}, Text: {self.text}, Exact: {self.exact},  User ID: {self.user_id}"
 
 
 @dataclass
@@ -733,7 +735,7 @@ class TrainGame:
         shot_time = datetime.strptime(self.date, bd.date_format)
         time_between_shots_list = []
         for shot_idx, shot in enumerate(player.shots):
-            if shot.genre == self.board[shot.location].zone:
+            if shot.genre == self.board[(shot.row, shot.col)].zone:
                 in_zone_shots += 1
 
             time_between_shots_list.append((datetime.strptime(shot.time, bd.date_format) - shot_time).total_seconds())
@@ -774,7 +776,7 @@ class TrainGame:
             weight="bold", size=17, family="gg sans", horizontalalignment="right"
         )
         plt.legend(
-            genre_counts.keys(), title="Genres", loc="lower left", framealpha=0, bbox_to_anchor=(-0.45, 0.6, 0.75, 1),
+            genre_counts.keys(), title="Genres", loc="lower left", framealpha=0, bbox_to_anchor=(-0.45, 0.2, 0.75, 1),
             prop=matplotlib.font_manager.FontProperties(family="gg sans", weight="medium", size=15, style="italic"),
             title_fontproperties=matplotlib.font_manager.FontProperties(family="gg sans", weight="medium", size=17)
         )
@@ -1020,14 +1022,11 @@ def dict_to_rsp(rsp_dict: dict) -> Response | None:
     if not rsp_dict:
         return None
     try:
-        rsp = Response(rsp_dict["exact"], rsp_dict["trig"], rsp_dict["text"], rsp_dict["user_id"])
+        _ = Response(rsp_dict["exact"], rsp_dict["trig"], rsp_dict["text"], rsp_dict["user_id"])
     except KeyError:
-        if rsp_dict["m"]:
-            rsp_dict["exact"] = False
-        else:
-            rsp_dict["exact"] = True
-        rsp_dict.pop("m")
-        rsp = Response(rsp_dict["exact"], rsp_dict["trig"], rsp_dict["text"], rsp_dict["user_id"])
+        print(Fore.YELLOW + "Invalid response found, ignoring." + Fore.RESET)
+        return None
+    rsp = Response(rsp_dict["exact"], rsp_dict["trig"], rsp_dict["text"], rsp_dict["user_id"])
     return rsp
 
 
@@ -1114,6 +1113,7 @@ def load_responses(file) -> list:
         for rsp in lines:
             rsp.trig = emojize(rsp.trig)
             rsp.text = emojize(rsp.text)
+
     except FileNotFoundError:
         f = open(file, "w")
         f.close()
@@ -1302,6 +1302,12 @@ def gen_rules_embed(page: int, expired: bool) -> interactions.Embed:
         embed = train_scoring_embed()
     embed.set_footer(text=f'Page {page}/{max_pages} {footer_end}')
     return embed
+
+
+def autocomplete_filter(option: str) -> dict[str: str]:
+    if len(option) > 100:
+        option = option[:99]
+    return {"name": option, "value": option}
 
 
 # Embed/Component Definitions

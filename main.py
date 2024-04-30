@@ -19,7 +19,10 @@ import io
 
 bot = interactions.Client(
     token=bd.token,
-    intents=interactions.Intents.DEFAULT | interactions.Intents.MESSAGE_CONTENT | interactions.Intents.GUILDS
+    intents=interactions.Intents.DEFAULT | interactions.Intents.MESSAGE_CONTENT | interactions.Intents.GUILDS,
+    sync_interactions=True,
+    delete_unused_application_cmds=True,
+    # debug_scope=895549687417958410
 )
 
 
@@ -58,13 +61,12 @@ async def create_trains(
 ):
     await ctx.defer()
     river_ring: int = 1
-    guild_id: int = int(ctx.guild_id)
 
     # Return errors if game is active or invalid name/width/height
-    if guild_id in bd.active_trains:
-        await ctx.send(content=f"There is already an active game ({bd.active_trains[guild_id].name}) in this server.")
+    if ctx.guild_id in bd.active_trains:
+        await ctx.send(content=f"There game ({bd.active_trains[ctx.guild_id].name}) is already active in this server.")
         return True
-    if path.exists(f"{bd.parent}/Guilds/{guild_id}/Trains/{name}"):
+    if path.exists(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{name}"):
         await ctx.send(content="Name already exists!")
         return True
 
@@ -84,7 +86,7 @@ async def create_trains(
         return True
 
     try:
-        mkdir(f"{bd.parent}/Guilds/{guild_id}/Trains/{name}")
+        mkdir(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{name}")
     except OSError:
         await ctx.send(content="Invalid name! Game must not contain the following characters: / \\ : * ? < > |")
         return True
@@ -287,9 +289,10 @@ async def trains_stats(ctx: interactions.SlashContext, name: str = None):
 @trains_stats.autocomplete("name")
 async def autocomplete(ctx: interactions.AutocompleteContext):
     games: list = listdir(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains")
-    choices: list = []
-    for game in games:
-        choices.append({"name": game, "value": game})
+    games = [gamename for gamename in games if ctx.input_text in gamename]
+    choices = list(map(bu.autocomplete_filter, games))
+    if len(choices) > 25:
+        choices = choices[:24]
     await ctx.send(
         choices=choices
     )
@@ -374,13 +377,12 @@ async def delete_trains_game(ctx: interactions.SlashContext, keep_files: bool):
     autocomplete=True
 )
 async def restore_train(ctx: interactions.SlashContext, name: str):
-    guild_id = ctx.guild_id
-    if guild_id in bd.active_trains:
+    if ctx.guild_id in bd.active_trains:
         await ctx.send("There is already an active game in this server!")
         return True
     try:
         test_game = await bu.load_game(
-            filepath=f"{bd.parent}/Guilds/{guild_id}/Trains/{name}", bot=bot, guild=ctx.guild
+            filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{name}", bot=bot, guild=ctx.guild
         )
     except FileNotFoundError:
         await ctx.send(content="Game name does not exist.")
@@ -390,18 +392,19 @@ async def restore_train(ctx: interactions.SlashContext, name: str):
         return True
 
     test_game.active = True
-    test_game.save_game(f"{bd.parent}/Guilds/{guild_id}/Trains/{test_game.name}")
-    bd.active_trains[guild_id] = test_game
+    test_game.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{test_game.name}")
+    bd.active_trains[ctx.guild_id] = test_game
     await ctx.send(content=bd.pass_str)
     return False
 
 
 @restore_train.autocomplete("name")
-async def autocomplete(ctx: interactions.AutocompleteContext):
+async def autocomplete(ctx: interactions.AutocompleteContext) -> None:
     games = listdir(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains")
-    choices: list = []
-    for game in games:
-        choices.append({"name": game, "value": game})
+    games = [gamename for gamename in games if ctx.input_text in gamename]
+    choices = list(map(bu.autocomplete_filter, games))
+    if len(choices) > 25:
+        choices = choices[:24]
     await ctx.send(
         choices=choices
     )
@@ -451,37 +454,36 @@ async def send_rules(ctx: interactions.SlashContext):
     opt_type=interactions.OptionType.BOOLEAN,
 )
 async def add_response(ctx: interactions.SlashContext, trigger: str = "", response: str = "", exact: bool = True):
-    guild_id = int(ctx.guild.id)
 
     # Config permission checks
-    if not bd.config[guild_id]["ALLOW_PHRASES"] and not exact:
+    if not bd.config[ctx.guild_id]["ALLOW_PHRASES"] and not exact:
         await ctx.send(
             content=f"The server does not allow for phrase-based responses.",
             ephemeral=True
         )
         return True
-    if bd.config[guild_id]["LIMIT_USER_RESPONSES"]:
+    if bd.config[ctx.guild_id]["LIMIT_USER_RESPONSES"]:
         user_rsps = 0
-        for rsp in bd.responses[guild_id]:
+        for rsp in bd.responses[ctx.guild_id]:
             if rsp.user_id == int(ctx.author.id):
                 user_rsps += 1
-        for rsp in bd.mentions[guild_id]:
+        for rsp in bd.mentions[ctx.guild_id]:
             if rsp.user_id == int(ctx.author.id):
                 user_rsps += 1
-        if user_rsps >= bd.config[guild_id]["MAX_USER_RESPONSES"]:
+        if user_rsps >= bd.config[ctx.guild_id]["MAX_USER_RESPONSES"]:
             await ctx.send(
-                content=f"You currently have the maximum of {bd.config[guild_id]['MAX_USER_RESPONSES']} responses.",
+                content=f"You currently have the maximum of {bd.config[ctx.guild_id]['MAX_USER_RESPONSES']} responses.",
                 ephemeral=True
             )
             return True
 
-    error = bu.add_response(guild_id, bu.Response(exact, trigger.lower(), response, int(ctx.author.id)))
+    error = bu.add_response(ctx.guild_id, bu.Response(exact, trigger.lower(), response, int(ctx.author.id)))
 
     # Update responses
     if exact:
-        bd.responses[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/responses.json")
+        bd.responses[ctx.guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/responses.json")
     else:
-        bd.mentions[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/mentions.json")
+        bd.mentions[ctx.guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/mentions.json")
 
     if not error:
         await ctx.send(content=bd.pass_str)
@@ -500,7 +502,15 @@ async def add_response(ctx: interactions.SlashContext, trigger: str = "", respon
     name="trigger",
     description="Message trigger to remove",
     required=True,
-    opt_type=interactions.OptionType.STRING
+    opt_type=interactions.OptionType.STRING,
+    autocomplete=True
+)
+@interactions.slash_option(
+    name="response",
+    description="Response text to remove if multiple exist on the same trigger, defaults to the first response",
+    required=False,
+    opt_type=interactions.OptionType.STRING,
+    autocomplete=True
 )
 @interactions.slash_option(
     name="exact",
@@ -508,24 +518,18 @@ async def add_response(ctx: interactions.SlashContext, trigger: str = "", respon
     required=False,
     opt_type=interactions.OptionType.BOOLEAN,
 )
-@interactions.slash_option(
-    name="response",
-    description="Response text to remove if multiple exist on the same trigger, defaults to the first response",
-    required=False,
-    opt_type=interactions.OptionType.STRING
-)
 async def remove_response(ctx: interactions.SlashContext, trigger: str = "", response: str = "", exact: bool = True):
     # Config permission checks
-    guild_id = int(ctx.guild.id)
-    if bd.config[guild_id]["USER_ONLY_DELETE"] and \
-            bu.get_resp(guild_id, trigger, response, exact).user_id != ctx.author.id:
+    
+    if bd.config[ctx.guild_id]["USER_ONLY_DELETE"] and \
+            bu.get_resp(ctx.guild_id, trigger, response, exact).user_id != ctx.author.id:
         await ctx.send(
             content=f"The server settings do not allow you to delete other people\'s responses.",
             ephemeral=True
         )
         return True
 
-    error = bu.rmv_response(guild_id, bu.Response(exact, trigger.lower(), response, "_"))
+    error = bu.rmv_response(ctx.guild_id, bu.Response(exact, trigger.lower(), response))
     if not error:
         await ctx.send(content=bd.pass_str)
     else:
@@ -534,9 +538,39 @@ async def remove_response(ctx: interactions.SlashContext, trigger: str = "", res
 
     # Update responses
     if exact:
-        bd.responses[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/responses.json")
+        bd.responses[ctx.guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/responses.json")
     else:
-        bd.mentions[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/mentions.json")
+        bd.mentions[ctx.guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/mentions.json")
+
+
+@remove_response.autocomplete("trigger")
+async def autocomplete(ctx: interactions.AutocompleteContext):
+    trigs: list = []
+    # Add autocomplete options if they match input text, remove duplicates. 25 maximum values (discord limit)
+    for rsp in bd.responses[ctx.guild_id] + bd.mentions[ctx.guild_id]:
+        if rsp.trig not in trigs and ctx.input_text in rsp.trig:
+            trigs.append(rsp.trig)
+    choices = list(map(bu.autocomplete_filter, trigs))
+    if len(choices) > 25:
+        choices = choices[0:24]
+    await ctx.send(
+        choices=choices
+    )
+
+
+@remove_response.autocomplete("response")
+async def autocomplete(ctx: interactions.AutocompleteContext):
+    # Add autocomplete response options for the specified trigger.
+    responses = [
+        rsp.text for rsp in bd.mentions[ctx.guild_id] + bd.responses[ctx.guild_id]
+        if rsp.trig == ctx.kwargs.get("trigger")
+        ]
+    choices = list(map(bu.autocomplete_filter, responses))
+    if len(choices) > 25:
+        choices = choices[0:24]
+    await ctx.send(
+        choices=choices
+    )
 
 
 @interactions.slash_command(
@@ -566,11 +600,11 @@ async def listrsps(ctx: interactions.SlashContext):
     dm_permission=False
 )
 async def delete_data(ctx: interactions.SlashContext):
-    guild_id = int(ctx.guild.id)
-    open(f"{bd.parent}/Guilds/{guild_id}/responses.json", "w")
-    f = open(f"{bd.parent}/Guilds/{guild_id}/mentions.json", "w")
+    
+    open(f"{bd.parent}/Guilds/{ctx.guild_id}/responses.json", "w")
+    f = open(f"{bd.parent}/Guilds/{ctx.guild_id}/mentions.json", "w")
     f.close()
-    bd.responses[guild_id], bd.mentions[guild_id] = [], []
+    bd.responses[ctx.guild_id], bd.mentions[ctx.guild_id] = [], []
     await ctx.send(content=bd.pass_str)
 
 
@@ -600,9 +634,8 @@ async def delete_data(ctx: interactions.SlashContext):
     opt_type=interactions.OptionType.BOOLEAN,
 )
 async def mod_add(ctx: interactions.SlashContext, trigger: str = "", response: str = "", exact: bool = True):
-    guild_id = int(ctx.guild.id)
 
-    error = bu.add_response(guild_id, bu.Response(exact, trigger.lower(), response, int(ctx.author.id)))
+    error = bu.add_response(ctx.guild_id, bu.Response(exact, trigger.lower(), response, int(ctx.author.id)))
     if not error:
         await ctx.send(content=bd.pass_str)
     else:
@@ -611,9 +644,9 @@ async def mod_add(ctx: interactions.SlashContext, trigger: str = "", response: s
 
     # Update responses
     if exact:
-        bd.responses[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/responses.json")
+        bd.responses[ctx.guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/responses.json")
     else:
-        bd.mentions[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/mentions.json")
+        bd.mentions[ctx.guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/mentions.json")
 
 
 @interactions.slash_command(
@@ -642,8 +675,8 @@ async def mod_add(ctx: interactions.SlashContext, trigger: str = "", response: s
     opt_type=interactions.OptionType.STRING
 )
 async def mod_remove(ctx: interactions.SlashContext, trigger: str = "", response: str = "", exact: bool = True):
-    guild_id = int(ctx.guild.id)
-    error = bu.rmv_response(guild_id, bu.Response(exact, trigger.lower(), response, "_"))
+    
+    error = bu.rmv_response(ctx.guild_id, bu.Response(exact, trigger.lower(), response))
     if not error:
         await ctx.send(content=bd.pass_str)
     else:
@@ -652,9 +685,9 @@ async def mod_remove(ctx: interactions.SlashContext, trigger: str = "", response
 
     # Update responses
     if exact:
-        bd.responses[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/responses.json")
+        bd.responses[ctx.guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/responses.json")
     else:
-        bd.mentions[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/mentions.json")
+        bd.mentions[ctx.guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/mentions.json")
 
 
 @interactions.slash_command(
@@ -665,10 +698,10 @@ async def mod_remove(ctx: interactions.SlashContext, trigger: str = "", response
     dm_permission=False
 )
 async def cfg_reset(ctx: interactions.SlashContext):
-    guild_id = int(ctx.guild.id)
-    with open(f"{bd.parent}/Guilds/{guild_id}/config.json", "w") as f:
+    
+    with open(f"{bd.parent}/Guilds/{ctx.guild_id}/config.json", "w") as f:
         json.dump(bd.default_config, f, indent=4)
-    bd.config[guild_id] = bd.default_config
+    bd.config[ctx.guild_id] = bd.default_config
     await ctx.send(content=bd.pass_str)
 
 
@@ -680,12 +713,12 @@ async def cfg_reset(ctx: interactions.SlashContext):
     dm_permission=False
 )
 async def cfg_view(ctx: interactions.SlashContext):
-    guild_id = int(ctx.guild.id)
+    
     await ctx.send(
-        content=f"Allow Phrases: {bd.config[guild_id]['ALLOW_PHRASES']}\n"
-        f"Limit Responses: {bd.config[guild_id]['LIMIT_USER_RESPONSES']}\n"
-        f"Response Limit # (Only if Limit Responses is True): {bd.config[guild_id]['MAX_USER_RESPONSES']}\n"
-        f"Restrict User Response Deleting: {bd.config[guild_id]['USER_ONLY_DELETE']}\n"
+        content=f"Allow Phrases: {bd.config[ctx.guild_id]['ALLOW_PHRASES']}\n"
+        f"Limit Responses: {bd.config[ctx.guild_id]['LIMIT_USER_RESPONSES']}\n"
+        f"Response Limit # (Only if Limit Responses is True): {bd.config[ctx.guild_id]['MAX_USER_RESPONSES']}\n"
+        f"Restrict User Response Deleting: {bd.config[ctx.guild_id]['USER_ONLY_DELETE']}\n"
     )
 
 
@@ -703,10 +736,10 @@ async def cfg_view(ctx: interactions.SlashContext):
     required=True
 )
 async def cfg_user_perms(ctx: interactions.SlashContext, enable: bool = True):
-    guild_id = int(ctx.guild.id)
-    bd.config[guild_id]["USER_ONLY_DELETE"] = not enable
-    with open(f"{bd.parent}/Guilds/{guild_id}/config.json", "w") as f:
-        json.dump(bd.config[guild_id], f, indent=4)
+    
+    bd.config[ctx.guild_id]["USER_ONLY_DELETE"] = not enable
+    with open(f"{bd.parent}/Guilds/{ctx.guild_id}/config.json", "w") as f:
+        json.dump(bd.config[ctx.guild_id], f, indent=4)
     await ctx.send(content=bd.pass_str)
 
 
@@ -730,13 +763,13 @@ async def cfg_user_perms(ctx: interactions.SlashContext, enable: bool = True):
     required=False
 )
 async def cfg_set_limit(ctx: interactions.SlashContext, enable: bool = True, limit: int = 10):
-    guild_id = int(ctx.guild.id)
+    
     if limit < 1:
         limit = 1
-    bd.config[guild_id]["LIMIT_USER_RESPONSES"] = enable
-    bd.config[guild_id]["MAX_USER_RESPONSES"] = limit
-    with open(f"{bd.parent}/Guilds/{guild_id}/config.json", "w") as f:
-        json.dump(bd.config[guild_id], f, indent=4)
+    bd.config[ctx.guild_id]["LIMIT_USER_RESPONSES"] = enable
+    bd.config[ctx.guild_id]["MAX_USER_RESPONSES"] = limit
+    with open(f"{bd.parent}/Guilds/{ctx.guild_id}/config.json", "w") as f:
+        json.dump(bd.config[ctx.guild_id], f, indent=4)
     await ctx.send(content=bd.pass_str)
 
 
@@ -754,10 +787,10 @@ async def cfg_set_limit(ctx: interactions.SlashContext, enable: bool = True, lim
     required=True
 )
 async def cfg_allow_phrases(ctx: interactions.SlashContext, enable: bool = True):
-    guild_id = int(ctx.guild.id)
-    bd.config[guild_id]["ALLOW_PHRASES"] = enable
-    with open(f"{bd.parent}/Guilds/{guild_id}/config.json", "w") as f:
-        json.dump(bd.config[guild_id], f, indent=4)
+    
+    bd.config[ctx.guild_id]["ALLOW_PHRASES"] = enable
+    with open(f"{bd.parent}/Guilds/{ctx.guild_id}/config.json", "w") as f:
+        json.dump(bd.config[ctx.guild_id], f, indent=4)
     await ctx.send(content=bd.pass_str)
 
 
@@ -794,32 +827,31 @@ async def on_ready():
         bu.load_config(guild)
 
         # Load guild responses
-        guild_id = int(guild.id)
 
-        bd.mentions[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/mentions.json")
-        bd.responses[guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{guild_id}/responses.json")
+        bd.mentions[guild.id] = bu.load_responses(f"{bd.parent}/Guilds/{guild.id}/mentions.json")
+        bd.responses[guild.id] = bu.load_responses(f"{bd.parent}/Guilds/{guild.id}/responses.json")
         print(
             Fore.WHITE + f"{strftime(bd.date_format)}:  " +
             Fore.GREEN + f"Responses loaded for {guild.name}" + Fore.RESET
         )
 
         # Load trains games
-        for name in listdir(f"{bd.parent}/Guilds/{guild_id}/Trains"):
+        for name in listdir(f"{bd.parent}/Guilds/{guild.id}/Trains"):
             try:
                 game = await bu.load_game(
-                    filepath=f"{bd.parent}/Guilds/{guild_id}/Trains/{name}", bot=bot, guild=guild, active_only=True
+                    filepath=f"{bd.parent}/Guilds/{guild.id}/Trains/{name}", bot=bot, guild=guild, active_only=True
                 )
                 if game.active:
-                    bd.active_trains[guild_id] = game
+                    bd.active_trains[guild.id] = game
                     break
             except FileNotFoundError:
                 try:
-                    rmtree(f"{bd.parent}/Guilds/{guild_id}/Trains/{name}")
+                    rmtree(f"{bd.parent}/Guilds/{guild.id}/Trains/{name}")
                 except PermissionError:
                     pass
                 print(
                     Fore.WHITE + f'{strftime(bd.date_format)} :  ' +
-                    Fore.YELLOW + f"Invalid game \"{name}\" in guild {guild_id}, attempted delete." + Fore.RESET
+                    Fore.YELLOW + f"Invalid game \"{name}\" in guild {guild.id}, attempted delete." + Fore.RESET
                 )
 
     await bot.change_presence(status=interactions.Status.ONLINE, activity="/response")
