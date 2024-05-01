@@ -1,6 +1,6 @@
 # Bot functions
-# Version 3.2.3
-# Ben Samans, Updated 4/24/2024
+# Version 3.2.4
+# Ben Samans, Updated 4/30/2024
 
 import interactions
 from emoji import emojize, demojize
@@ -1065,34 +1065,35 @@ def add_response(guild_id, rsp) -> bool:
     return False
 
 
-def rmv_response(guild_id, rsp) -> bool:
-    f_name: str = "responses.json" if rsp.exact else "mentions.json"
+def rmv_response(guild_id: int, delete_req: Response) -> bool:
+
+    f_name: str = "responses.json" if delete_req.exact else "mentions.json"
     try:
         with open(f"{bd.parent}/Guilds/{guild_id}/{f_name}", "r") as f:
-            try:
-                lines: list = json.load(f)
-            except json.decoder.JSONDecodeError:
-                return True
-        to_del: list = [i for i, x in enumerate(lines) if x["trig"] == demojize(rsp.trig)]  # All matching entries
-        if len(to_del) > 1:
-            to_del: list = [
-                i for i, x in enumerate(lines) if
-                x["trig"] == demojize(rsp.trig) and x["text"].lower() == demojize(rsp.text.lower())
-            ]
-        if not to_del:
-            return True
-        k: int = 0
-        for i in to_del:
-            lines.pop(i - k)
-            k += 1
-        with open(f"{bd.parent}/Guilds/{guild_id}/{f_name}", "w") as f:
-            if not lines:
-                f.write("[]")
-            else:
-                json.dump(lines, f, indent=4)
-
-    except FileNotFoundError or ValueError:
+            lines: list[dict] = json.load(f)
+    except json.decoder.JSONDecodeError or FileNotFoundError:
+        print(Fore.YELLOW + f"Error for {f_name} in server {guild_id}", Fore.RESET)
         return True
+
+    # Search for desired index of response to delete. Filter by trigger, then text,
+    # then exact until there is only 1 option. Return an error if nothing matches the delete request
+    to_del: list = [i for i, rsp in enumerate(lines) if rsp["trig"].startswith(demojize(delete_req.trig))]
+
+    if len(to_del) > 1:
+        to_del: list = [i for i in to_del if lines[i]["text"].startswith(demojize(delete_req.text))]
+    if len(to_del) > 1:
+        to_del: list = [i for i in to_del if lines[i]["exact"] == delete_req.exact]
+    if not to_del:
+        return True
+
+    lines.pop(to_del[0])
+
+    with open(f"{bd.parent}/Guilds/{guild_id}/{f_name}", "w") as f:
+        if not lines:
+            f.write("[]")
+        else:
+            json.dump(lines, f, indent=4)
+
     return False
 
 

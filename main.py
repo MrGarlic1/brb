@@ -1,7 +1,7 @@
 """
 Ben Samans
-BRBot version 3.2.3
-Updated 4/24/2024
+BRBot version 3.2.4
+Updated 4/30/2024
 """
 
 from time import strftime
@@ -293,9 +293,7 @@ async def autocomplete(ctx: interactions.AutocompleteContext):
     choices = list(map(bu.autocomplete_filter, games))
     if len(choices) > 25:
         choices = choices[:24]
-    await ctx.send(
-        choices=choices
-    )
+    await ctx.send(choices=choices)
 
 
 @interactions.slash_command(
@@ -405,9 +403,7 @@ async def autocomplete(ctx: interactions.AutocompleteContext) -> None:
     choices = list(map(bu.autocomplete_filter, games))
     if len(choices) > 25:
         choices = choices[:24]
-    await ctx.send(
-        choices=choices
-    )
+    await ctx.send(choices=choices)
 
 
 @interactions.slash_command(
@@ -553,9 +549,7 @@ async def autocomplete(ctx: interactions.AutocompleteContext):
     choices = list(map(bu.autocomplete_filter, trigs))
     if len(choices) > 25:
         choices = choices[0:24]
-    await ctx.send(
-         choices=choices
-    )
+    await ctx.send(choices=choices)
 
 
 @remove_response.autocomplete("response")
@@ -568,9 +562,7 @@ async def autocomplete(ctx: interactions.AutocompleteContext):
     choices = list(map(bu.autocomplete_filter, responses))
     if len(choices) > 25:
         choices = choices[0:24]
-    await ctx.send(
-        choices=choices
-    )
+    await ctx.send(choices=choices)
 
 
 @interactions.slash_command(
@@ -692,7 +684,7 @@ async def mod_remove(ctx: interactions.SlashContext, trigger: str = "", response
         bd.mentions[ctx.guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/mentions.json")
 
 
-@remove_response.autocomplete("trigger")
+@mod_remove.autocomplete("trigger")
 async def autocomplete(ctx: interactions.AutocompleteContext):
     trigs: list = []
     # Add autocomplete options if they match input text, remove duplicates. 25 maximum values (discord limit)
@@ -702,12 +694,10 @@ async def autocomplete(ctx: interactions.AutocompleteContext):
     choices = list(map(bu.autocomplete_filter, trigs))
     if len(choices) > 25:
         choices = choices[0:24]
-    await ctx.send(
-         choices=choices
-    )
+    await ctx.send(choices=choices)
 
 
-@remove_response.autocomplete("response")
+@mod_remove.autocomplete("response")
 async def autocomplete(ctx: interactions.AutocompleteContext):
     # Add autocomplete response options for the specified trigger.
     responses = [
@@ -717,9 +707,7 @@ async def autocomplete(ctx: interactions.AutocompleteContext):
     choices = list(map(bu.autocomplete_filter, responses))
     if len(choices) > 25:
         choices = choices[0:24]
-    await ctx.send(
-        choices=choices
-    )
+    await ctx.send(choices=choices)
 
 
 @interactions.slash_command(
@@ -862,6 +850,7 @@ async def on_ready():
 
         bd.mentions[guild.id] = bu.load_responses(f"{bd.parent}/Guilds/{guild.id}/mentions.json")
         bd.responses[guild.id] = bu.load_responses(f"{bd.parent}/Guilds/{guild.id}/responses.json")
+
         print(
             Fore.WHITE + f"{strftime(bd.date_format)}:  " +
             Fore.GREEN + f"Responses loaded for {guild.name}" + Fore.RESET
