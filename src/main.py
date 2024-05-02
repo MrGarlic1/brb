@@ -816,6 +816,8 @@ async def cfg_allow_phrases(ctx: interactions.SlashContext, enable: bool = True)
 
 @interactions.listen()
 async def on_guild_join(event: interactions.api.events.GuildJoin):
+    if not path.exists(f"{bd.parent}/Guilds"):
+        mkdir(f"{bd.parent}/Guilds")
     guild = event.guild
     if not path.exists(f'{bd.parent}/Guilds/{guild.id}'):
         mkdir(f'{bd.parent}/Guilds/{guild.id}')
