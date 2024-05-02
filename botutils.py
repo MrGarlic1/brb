@@ -1118,6 +1118,7 @@ def load_responses(file) -> list:
     except FileNotFoundError:
         f = open(file, "w")
         f.close()
+        lines: list = []
     return lines
 
 

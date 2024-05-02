@@ -21,8 +21,8 @@ bot = interactions.Client(
     token=bd.token,
     intents=interactions.Intents.DEFAULT | interactions.Intents.MESSAGE_CONTENT | interactions.Intents.GUILDS,
     sync_interactions=True,
-    # delete_unused_application_cmds=True,
-    # debug_scope=895549687417958410
+    delete_unused_application_cmds=True,
+    debug_scope=895549687417958410
 )
 
 
@@ -445,11 +445,11 @@ async def send_rules(ctx: interactions.SlashContext):
 )
 @interactions.slash_option(
     name="exact",
-    description="Only respond if the message is exactly the trigger phrase (default true)",
-    required=False,
+    description="Only respond if the message is exactly the trigger phrase",
+    required=True,
     opt_type=interactions.OptionType.BOOLEAN,
 )
-async def add_response(ctx: interactions.SlashContext, trigger: str = "", response: str = "", exact: bool = True):
+async def add_response(ctx: interactions.SlashContext, trigger: str, response: str, exact: bool):
 
     # Config permission checks
     if not bd.config[ctx.guild_id]["ALLOW_PHRASES"] and not exact:
@@ -621,11 +621,11 @@ async def delete_data(ctx: interactions.SlashContext):
 )
 @interactions.slash_option(
     name="exact",
-    description="Only respond if the message is exactly the trigger phrase (default true)",
-    required=False,
+    description="Only respond if the message is exactly the trigger phrase",
+    required=True,
     opt_type=interactions.OptionType.BOOLEAN,
 )
-async def mod_add(ctx: interactions.SlashContext, trigger: str = "", response: str = "", exact: bool = True):
+async def mod_add(ctx: interactions.SlashContext, trigger: str, response: str, exact: bool):
 
     error = bu.add_response(ctx.guild_id, bu.Response(exact, trigger.lower(), response, int(ctx.author.id)))
     if not error:
