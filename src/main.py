@@ -1,7 +1,7 @@
 """
 Ben Samans
-BRBot version 3.2.4
-Updated 4/30/2024
+BRBot version 3.3.0
+Updated 5/29/2024
 """
 
 from time import strftime
@@ -14,15 +14,14 @@ import interactions
 import json
 from datetime import datetime
 from os import listdir, mkdir, path
-from shutil import rmtree
 import io
+from shutil import copytree, ignore_patterns
 
 bot = interactions.Client(
     token=bd.token,
     intents=interactions.Intents.DEFAULT | interactions.Intents.MESSAGE_CONTENT | interactions.Intents.GUILDS,
     sync_interactions=True,
-    # delete_unused_application_cmds=True,
-    # debug_scope=895549687417958410
+    delete_unused_application_cmds=True,
 )
 
 
@@ -111,6 +110,7 @@ async def create_trains(
         game.gen_player_locations(river_ring=river_ring)
     except game.BoardGenError as e:
         await ctx.send(content=str(e))
+        return True
 
     # Push updates to player boards
     await game.update_boards_after_create(ctx=ctx)
@@ -157,6 +157,13 @@ async def record_shot(ctx: interactions.SlashContext, row: int, column: int, gen
 
     game = bd.active_trains[ctx.guild_id]
 
+    # This is bad and needs to be reworked
+    copytree(
+        f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{game.name}",
+        f"{bd.parent}/Guilds/{ctx.guild_id}/TrainBackups/[BACKUP] {game.name}",
+        dirs_exist_ok=True,
+        ignore=ignore_patterns("*.png")
+    )
     # Get player, validate shot
     sender_idx, player = game.get_player(int(ctx.author_id))
     if not game.is_valid_shot(player, row, column):
@@ -164,21 +171,8 @@ async def record_shot(ctx: interactions.SlashContext, row: int, column: int, gen
         return True
 
     # Update board, player rails
-    game.board[(row, column)].rails.append(player.tag)
-    game.players[sender_idx].shots.append(
-        bu.TrainShot(row=row, col=column, genre=genre, info=info, time=datetime.now().strftime(bd.date_format))
-    )
-    game.update_visible_tiles(sender_idx, row, column)
-    if game.board[(row, column)].terrain == "river":
-        rails = 2
-    else:
-        rails = 1
-    if game.board[(row, column)].zone == genre:
-        rails = rails*0.5
-    game.players[sender_idx].rails += rails
-    if (row, column) == player.end:
-        game.players[sender_idx].done = True
-        game.players[sender_idx].donetime = datetime.now().strftime("%Y%m%d%H%M%S")
+    shot = bu.TrainShot(row=row, col=column, genre=genre, info=info, time=datetime.now().strftime(bd.date_format))
+    game.update_player_stats_after_shot(sender_idx=sender_idx, player=player, shot=shot)
 
     # Save/update games
     await game.update_boards_after_shot(
@@ -202,43 +196,26 @@ async def undo_shot(ctx: interactions.SlashContext):
 
     game = bd.active_trains[ctx.guild_id]
 
+    # This is bad and needs to be reworked
+    copytree(
+        f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{game.name}",
+        f"{bd.parent}/Guilds/{ctx.guild_id}/TrainBackups/[BACKUP] {game.name}",
+        dirs_exist_ok=True,
+        ignore=ignore_patterns("*.png")
+    )
+
     sender_idx, player = game.get_player(ctx.author_id)
     if not player.shots:
         await ctx.send(content="You have not taken any shots yet!", ephemeral=True)
         return True
 
-    row = game.players[sender_idx].shots[-1].row
-    column = game.players[sender_idx].shots[-1].col
-    genre = game.players[sender_idx].shots[-1]
-
     # Delete last shot from record, update active player status
-    game.board[(row, column)].rails.remove(player.tag)
-    del game.players[sender_idx].shots[-1]
-    if game.players[sender_idx].done:
-        game.players[sender_idx].done = False
-        game.players[sender_idx].donetime = None
-
-    # Update rendering of tiles to remove the latest shot and re-render the shot before
-    game.update_visible_tiles(
-        player_idx=sender_idx, shot_row=row, shot_col=column, remove=True
-    )
-    game.update_visible_tiles(
-        player_idx=sender_idx, shot_row=game.players[sender_idx].shots[-1].row,
-        shot_col=game.players[sender_idx].shots[-1].col, remove=True
-    )
-
-    # Update player rails
-    if game.board[(row, column)].terrain == "river":
-        rails = 2
-    else:
-        rails = 1
-    if game.board[(row, column)].zone == genre:
-        rails = rails*0.5
-    game.players[sender_idx].rails -= rails
+    shot = game.players[sender_idx].shots[-1]
+    game.update_player_stats_after_shot(sender_idx=sender_idx, player=player, undo=True, shot=shot)
 
     # Save/update games
     await game.update_boards_after_shot(
-        ctx=ctx, row=row, column=column
+        ctx=ctx, row=shot.row, column=shot.col
     )
 
 
@@ -270,6 +247,8 @@ async def trains_stats(ctx: interactions.SlashContext, name: str = None):
             )
         except FileNotFoundError:
             await ctx.send(content="Game name does not exist.")
+            return True
+        except TypeError or ValueError:
             return True
     await ctx.defer()
 
@@ -350,11 +329,7 @@ async def delete_trains_game(ctx: interactions.SlashContext, keep_files: bool):
         game.active = False
         game.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{game.name}")
     else:
-        try:
-            rmtree(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{game.name}")
-        except PermissionError:
-            await ctx.send(content="Could not delete game. Try again in a couple of minutes.")
-            return True
+        bu.del_game_files(guild_id=ctx.guild_id, game_name=game.name)
     del bd.active_trains[ctx.guild_id]
     await ctx.send(content=bd.pass_str)
     return False
@@ -816,8 +791,6 @@ async def cfg_allow_phrases(ctx: interactions.SlashContext, enable: bool = True)
 
 @interactions.listen()
 async def on_guild_join(event: interactions.api.events.GuildJoin):
-    if not path.exists(f"{bd.parent}/Guilds"):
-        mkdir(f"{bd.parent}/Guilds")
     guild = event.guild
     if not path.exists(f'{bd.parent}/Guilds/{guild.id}'):
         mkdir(f'{bd.parent}/Guilds/{guild.id}')
@@ -867,15 +840,14 @@ async def on_ready():
                 if game.active:
                     bd.active_trains[guild.id] = game
                     break
-            except FileNotFoundError:
-                try:
-                    rmtree(f"{bd.parent}/Guilds/{guild.id}/Trains/{name}")
-                except PermissionError:
-                    pass
+            except (FileNotFoundError, TypeError, ValueError):
+                bu.del_game_files(guild_id=guild.id, game_name=name)
                 print(
                     Fore.WHITE + f'{strftime(bd.date_format)} :  ' +
                     Fore.YELLOW + f"Invalid game \"{name}\" in guild {guild.id}, attempted delete." + Fore.RESET
                 )
+            except NotADirectoryError:
+                pass
 
     await bot.change_presence(status=interactions.Status.ONLINE, activity="/response")
 

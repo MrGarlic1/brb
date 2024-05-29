@@ -1,6 +1,6 @@
 # Bot functions
-# Version 3.2.4
-# Ben Samans, Updated 4/30/2024
+# Version 3.3.0
+# Ben Samans, Updated 5/29/2024
 
 import interactions
 from emoji import emojize, demojize
@@ -18,6 +18,7 @@ import io
 import matplotlib.font_manager
 from PIL import Image, ImageFont, ImageDraw
 from pilmoji import Pilmoji
+from shutil import rmtree
 
 
 # Class Definitions
@@ -939,6 +940,53 @@ class TrainGame:
             return "Could not write the board. Try again in a few seconds..."
         return None
 
+    def update_player_stats_after_shot(
+            self, sender_idx: int, player: TrainPlayer, undo: bool = False, shot: TrainShot = None
+    ):
+        check_gem_time = False
+        if self.board[(shot.row, shot.col)].resource == bd.emoji["gems"]:
+            shot_list = player.shots[:-1] if undo else player.shots
+            if not bd.emoji["gems"] in [self.board[(shot.row, shot.col)].resource for shot in shot_list]:
+                check_gem_time = True
+
+        if undo:
+            shot = player.shots[-1]
+            self.board[(shot.row, shot.col)].rails.remove(player.tag)
+            del self.players[sender_idx].shots[-1]
+            if self.players[sender_idx].done:
+                self.players[sender_idx].done = False
+                self.players[sender_idx].donetime = None
+            if check_gem_time:
+                self.players[sender_idx].score.pop("GemTime")
+        else:
+            self.board[(shot.row, shot.col)].rails.append(player.tag)
+            self.players[sender_idx].shots.append(shot)
+            if (shot.row, shot.col) == player.end:
+                self.players[sender_idx].done = True
+                self.players[sender_idx].donetime = datetime.now().strftime("%Y%m%d%H%M%S")
+            if check_gem_time:
+                self.players[sender_idx].score["GemTime"] = int(
+                    datetime.strptime(shot.time, bd.date_format).timestamp()
+                )
+
+        self.update_visible_tiles(player_idx=sender_idx, shot_row=shot.row, shot_col=shot.col, remove=undo)
+        if undo:
+            shot = player.shots[-1]
+            self.update_visible_tiles(player_idx=sender_idx, shot_row=shot.row, shot_col=shot.col)
+            self.update_visible_tiles(player_idx=sender_idx, shot_row=player.start[0], shot_col=player.start[1])
+            self.update_visible_tiles(player_idx=sender_idx, shot_row=player.end[0], shot_col=player.end[1])
+
+        rails = 2 if self.board[(shot.row, shot.col)].terrain == "river" else 1
+
+        if self.board[(shot.row, shot.col)].zone == shot.genre:
+            rails *= 0.5
+        if undo:
+            self.players[sender_idx].rails -= rails
+        else:
+            self.players[sender_idx].rails += rails
+
+    def calc_player_scores(self):
+        pass
 
 # Function Definitions
 
@@ -966,7 +1014,7 @@ def save_zones_img(filepath: str) -> None:
 
 async def load_game(
         filepath: str, bot: interactions.Client, guild: interactions.Guild, active_only: bool = False
-) -> TrainGame:
+) -> TrainGame | None:
     with open(f"{filepath}/gamedata.json", "r") as f:
         game_dict = json.load(f)
 
@@ -994,7 +1042,9 @@ async def load_game(
         shot_list: list = []
         for shot in player["shots"]:
             shot_list.append(
-                TrainShot(row=shot["row"], col=shot["col"], genre=shot["genre"], info=shot["info"], time=shot["time"])
+                TrainShot(
+                    row=shot["row"], col=shot["col"], genre=shot["genre"], info=shot["info"], time=shot["time"]
+                )
             )
         member = await guild.fetch_member(player["member_id"])
         player_list.append(
@@ -1016,6 +1066,13 @@ async def load_game(
         size=tuple(game_dict["size"])
     )
     return game
+
+
+def del_game_files(guild_id: int, game_name: str):
+    try:
+        rmtree(f"{bd.parent}/Guilds/{guild_id}/Trains/{game_name}")
+    except PermissionError:
+        pass
 
 
 def dict_to_rsp(rsp_dict: dict) -> Response | None:
