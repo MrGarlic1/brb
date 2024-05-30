@@ -1,5 +1,5 @@
 # Bot functions
-# Version 3.3.0
+# Version 3.3.1
 # Ben Samans, Updated 5/29/2024
 
 import interactions
@@ -493,7 +493,11 @@ class TrainGame:
             for col in range(shot_col - render_dist, shot_col + render_dist + 1):
                 if (row, col) in self.players[player_idx].vis_tiles:  # Already rendered tiles
                     if remove:
-                        self.players[player_idx].vis_tiles.remove((row, col))
+                        if not any(
+                                (abs(player_shot.row - row) <= 2 and abs(player_shot.col - col) <= 2
+                                 for player_shot in self.players[player_idx].shots)
+                        ):
+                            self.players[player_idx].vis_tiles.remove((row, col))
                     else:
                         continue
                 elif self.in_bounds(row, col):
@@ -986,7 +990,52 @@ class TrainGame:
             self.players[sender_idx].rails += rails
 
     def calc_player_scores(self):
-        pass
+
+        def add_to_score(p: TrainPlayer, key: str, val: int):
+            if key in player.score:
+                p.score[key] += val
+            else:
+                p.score[key] = val
+
+        self.players.sort(key=lambda p: p.donetime)
+
+        for idx, player in enumerate(self.players):
+            if idx == 0:
+                player.score["speed_bonus"] = 2
+            elif idx == 1:
+                player.score["speed_bonus"] = 1
+
+            has_city = False
+            for shot in player.shots:
+                shot_tile = self.board[(shot.row, shot.col)]
+                if len(shot_tile.tags) > 1:
+                    add_to_score(p=player, key="intersects", val=1)
+
+                if shot_tile.resource == bd.emoji["city"]:
+                    has_city = True
+
+                if shot_tile.resource == bd.emoji["wheat"]:
+                    add_to_score(p=player, key="wheat", val=1)
+
+                elif shot_tile.resource == bd.emoji["wood"]:
+                    add_to_score(p=player, key="wood", val=2)
+
+                elif shot_tile.resource == bd.emoji["gems"]:
+                    add_to_score(p=player, key="gems", val=2)
+
+                elif shot_tile.resource == bd.emoji["prison"]:
+                    pass
+
+                elif shot_tile.resource == bd.emoji["house"]:
+                    add_to_score(p=player, key="house", val=1)
+
+            if has_city and "wheat" in player.score:
+                player.score["wheat"] += 2
+            if has_city and "house" in player.score:
+                player.score["house"] += 2
+
+            player.score["rails"] = int(-1*(player.rails-30)/2)
+
 
 # Function Definitions
 

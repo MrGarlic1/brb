@@ -1,6 +1,6 @@
 """
 Ben Samans
-BRBot version 3.3.0
+BRBot version 3.3.1
 Updated 5/29/2024
 """
 
@@ -39,7 +39,7 @@ bot = interactions.Client(
 )
 @interactions.slash_option(
     name="name",
-    description="Bingo game name",
+    description="Trains game name",
     required=True,
     opt_type=interactions.OptionType.STRING
 )
@@ -63,7 +63,7 @@ async def create_trains(
 
     # Return errors if game is active or invalid name/width/height
     if ctx.guild_id in bd.active_trains:
-        await ctx.send(content=f"There game ({bd.active_trains[ctx.guild_id].name}) is already active in this server.")
+        await ctx.send(content=f"The game \"{bd.active_trains[ctx.guild_id].name}\" is already active in this server.")
         return True
     if path.exists(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{name}"):
         await ctx.send(content="Name already exists!")
