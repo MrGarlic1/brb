@@ -1,7 +1,6 @@
 """
 Ben Samans
-BRBot version 3.3.1
-Updated 5/29/2024
+main.py
 """
 
 from time import strftime

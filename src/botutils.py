@@ -1,6 +1,8 @@
-# Bot functions
-# Version 3.3.0
-# Ben Samans, Updated 5/29/2024
+"""
+Ben Samans
+botutils.py
+Bot functions
+"""
 
 import interactions
 from emoji import emojize, demojize
