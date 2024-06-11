@@ -1,5 +1,5 @@
 # Bot functions
-# Version 3.3.1
+# Version 3.3.0
 # Ben Samans, Updated 5/29/2024
 
 import interactions
@@ -737,15 +737,19 @@ class TrainGame:
         # Total shots/in-zone shots
         total_shots: int = len(player.shots)
         in_zone_shots: int = 0
-        shot_time = datetime.strptime(self.date, bd.date_format)
+        prev_shot_time = datetime.strptime(self.date, bd.date_format)
         time_between_shots_list = []
+
+        # Get time deltas for all previous shots and current time, take average
         for shot_idx, shot in enumerate(player.shots):
             if shot.genre == self.board[(shot.row, shot.col)].zone:
                 in_zone_shots += 1
+            time_between_shots_list.append(
+                (datetime.strptime(shot.time, bd.date_format) - prev_shot_time).total_seconds()
+            )
+            prev_shot_time = datetime.strptime(shot.time, bd.date_format)
 
-            time_between_shots_list.append((datetime.strptime(shot.time, bd.date_format) - shot_time).total_seconds())
-            shot_time = datetime.strptime(shot.time, bd.date_format)
-
+        time_between_shots_list.append((datetime.now() - prev_shot_time).total_seconds())
         avg_secs_between_shots = round(sum(time_between_shots_list)/len(time_between_shots_list))
 
         embed.add_field(name="🧮 Total Shots", value=total_shots, inline=True)
