@@ -79,7 +79,6 @@ def load_config(guild: interactions.Guild) -> None:
 
     # Create new file if config is missing
     except FileNotFoundError:
-        makedirs(f"{bd.parent}/Guilds/{guild.id}")
         with open(f"{bd.parent}/Guilds/{guild.id}/config.json", "w") as f:
             json.dump(bd.default_config, f, indent=4)
             bd.config[int(guild.id)] = bd.default_config
