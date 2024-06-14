@@ -21,3 +21,22 @@ Response bot for discord, now with trains!
 - /response [add/remove]
 - /mod [add/remove/deleteRspData/deletetrain/restoretrain]
 - /config [allowphrases/limitresponses/userperms/view/reset]
+
+## Installation
+### MacOS/Linux
+1. Download appropriate release package
+2. Set your discord token in .env
+3. Run autorun.command/autorun.sh
+
+### Windows
+1. Download appropriate release package
+2. Set your parent directory and token in .env
+3. Run main.exe
+
+### Build from source
+1. Clone repo: `git clone https://github.com/MrGarlic1/Brb`
+2. Change dir: `cd Brb`
+3. Create and activate venv: `python -m venv venv` `source ./venv/bin/activate`
+4. Install requirements: `pip install -r requirements.txt`
+5. Edit .env file with token/parent parameters
+6. Run bot: `python src/main.py`
