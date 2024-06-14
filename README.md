@@ -38,5 +38,5 @@ Response bot for discord, now with trains!
 2. Change dir: `cd Brb`
 3. Create and activate venv: `python -m venv venv` `source ./venv/bin/activate`
 4. Install requirements: `pip install -r requirements.txt`
-5. Edit .env file with bot token token
+5. Edit .env file with bot token
 6. Run bot: `python src/main.py`
