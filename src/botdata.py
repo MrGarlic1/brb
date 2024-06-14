@@ -1,6 +1,6 @@
 # File containing global variables for bot.
 
-from os import environ
+from os import environ, listdir
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -14,6 +14,8 @@ default_config: dict = {
 }
 token: str = environ["TOKEN"]
 parent: str = environ["PARENT"]
+assert "main.py" in listdir(parent), f"Invalid parent directory {parent}, ensure parent is set to where main.py is."
+
 bot_id: int = 887530423826145310
 bot_avatar_url: str = "https://cdn.discordapp.com/attachments/895549688026124321/1103188621193924708/ursa_cm.png"
 train_zones_url: str = "https://i.imgur.com/AmbDhB7.png"
