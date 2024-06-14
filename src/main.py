@@ -23,7 +23,6 @@ bot = interactions.Client(
     intents=interactions.Intents.DEFAULT | interactions.Intents.MESSAGE_CONTENT | interactions.Intents.GUILDS,
     sync_interactions=True,
     delete_unused_application_cmds=True,
-    debug_scope=895549687417958410
 )
 
 
