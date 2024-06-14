@@ -1,6 +1,6 @@
 # File containing global variables for bot.
 
-from os import environ, listdir
+from os import environ, listdir, path
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -13,7 +13,7 @@ default_config: dict = {
     "USER_ONLY_DELETE": False,
 }
 token: str = environ["TOKEN"]
-parent: str = environ["PARENT"]
+parent: str = path.dirname(path.realpath(__file__))
 assert "main.py" in listdir(parent), f"Invalid parent directory {parent}, ensure parent is set to where main.py is."
 
 bot_id: int = 887530423826145310
