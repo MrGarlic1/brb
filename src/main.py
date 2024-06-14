@@ -14,7 +14,7 @@ import asyncio
 import interactions
 import json
 from datetime import datetime
-from os import listdir, mkdir, path
+from os import listdir, mkdir, path, makedirs
 import io
 from shutil import copytree, ignore_patterns
 
@@ -869,8 +869,7 @@ async def cfg_allow_phrases(ctx: interactions.SlashContext, enable: bool = True)
 async def on_guild_join(event: interactions.api.events.GuildJoin):
     guild = event.guild
     if not path.exists(f'{bd.parent}/Guilds/{guild.id}'):
-        mkdir(f'{bd.parent}/Guilds/{guild.id}')
-        mkdir(f'{bd.parent}/Guilds/{guild.id}/Trains')
+        makedirs(f'{bd.parent}/Guilds/{guild.id}/Trains')
         print(
             Fore.WHITE + '{strftime("%Y-%m-%d %H:%M:%S")}:  ' +
             Fore.GREEN + f'Guild folder for guild {guild.id} created successfully.' + Fore.RESET
