@@ -30,7 +30,7 @@ Response bot for discord, now with trains!
 
 ### Windows
 1. Download appropriate release package
-2. Set your parent directory and token in .env
+2. Set your discord token in .env
 3. Run main.exe
 
 ### Build from source
@@ -38,5 +38,5 @@ Response bot for discord, now with trains!
 2. Change dir: `cd Brb`
 3. Create and activate venv: `python -m venv venv` `source ./venv/bin/activate`
 4. Install requirements: `pip install -r requirements.txt`
-5. Edit .env file with token/parent parameters
+5. Edit .env file with bot token token
 6. Run bot: `python src/main.py`
