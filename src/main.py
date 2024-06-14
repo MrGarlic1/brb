@@ -196,6 +196,48 @@ async def view_trains_inventory(ctx: interactions.SlashContext):
 
 @interactions.slash_command(
     name="trains",
+    sub_cmd_name="use",
+    sub_cmd_description="Use a item in your inventory.",
+    dm_permission=False
+)
+@interactions.slash_option(
+    name="item",
+    description="Specify which item to use",
+    required=True,
+    opt_type=interactions.OptionType.STRING,
+    choices=[interactions.SlashCommandChoice(name="Bucket", value="Bucket")]
+)
+@interactions.slash_option(
+    name="row",
+    description="Shot row",
+    required=True,
+    opt_type=interactions.OptionType.INTEGER
+)
+@interactions.slash_option(
+    name="column",
+    description="Shot column",
+    required=True,
+    opt_type=interactions.OptionType.INTEGER
+)
+async def trains_use_bucket(ctx: interactions.SlashContext, item: str, row: int, column: int):
+    if ctx.guild_id not in bd.active_trains:
+        await ctx.send(content="There is no active game! To make one, use /trains newgame", ephemeral=True)
+        return True
+
+    game = bd.active_trains[ctx.guild_id]
+
+    if item == "Bucket":
+        err = game.use_bucket(ctx=ctx, row=row, col=column)
+        if err:
+            await ctx.send(content=bd.fail_str)
+            return True
+        await game.update_boards_after_shot(
+            ctx=ctx, row=row, column=column
+        )
+
+
+@interactions.slash_command(
+    name="trains",
     sub_cmd_name="shot",
     sub_cmd_description="Make a trains shot",
     dm_permission=False
@@ -287,6 +329,11 @@ async def undo_shot(ctx: interactions.SlashContext):
 
     # Delete last shot from record, update active player status
     shot = game.players[sender_idx].shots[-1]
+
+    if (shot.row, shot.col) in player.shops_used:
+        await ctx.send(content="You have bought an item at this shop, can not undo shot.")
+        return True
+
     game.update_player_stats_after_shot(sender_idx=sender_idx, player=player, undo=True, shot=shot)
 
     # Save/update games

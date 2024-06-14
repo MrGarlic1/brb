@@ -64,7 +64,7 @@ class TrainPlayer:
             self, member: interactions.Member = None, tag: str = None, dmchannel: interactions.DMChannel = None,
             rails: int = 0, shots: list[TrainShot] = None, vis_tiles: list[tuple] = None, score: dict = None,
             start: tuple = None, end: tuple = None, done: bool = False, donetime: str = None,
-            inventory: dict = None
+            inventory: dict = None, shops_used: list[tuple[int, int]] = None
     ):
         if vis_tiles is None:
             vis_tiles = []
@@ -74,6 +74,8 @@ class TrainPlayer:
             shots = []
         if inventory is None:
             inventory = {}
+        if shops_used is None:
+            shops_used = []
         self.member = member
         self.tag = tag
         self.done = done
@@ -86,6 +88,7 @@ class TrainPlayer:
         self.donetime = donetime
         self.vis_tiles = vis_tiles
         self.inventory = inventory
+        self.shops_used: list[tuple[int, int]] = shops_used
 
     def asdict(self) -> dict:
         shot_list = []
@@ -108,6 +111,12 @@ class TrainPlayer:
             else:
                 shot_dict[shot.genre] = 1
         return shot_dict
+
+    def update_item_count(self, itemname) -> None:
+        if self.inventory[itemname].amount > 1:
+            self.inventory[itemname].amount -= 1
+        else:
+            self.inventory.pop(itemname)
 
 
 def default_shop():
@@ -511,10 +520,12 @@ class TrainGame:
         # Add genre zones
         self.board = generate_zones()
         return None
-
     def update_vis_tiles(
             self, player_idx: int,  shot_row: int, shot_col: int, remove: bool = False, render_dist: int = 4
     ):
+        if "Telescope" in self.players[player_idx].inventory:
+            render_dist += self.players[player_idx].inventory["Telescope"].amount
+
         for row in range(shot_row - render_dist, shot_row + render_dist + 1):
             for col in range(shot_col - render_dist, shot_col + render_dist + 1):
                 if (row, col) in self.players[player_idx].vis_tiles:  # Already rendered tiles
@@ -786,13 +797,18 @@ class TrainGame:
         )
 
         # Projected completion time
-        last_shot = player.shots[-1]
-        dist_left = abs(last_shot.row - player.end[0]) + abs(last_shot.col - player.end[1])
-        projected_time = datetime.now() + timedelta(seconds=round(dist_left*1.5)*avg_secs_between_shots)
+        if not player.shots:
+            embed.add_field(
+                name="🗓️ Projected Completion Date", value="N/A", inline=False
+            )
+        else:
+            last_shot = player.shots[-1]
+            dist_left = abs(last_shot.row - player.end[0]) + abs(last_shot.col - player.end[1])
+            projected_time = datetime.now() + timedelta(seconds=round(dist_left*1.5)*avg_secs_between_shots)
 
-        embed.add_field(
-            name="🗓️ Projected Completion Date", value=projected_time.strftime("%Y/%m/%d at %H:%M:%S"), inline=False
-        )
+            embed.add_field(
+                name="🗓️ Projected Completion Date", value=projected_time.strftime("%Y/%m/%d at %H:%M:%S"), inline=False
+            )
 
         # Shot genre pie chart
 
@@ -1008,9 +1024,16 @@ class TrainGame:
             shot = player.shots[-1]
             self.update_vis_tiles(player_idx=sender_idx, shot_row=shot.row, shot_col=shot.col)
             self.update_vis_tiles(player_idx=sender_idx, shot_row=player.start[0], shot_col=player.start[1])
-            self.update_vis_tiles(player_idx=sender_idx, shot_row=player.end[0], shot_col=player.end[1], render_dist=1)
+            self.update_vis_tiles(player_idx=sender_idx, shot_row=player.end[0], shot_col=player.end[1], render_dist=0)
 
-        rails = 2 if self.board[(shot.row, shot.col)].terrain == "river" else 1
+        if self.board[(shot.row, shot.col)].terrain == "river":
+            if "Pontoon Bridge" in player.inventory:
+                rails = 0
+                player.update_item_count("Pontoon Bridge")
+            else:
+                rails = 2
+        else:
+            rails = 1
 
         if self.board[(shot.row, shot.col)].zone == shot.genre:
             rails *= 0.5
@@ -1022,7 +1045,15 @@ class TrainGame:
     def buy_item(self, itemname: str, showinfo: str, ctx: interactions.SlashContext) -> bool:
 
         player_idx, player = self.get_player(ctx.author_id)
-        if player is None or self.shop[itemname].amount < 1:
+        if player is None or self.shop[itemname].amount < 1 or not player.shots:
+            return True
+
+        player_loc = (player.shots[-1].row, player.shots[-1].col)
+
+        if self.board[player_loc].resource not in (bd.emoji["shop"], bd.emoji["city"]):
+            return True
+
+        if player_loc in player.shops_used:
             return True
 
         if itemname in self.players[player_idx].inventory:
@@ -1032,8 +1063,22 @@ class TrainGame:
             self.players[player_idx].inventory[itemname].amount = 1
             self.players[player_idx].inventory[itemname].showinfo += f" {showinfo}"
 
+        player.shops_used.append(player_loc)
         self.shop[itemname].amount -= 1
         self.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}")
+        return False
+
+    def use_bucket(self, ctx: interactions.SlashContext, row: int, col: int) -> bool:
+        player_idx, player = self.get_player(ctx.author_id)
+        if player is None:
+            return True
+
+        if "Bucket" not in player.inventory or not self.in_bounds(row, col):
+            return True
+
+        self.board[(row, col)].terrain = "river"
+
+        player.update_item_count("Bucket")
         return False
 
     def calc_player_scores(self):
@@ -1046,19 +1091,30 @@ class TrainGame:
 
         self.players.sort(key=lambda p: p.donetime)
 
-        # Find player prison counts before counting score for intersection scoring
+        # Find player prison counts and gun effects before counting score for intersection scoring
         player_prison_counts = {}
         for player in self.players:
             track_resources = [self.board[(shot.row, shot.col)].resource for shot in player.shots]
             player_prison_counts[player.tag] = track_resources.count(bd.emoji["prison"])
+            if player_prison_counts[player.tag] != 0 and "gun" in player.inventory["gun"]:
+                player_prison_counts[player.tag] += 0.5*player.inventory["gun"].amount
 
         for idx, player in enumerate(self.players):
+
+            axe_bonus = 0
+            if "Axe" in player.inventory:
+                axe_bonus += 0.5*player.inventory["Axe"].amount
+
+            if "Coin" in player.inventory:
+                add_to_score(p=player, key="coins", val=2*player.inventory["Coin"].amount)
 
             # Fast finish scoring
             if idx == 0:
                 player.score["speed_bonus"] = 2
             elif idx == 1:
                 player.score["speed_bonus"] = 1
+
+
 
             has_city = False
             num_houses = 0
