@@ -8,6 +8,8 @@ from colorama import init, Fore
 from random import choice
 import botdata as bd
 import botutils as bu
+import trains as tr
+import responses as rsp
 import asyncio
 import interactions
 import json
@@ -21,6 +23,7 @@ bot = interactions.Client(
     intents=interactions.Intents.DEFAULT | interactions.Intents.MESSAGE_CONTENT | interactions.Intents.GUILDS,
     sync_interactions=True,
     delete_unused_application_cmds=True,
+    debug_scope=895549687417958410
 )
 
 
@@ -76,7 +79,7 @@ async def create_trains(
     for member, tag in zip(members, tags):
         dm = await member.fetch_dm(force=False)
         players.append(
-            bu.TrainPlayer(member=member, tag=tag, dmchannel=dm)
+            tr.TrainPlayer(member=member, tag=tag, dmchannel=dm)
         )
     # Return error if player list is empty
     if not players:
@@ -93,7 +96,7 @@ async def create_trains(
     date = datetime.now().strftime(bd.date_format)
     gameid = int(datetime.now().strftime("%Y%m%d%H%M%S"))
 
-    game = bu.TrainGame(
+    game = tr.TrainGame(
         name=name,
         date=date,
         players=players,
@@ -113,7 +116,81 @@ async def create_trains(
 
     # Push updates to player boards
     await game.update_boards_after_create(ctx=ctx)
-    await ctx.send(embed=bu.train_game_embed(ctx=ctx, game=game))
+    await ctx.send(embed=tr.train_game_embed(ctx=ctx, game=game))
+    return False
+
+
+@interactions.slash_command(
+    name="trains",
+    sub_cmd_name="viewshop",
+    sub_cmd_description="View the shop for the active trains game.",
+    dm_permission=False
+)
+async def view_trains_shop(ctx: interactions.SlashContext):
+    if ctx.guild_id not in bd.active_trains:
+        await ctx.send(content="There is no active game! To make one, use /trains newgame", ephemeral=True)
+        return True
+
+    game = bd.active_trains[ctx.guild_id]
+    await ctx.send(content="\n".join([item.shop_entry() for item in game.shop.values()]))
+
+
+@interactions.slash_command(
+    name="trains",
+    sub_cmd_name="buy",
+    sub_cmd_description="Buy an item from a shop/city.",
+    dm_permission=False
+)
+@interactions.slash_option(
+    name="name",
+    description="Name of the item to purchase.",
+    required=True,
+    opt_type=interactions.OptionType.STRING,
+    choices=[interactions.SlashCommandChoice(name=itemname, value=itemname) for itemname in tr.default_shop()]
+)
+@interactions.slash_option(
+    name="showinfo",
+    description="Information about stock used for purchase.",
+    required=True,
+    opt_type=interactions.OptionType.STRING,
+)
+async def buy_shop_item(ctx: interactions.SlashContext, name: str, showinfo: str):
+    if ctx.guild_id not in bd.active_trains:
+        await ctx.send(content="There is no active game! To make one, use /trains newgame", ephemeral=True)
+        return True
+
+    game = bd.active_trains[ctx.guild_id]
+
+    err = game.buy_item(itemname=name, showinfo=showinfo, ctx=ctx)
+    if err:
+        await ctx.send(content=bd.fail_str)
+        return True
+
+    await ctx.send(content=bd.pass_str)
+
+
+@interactions.slash_command(
+    name="trains",
+    sub_cmd_name="inventory",
+    sub_cmd_description="View your inventory for the active trains game.",
+    dm_permission=False
+)
+async def view_trains_inventory(ctx: interactions.SlashContext):
+    if ctx.guild_id not in bd.active_trains:
+        await ctx.send(content="There is no active game! To make one, use /trains newgame", ephemeral=True)
+        return True
+
+    game = bd.active_trains[ctx.guild_id]
+
+    player_idx, player = game.get_player(ctx.author_id)
+    if player is None:
+        await ctx.send(content="You are not a player in this game.", ephemeral=True)
+
+    inv_str = "\n".join([item.inv_entry() for item in player.inventory.values()])
+    if inv_str:
+        await ctx.send(content=inv_str, ephemeral=True)
+    else:
+        await ctx.send(content="Your inventory is empty!", ephemeral=True)
     return False
 
 
@@ -140,7 +217,7 @@ async def create_trains(
     description="Genre of show used for shot",
     required=True,
     opt_type=interactions.OptionType.STRING,
-    choices=bu.dict_to_choices(bu.genre_colors)
+    choices=bu.dict_to_choices(tr.genre_colors)
 )
 @interactions.slash_option(
     name="info",
@@ -170,7 +247,7 @@ async def record_shot(ctx: interactions.SlashContext, row: int, column: int, gen
         return True
 
     # Update board, player rails
-    shot = bu.TrainShot(row=row, col=column, genre=genre, info=info, time=datetime.now().strftime(bd.date_format))
+    shot = tr.TrainShot(row=row, col=column, genre=genre, info=info, time=datetime.now().strftime(bd.date_format))
     game.update_player_stats_after_shot(sender_idx=sender_idx, player=player, shot=shot)
 
     # Save/update games
@@ -241,7 +318,7 @@ async def trains_stats(ctx: interactions.SlashContext, name: str = None):
 
     else:
         try:
-            game = await bu.load_game(
+            game = await tr.load_game(
                 filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{name}", bot=bot, guild=ctx.guild
             )
         except FileNotFoundError:
@@ -254,7 +331,7 @@ async def trains_stats(ctx: interactions.SlashContext, name: str = None):
     # Send stats
     embed, image = game.gen_stats_embed(ctx=ctx, page=0, expired=False)
 
-    stats_msg = await ctx.send(embed=embed, file=image, components=[bu.prevpg_trainstats(), bu.nextpg_trainstats()])
+    stats_msg = await ctx.send(embed=embed, file=image, components=[tr.prevpg_trainstats(), tr.nextpg_trainstats()])
     sent = bu.ListMsg(
         num=stats_msg.id, page=0, guild=ctx.guild, channel=ctx.channel, msg_type="trainstats", payload=game
     )
@@ -328,7 +405,7 @@ async def delete_trains_game(ctx: interactions.SlashContext, keep_files: bool):
         game.active = False
         game.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{game.name}")
     else:
-        bu.del_game_files(guild_id=ctx.guild_id, game_name=game.name)
+        tr.del_game_files(guild_id=ctx.guild_id, game_name=game.name)
     del bd.active_trains[ctx.guild_id]
     await ctx.send(content=bd.pass_str)
     return False
@@ -353,7 +430,7 @@ async def restore_train(ctx: interactions.SlashContext, name: str):
         await ctx.send("There is already an active game in this server!")
         return True
     try:
-        test_game = await bu.load_game(
+        test_game = await tr.load_game(
             filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{name}", bot=bot, guild=ctx.guild
         )
     except FileNotFoundError:
@@ -388,7 +465,7 @@ async def autocomplete(ctx: interactions.AutocompleteContext) -> None:
 async def send_rules(ctx: interactions.SlashContext):
     rules_msg = await ctx.send(
         embeds=bu.gen_rules_embed(page=0, expired=False),
-        components=[bu.prevpg_trainrules(), bu.nextpg_trainrules()]
+        components=[tr.prevpg_trainrules(), tr.nextpg_trainrules()]
     )
     channel = ctx.channel
     sent = bu.ListMsg(rules_msg.id, 0, ctx.guild, channel, "trainrules")
@@ -434,11 +511,11 @@ async def add_response(ctx: interactions.SlashContext, trigger: str, response: s
         return True
     if bd.config[ctx.guild_id]["LIMIT_USER_RESPONSES"]:
         user_rsps = 0
-        for rsp in bd.responses[ctx.guild_id]:
-            if rsp.user_id == int(ctx.author.id):
+        for response in bd.responses[ctx.guild_id]:
+            if response.user_id == int(ctx.author.id):
                 user_rsps += 1
-        for rsp in bd.mentions[ctx.guild_id]:
-            if rsp.user_id == int(ctx.author.id):
+        for response in bd.mentions[ctx.guild_id]:
+            if response.user_id == int(ctx.author.id):
                 user_rsps += 1
         if user_rsps >= bd.config[ctx.guild_id]["MAX_USER_RESPONSES"]:
             await ctx.send(
@@ -447,13 +524,13 @@ async def add_response(ctx: interactions.SlashContext, trigger: str, response: s
             )
             return True
 
-    error = bu.add_response(ctx.guild_id, bu.Response(exact, trigger.lower(), response, int(ctx.author.id)))
+    error = rsp.add_response(ctx.guild_id, rsp.Response(exact, trigger.lower(), response, int(ctx.author.id)))
 
     # Update responses
     if exact:
-        bd.responses[ctx.guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/responses.json")
+        bd.responses[ctx.guild_id] = rsp.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/responses.json")
     else:
-        bd.mentions[ctx.guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/mentions.json")
+        bd.mentions[ctx.guild_id] = rsp.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/mentions.json")
 
     if not error:
         await ctx.send(content=bd.pass_str)
@@ -492,14 +569,14 @@ async def remove_response(ctx: interactions.SlashContext, trigger: str = "", res
     # Config permission checks
     
     if bd.config[ctx.guild_id]["USER_ONLY_DELETE"] and \
-            bu.get_resp(ctx.guild_id, trigger, response, exact).user_id != ctx.author.id:
+            rsp.get_resp(ctx.guild_id, trigger, response, exact).user_id != ctx.author.id:
         await ctx.send(
             content=f"The server settings do not allow you to delete other people\'s responses.",
             ephemeral=True
         )
         return True
 
-    error = bu.rmv_response(ctx.guild_id, bu.Response(exact, trigger.lower(), response))
+    error = rsp.rmv_response(ctx.guild_id, rsp.Response(exact, trigger.lower(), response))
     if not error:
         await ctx.send(content=bd.pass_str)
     else:
@@ -508,18 +585,18 @@ async def remove_response(ctx: interactions.SlashContext, trigger: str = "", res
 
     # Update responses
     if exact:
-        bd.responses[ctx.guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/responses.json")
+        bd.responses[ctx.guild_id] = rsp.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/responses.json")
     else:
-        bd.mentions[ctx.guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/mentions.json")
+        bd.mentions[ctx.guild_id] = rsp.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/mentions.json")
 
 
 @remove_response.autocomplete("trigger")
 async def autocomplete(ctx: interactions.AutocompleteContext):
     trigs: list = []
     # Add autocomplete options if they match input text, remove duplicates. 25 maximum values (discord limit)
-    for rsp in bd.responses[ctx.guild_id] + bd.mentions[ctx.guild_id]:
-        if rsp.trig not in trigs and ctx.input_text in rsp.trig:
-            trigs.append(rsp.trig)
+    for response in bd.responses[ctx.guild_id] + bd.mentions[ctx.guild_id]:
+        if response.trig not in trigs and ctx.input_text in response.trig:
+            trigs.append(response.trig)
     choices = list(map(bu.autocomplete_filter, trigs))
     if len(choices) > 25:
         choices = choices[0:24]
@@ -530,8 +607,8 @@ async def autocomplete(ctx: interactions.AutocompleteContext):
 async def autocomplete(ctx: interactions.AutocompleteContext):
     # Add autocomplete response options for the specified trigger.
     responses = [
-        rsp.text for rsp in bd.mentions[ctx.guild_id] + bd.responses[ctx.guild_id]
-        if rsp.trig == ctx.kwargs.get("trigger")
+        response.text for response in bd.mentions[ctx.guild_id] + bd.responses[ctx.guild_id]
+        if response.trig == ctx.kwargs.get("trigger")
         ]
     choices = list(map(bu.autocomplete_filter, responses))
     if len(choices) > 25:
@@ -547,7 +624,7 @@ async def autocomplete(ctx: interactions.AutocompleteContext):
 async def listrsps(ctx: interactions.SlashContext):
     resp_msg = await ctx.send(
         embeds=bu.gen_resp_list(ctx.guild, 0, False),
-        components=[bu.prevpg_rsp(), bu.nextpg_rsp()]
+        components=[rsp.prevpg_rsp(), rsp.nextpg_rsp()]
     )
     channel = ctx.channel
     sent = bu.ListMsg(resp_msg.id, 0, ctx.guild, channel, "rsplist")
@@ -601,7 +678,7 @@ async def delete_data(ctx: interactions.SlashContext):
 )
 async def mod_add(ctx: interactions.SlashContext, trigger: str, response: str, exact: bool):
 
-    error = bu.add_response(ctx.guild_id, bu.Response(exact, trigger.lower(), response, int(ctx.author.id)))
+    error = rsp.add_response(ctx.guild_id, rsp.Response(exact, trigger.lower(), response, int(ctx.author.id)))
     if not error:
         await ctx.send(content=bd.pass_str)
     else:
@@ -610,9 +687,9 @@ async def mod_add(ctx: interactions.SlashContext, trigger: str, response: str, e
 
     # Update responses
     if exact:
-        bd.responses[ctx.guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/responses.json")
+        bd.responses[ctx.guild_id] = rsp.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/responses.json")
     else:
-        bd.mentions[ctx.guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/mentions.json")
+        bd.mentions[ctx.guild_id] = rsp.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/mentions.json")
 
 
 @interactions.slash_command(
@@ -644,7 +721,7 @@ async def mod_add(ctx: interactions.SlashContext, trigger: str, response: str, e
 )
 async def mod_remove(ctx: interactions.SlashContext, trigger: str = "", response: str = "", exact: bool = True):
     
-    error = bu.rmv_response(ctx.guild_id, bu.Response(exact, trigger.lower(), response))
+    error = rsp.rmv_response(ctx.guild_id, rsp.Response(exact, trigger.lower(), response))
     if not error:
         await ctx.send(content=bd.pass_str)
     else:
@@ -653,18 +730,18 @@ async def mod_remove(ctx: interactions.SlashContext, trigger: str = "", response
 
     # Update responses
     if exact:
-        bd.responses[ctx.guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/responses.json")
+        bd.responses[ctx.guild_id] = rsp.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/responses.json")
     else:
-        bd.mentions[ctx.guild_id] = bu.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/mentions.json")
+        bd.mentions[ctx.guild_id] = rsp.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/mentions.json")
 
 
 @mod_remove.autocomplete("trigger")
 async def autocomplete(ctx: interactions.AutocompleteContext):
     trigs: list = []
     # Add autocomplete options if they match input text, remove duplicates. 25 maximum values (discord limit)
-    for rsp in bd.responses[ctx.guild_id] + bd.mentions[ctx.guild_id]:
-        if rsp.trig not in trigs and ctx.input_text in rsp.trig:
-            trigs.append(rsp.trig)
+    for response in bd.responses[ctx.guild_id] + bd.mentions[ctx.guild_id]:
+        if response.trig not in trigs and ctx.input_text in response.trig:
+            trigs.append(response.trig)
     choices = list(map(bu.autocomplete_filter, trigs))
     if len(choices) > 25:
         choices = choices[0:24]
@@ -675,8 +752,8 @@ async def autocomplete(ctx: interactions.AutocompleteContext):
 async def autocomplete(ctx: interactions.AutocompleteContext):
     # Add autocomplete response options for the specified trigger.
     responses = [
-        rsp.text for rsp in bd.mentions[ctx.guild_id] + bd.responses[ctx.guild_id]
-        if rsp.trig == ctx.kwargs.get("trigger")
+        response.text for response in bd.mentions[ctx.guild_id] + bd.responses[ctx.guild_id]
+        if response.trig == ctx.kwargs.get("trigger")
         ]
     choices = list(map(bu.autocomplete_filter, responses))
     if len(choices) > 25:
@@ -822,8 +899,8 @@ async def on_ready():
 
         # Load guild responses
 
-        bd.mentions[guild.id] = bu.load_responses(f"{bd.parent}/Guilds/{guild.id}/mentions.json")
-        bd.responses[guild.id] = bu.load_responses(f"{bd.parent}/Guilds/{guild.id}/responses.json")
+        bd.mentions[guild.id] = rsp.load_responses(f"{bd.parent}/Guilds/{guild.id}/mentions.json")
+        bd.responses[guild.id] = rsp.load_responses(f"{bd.parent}/Guilds/{guild.id}/responses.json")
 
         print(
             Fore.WHITE + f"{strftime(bd.date_format)}:  " +
@@ -833,14 +910,14 @@ async def on_ready():
         # Load trains games
         for name in listdir(f"{bd.parent}/Guilds/{guild.id}/Trains"):
             try:
-                game = await bu.load_game(
+                game = await tr.load_game(
                     filepath=f"{bd.parent}/Guilds/{guild.id}/Trains/{name}", bot=bot, guild=guild, active_only=True
                 )
                 if game.active:
                     bd.active_trains[guild.id] = game
                     break
-            except (FileNotFoundError, TypeError, ValueError):
-                bu.del_game_files(guild_id=guild.id, game_name=name)
+            except (FileNotFoundError, TypeError, ValueError, KeyError):
+                tr.del_game_files(guild_id=guild.id, game_name=name)
                 print(
                     Fore.WHITE + f'{strftime(bd.date_format)} :  ' +
                     Fore.YELLOW + f"Invalid game \"{name}\" in guild {guild.id}, attempted delete." + Fore.RESET
@@ -902,33 +979,33 @@ async def on_component(event: interactions.api.events.Component):
             if ctx.custom_id == "prevpg_rsp":
                 bd.active_msgs[idx].page -= 1
                 embed = bu.gen_resp_list(ctx.guild, bd.active_msgs[idx].page, False)
-                components = [bu.prevpg_rsp(), bu.nextpg_rsp()]
+                components = [rsp.prevpg_rsp(), rsp.nextpg_rsp()]
             elif ctx.custom_id == "nextpg_rsp":
                 bd.active_msgs[idx].page += 1
                 embed = bu.gen_resp_list(ctx.guild, bd.active_msgs[idx].page, False)
-                components = [bu.prevpg_rsp(), bu.nextpg_rsp()]
+                components = [rsp.prevpg_rsp(), rsp.nextpg_rsp()]
             elif ctx.custom_id == "prevpg_trainrules":
                 bd.active_msgs[idx].page -= 1
                 embed = bu.gen_rules_embed(bd.active_msgs[idx].page, False)
-                components = [bu.prevpg_trainrules(), bu.nextpg_trainrules()]
+                components = [tr.prevpg_trainrules(), tr.nextpg_trainrules()]
             elif ctx.custom_id == "nextpg_trainrules":
                 bd.active_msgs[idx].page += 1
                 embed = bu.gen_rules_embed(bd.active_msgs[idx].page, False)
-                components = [bu.prevpg_trainrules(), bu.nextpg_trainrules()]
+                components = [tr.prevpg_trainrules(), tr.nextpg_trainrules()]
             elif ctx.custom_id == "prevpg_trainstats":
                 await ctx.defer(edit_origin=True)
                 bd.active_msgs[idx].page -= 1
                 embed, image = game.gen_stats_embed(
                     ctx=ctx, page=bd.active_msgs[idx].page, expired=False
                 )
-                components = [bu.prevpg_trainstats(), bu.nextpg_trainstats()]
+                components = [tr.prevpg_trainstats(), tr.nextpg_trainstats()]
             elif ctx.custom_id == "nextpg_trainstats":
                 await ctx.defer(edit_origin=True)
                 bd.active_msgs[idx].page += 1
                 embed, image = game.gen_stats_embed(
                     ctx=ctx, page=bd.active_msgs[idx].page, expired=False
                 )
-                components = [bu.prevpg_trainstats(), bu.nextpg_trainstats()]
+                components = [tr.prevpg_trainstats(), tr.nextpg_trainstats()]
             else:
                 embed = None
                 components = None
