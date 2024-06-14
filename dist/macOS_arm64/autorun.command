@@ -1,6 +1,6 @@
 #!/bin/bash
 SOURCE_DIR="$(dirname "$0")"
-SOURCE_DIR="$(readlink -f $SOURCE_DIR)"
+SOURCE_DIR="$(readlink -f $SOURCE_DIR/../../src)"
 cd "$SOURCE_DIR"
 
 if ! grep -q "$SOURCE_DIR" .env; then
