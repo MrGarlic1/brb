@@ -5,8 +5,8 @@ Bot functions
 """
 
 import interactions
-from responses import gen_resp_list
-from trains import gen_rules_embed
+from responses import gen_resp_list, load_responses
+from trains import gen_rules_embed, load_game, del_game_files
 import json
 import botdata as bd
 from time import strftime
@@ -14,6 +14,7 @@ from colorama import Fore
 from dataclasses import dataclass
 import asyncio
 import matplotlib.font_manager
+from os import makedirs, listdir, path
 
 
 # Class Definitions
@@ -78,6 +79,7 @@ def load_config(guild: interactions.Guild) -> None:
 
     # Create new file if config is missing
     except FileNotFoundError:
+        makedirs(f"{bd.parent}/Guilds/{guild.id}")
         with open(f"{bd.parent}/Guilds/{guild.id}/config.json", "w") as f:
             json.dump(bd.default_config, f, indent=4)
             bd.config[int(guild.id)] = bd.default_config
@@ -161,3 +163,43 @@ def autocomplete_filter(option: str) -> dict[str: str]:
     if len(option) > 100:
         option = option[:99]
     return {"name": option, "value": option}
+
+
+async def init_guilds(guilds: list[interactions.Guild], bot: interactions.Client):
+    for guild in guilds:
+        # Make guild folder if it doesn't exist
+        if not path.exists(f"{bd.parent}/Guilds/{guild.id}/Trains"):
+            makedirs(f"{bd.parent}/Guilds/{guild.id}/Trains")
+            print(
+                Fore.WHITE + f"{strftime(bd.date_format)}:  " +
+                Fore.YELLOW + f"Created guild folder for {guild.name}" + Fore.RESET
+            )
+
+        load_config(guild)
+        bd.mentions[guild.id] = load_responses(f"{bd.parent}/Guilds/{guild.id}/mentions.json")
+        bd.responses[guild.id] = load_responses(f"{bd.parent}/Guilds/{guild.id}/responses.json")
+
+        print(
+            Fore.WHITE + f"{strftime(bd.date_format)}:  " +
+            Fore.GREEN + f"Responses loaded for {guild.name}" + Fore.RESET
+        )
+
+        # Load trains games
+
+        for name in listdir(f"{bd.parent}/Guilds/{guild.id}/Trains"):
+
+            try:
+                game = await load_game(
+                    filepath=f"{bd.parent}/Guilds/{guild.id}/Trains/{name}", bot=bot, guild=guild, active_only=True
+                )
+                if game.active:
+                    bd.active_trains[guild.id] = game
+                    break
+            except (FileNotFoundError, TypeError, ValueError, KeyError):
+                del_game_files(guild_id=guild.id, game_name=name)
+                print(
+                    Fore.WHITE + f'{strftime(bd.date_format)} :  ' +
+                    Fore.YELLOW + f"Invalid game \"{name}\" in guild {guild.id}, attempted delete." + Fore.RESET
+                )
+            except NotADirectoryError:
+                pass

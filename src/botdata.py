@@ -26,7 +26,15 @@ emoji: dict = {
     "city": "🌃",
     "prison": "🔒",
     "house": "🏠",
-    "river": "🏞"
+    "river": "🏞",
+    "telescope": "🔭",
+    "gun": "🔫",
+    "bucket": "🪣",
+    "bridge": "🌉",
+    "axe": "🪓",
+    "coin": "🪙",
+    "maglev": "🚄",
+    "shop": "🛒"
 }
 
 responses, mentions, config = {}, {}, {}

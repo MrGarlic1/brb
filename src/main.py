@@ -894,37 +894,7 @@ async def on_ready():
         Fore.WHITE + f'{strftime(bd.date_format)} :  Connected to the following guilds: ' +
         Fore.CYAN + ", ".join(guild.name for guild in guilds) + Fore.RESET
     )
-    for guild in guilds:
-        bu.load_config(guild)
-
-        # Load guild responses
-
-        bd.mentions[guild.id] = rsp.load_responses(f"{bd.parent}/Guilds/{guild.id}/mentions.json")
-        bd.responses[guild.id] = rsp.load_responses(f"{bd.parent}/Guilds/{guild.id}/responses.json")
-
-        print(
-            Fore.WHITE + f"{strftime(bd.date_format)}:  " +
-            Fore.GREEN + f"Responses loaded for {guild.name}" + Fore.RESET
-        )
-
-        # Load trains games
-        for name in listdir(f"{bd.parent}/Guilds/{guild.id}/Trains"):
-            try:
-                game = await tr.load_game(
-                    filepath=f"{bd.parent}/Guilds/{guild.id}/Trains/{name}", bot=bot, guild=guild, active_only=True
-                )
-                if game.active:
-                    bd.active_trains[guild.id] = game
-                    break
-            except (FileNotFoundError, TypeError, ValueError, KeyError):
-                tr.del_game_files(guild_id=guild.id, game_name=name)
-                print(
-                    Fore.WHITE + f'{strftime(bd.date_format)} :  ' +
-                    Fore.YELLOW + f"Invalid game \"{name}\" in guild {guild.id}, attempted delete." + Fore.RESET
-                )
-            except NotADirectoryError:
-                pass
-
+    await bu.init_guilds(guilds=guilds, bot=bot)
     await bot.change_presence(status=interactions.Status.ONLINE, activity="/response")
 
 
