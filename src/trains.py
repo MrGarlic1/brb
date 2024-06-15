@@ -1181,30 +1181,6 @@ class TrainGame:
 
         return embed
 
-# Function Definitions
-
-# Manually call to make a zone image if needed
-
-
-"""
-def save_zones_img(filepath: str) -> None:
-    wb = Workbook()
-    ws = wb.active
-    for idx, key in enumerate(genre_colors):
-        row = idx // 4 + 1
-        col = idx % 4 + 1
-        ws.cell(row, col).value = key
-        ws.cell(row, col).fill = PatternFill(patternType="solid", fgColor=genre_colors[key])
-        ws.cell(row, col).font = Font(size=18, bold=True)
-        ws.cell(row, col).alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        ws.row_dimensions[row].height = 75
-        ws.column_dimensions[get_column_letter(col)].width = 14
-
-    wb.save(f"{filepath}/zones.xlsx")
-    export_img(f"{filepath}/zones.xlsx", f"{filepath}/zones.png", "Sheet", "A1:D4")
-    remove(f"{filepath}/zones.xlsx")
-"""
-
 
 async def load_game(
         filepath: str, bot: interactions.Client, guild: interactions.Guild, active_only: bool = False
@@ -1501,18 +1477,18 @@ genre_colors: dict = {
     # 'Comedy': (136, 255, 136)),
     'Drama': (245, 197, 255),
     'Ecchi': (255, 204, 204),
-    'Fantasy': (155, 194, 230),
+    'Fantasy': (76, 206, 184),
     # 'Hentai': (255, 0, 255),
     'Horror': (169, 208, 142),
     # 'Mahou_Shoujo': (255, 255, 136),
     'Mecha': (217, 217, 217),
-    'Music': (221, 235, 247),
+    'Music': (185, 218, 246),
     'Mystery': (174, 170, 170),
     'Psychological': (255, 217, 102),
     'Romance': (208, 125, 163),
     'Sci-Fi': (255, 242, 204),
-    'SoL': (142, 169, 219),
+    'SoL': (121, 157, 222),
     'Sports': (237, 125, 49),
     'Supernatural': (244, 176, 132),
-    'Thriller': (226, 239, 218),
+    'Thriller': (161, 77, 202),
 }
