@@ -15,6 +15,7 @@ from dataclasses import dataclass
 import asyncio
 import matplotlib.font_manager
 from os import makedirs, listdir, path
+from re import findall
 
 
 # Class Definitions
@@ -102,36 +103,8 @@ async def close_msg(list_msg: ListMsg, delay: int, ctx: interactions.SlashContex
 
 
 async def get_members_from_str(guild, txt: str) -> list[interactions.Member]:
-    mentions: list = []
-    mention: str = ""
-    mention_start: bool = False
-    id_start: bool = False
-
-    for char in txt:
-
-        # Begin recording of characters until a non-integer character is encountered
-        if id_start:
-            try:
-                int(char)
-                mention += char
-            except ValueError:
-                try:
-                    if int(mention) in mentions:
-                        continue
-                    mentions.append(int(mention))
-                except ValueError:
-                    pass
-                id_start: bool = False
-                mention_start: bool = False
-                mention: str = ""
-
-        # Confirm start of discord mention string
-        if char == "@" and mention_start:
-            id_start: bool = True
-
-        # Mark start of discord mention string
-        if char == "<":
-            mention_start: bool = True
+    mention_pattern = r"<@(\d+)>"
+    mentions = set(findall(mention_pattern, txt))
 
     # Check for invalid player IDs
     members: list = []
