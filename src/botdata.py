@@ -36,7 +36,10 @@ emoji: dict = {
     "axe": "🪓",
     "coin": "🪙",
     "maglev": "🚄",
-    "shop": "🛒"
+    "shop": "🛒",
+    "first": "🥇",
+    "second": "🥈",
+    "third": "🥉"
 }
 
 responses, mentions, config = {}, {}, {}

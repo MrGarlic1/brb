@@ -85,12 +85,6 @@ async def create_trains(
         await ctx.send(content="No valid players specified.")
         return True
 
-    try:
-        mkdir(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{name}")
-    except OSError:
-        await ctx.send(content="Invalid name! Game must not contain the following characters: / \\ : * ? < > |")
-        return True
-
     # Create game object and set parameters
     date = datetime.now().strftime(bd.date_format)
     gameid = int(datetime.now().strftime("%Y%m%d%H%M%S"))
@@ -111,6 +105,12 @@ async def create_trains(
         game.gen_player_locations(river_ring=river_ring)
     except game.BoardGenError as e:
         await ctx.send(content=str(e))
+        return True
+
+    try:
+        mkdir(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{name}")
+    except OSError:
+        await ctx.send(content="Invalid name! Game must not contain the following characters: / \\ : * ? < > |")
         return True
 
     # Push updates to player boards

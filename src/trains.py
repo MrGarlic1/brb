@@ -186,6 +186,10 @@ class TrainGame:
             board: dict[tuple[int, int]: TrainTile] = None, gameid: int = None, active: bool = True, size: tuple = None,
             shop: dict = None
     ):
+        if players is None:
+            players: list[TrainPlayer] = []
+        if shop is None:
+            shop = default_shop()
         self.name = name
         self.date = date
         self.players = players
@@ -193,10 +197,7 @@ class TrainGame:
         self.active = active
         self.size = size
         self.board = board
-        if shop is None:
-            self.shop = default_shop()
-        else:
-            self.shop = shop
+        self.shop = shop
 
     def asdict(self) -> dict:
         player_list = []
@@ -669,6 +670,7 @@ class TrainGame:
         if self.active:
             bd.active_trains[ctx.guild_id] = self
         else:
+            await ctx.send(embed=self.get_score_embed())
             del bd.active_trains[ctx.guild_id]
 
         self.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}")
@@ -1081,7 +1083,7 @@ class TrainGame:
         player.update_item_count("Bucket")
         return False
 
-    def calc_player_scores(self):
+    def get_score_embed(self) -> interactions.Embed:
 
         def add_to_score(p: TrainPlayer, key: str, val: int):
             if key in player.score:
@@ -1114,8 +1116,6 @@ class TrainGame:
             elif idx == 1:
                 player.score["speed_bonus"] = 1
 
-
-
             has_city = False
             num_houses = 0
             for shot in player.shots:
@@ -1147,7 +1147,38 @@ class TrainGame:
                 player.score["house"] -= player_prison_counts[player.tag]*num_houses
 
             player.score["rails"] = -2*int((player.rails-26)/3)
+            player.score["total"] = sum(player.score.values())
 
+        embed = interactions.Embed(
+            title=f"Game Complete!"
+
+        )
+        embed.set_author(name="Anime Trains", icon_url=bd.bot_avatar_url)
+        embed.color = 0xff9c2c
+        embed.description = f"*Pre-quest scoring results are as follows...*"
+
+        self.players.sort(key= lambda p: p.score["total"], reverse=True)
+
+        for idx, player in enumerate(self.players):
+            place_emojis = {
+                0: bd.emoji["first"],
+                1: bd.emoji["second"],
+                2: bd.emoji["third"]
+            }
+            place_emoji = place_emojis.get(idx, "")
+            embed.add_field(
+                name="\u200b",
+                value=f"**{place_emoji} {player.member.mention}**"
+                      f"Score is {player.score["total"]}",
+                inline=False
+            )
+        embed.add_field(
+            name="\u200b",
+            value="**Add quest points to calculate the final score!**"
+        )
+        embed.set_footer(text=self.date)
+
+        return embed
 
 # Function Definitions
 
@@ -1310,7 +1341,7 @@ def train_symbols_embed() -> interactions.Embed:
     embed.title = "Symbol Reference"
     embed.add_field(
         name=f"{bd.emoji['wheat']}: Wheat",
-        value="Plus 1 point if connected to your network. Plus 2 more points if connected to a city. "
+        value="Plus 1 point if connected to your network. Plus 3 more points if connected to a city. "
               "Each additional wheat is worth 1 point only.",
         inline=True
     )
@@ -1332,21 +1363,21 @@ def train_symbols_embed() -> interactions.Embed:
     )
     embed.add_field(
         name=f"{bd.emoji['city']}: City",
-        value="Provides above bonuses. Each city has a favorite season (revealed at end). "
+        value="Provides stated bonuses. Each city has a favorite season (revealed at end). "
               "Any player who shoots a city with the correct season gets 3 bonus points.",
         inline=True
     )
     embed.add_field(
         name=f"{bd.emoji['prison']}: Prison",
-        value="Must be shot with a show with one of the following tags: Feet, Loli (Character), Maid, Nudity. "
-              "Once the prisoners are released, everybody else loses 2 points.",
+        value="Reduces points that other players get for intersections with your rails by 1. "
+              "Reduces points gained by your own houses by 1 for each house.",
         inline=True
     )
     embed.add_field(
         name=f"{bd.emoji['house']}: House",
         value="Provides 1 points for each house connected to your network. "
-              "If the house is connected to a city, then the player gains 2 bonus points. "
-              "If the house is connected to a prison, the player loses 1 point.",
+              "If the house is connected to a city, then the player gains 1 bonus point per house. "
+              "If the house is connected to a prison, the player loses 1 point per house.",
         inline=True
     )
     embed.add_field(
@@ -1371,7 +1402,8 @@ def train_quests_embed() -> interactions.Embed:
               "**3.** Make a shot of shows with each of the following sources: "
               "Anime original, manga, light novel, mugi original. **Reward: 3**\n\n"
               "**4.** Do not make a single shot of a genre on its corresponding zone. **Reward: 3**\n\n"
-              "**5.** Make shots with at least three shows from another player's list. **Reward: 2**",
+              "**5.** Make shots with at least three shows from another player's list. **Reward: 2**\n\n"
+              "**6.** Place six rails in a row on squares without resources. **Reward: 3**",
         inline=False
     )
     return embed
@@ -1388,8 +1420,8 @@ def train_scoring_embed() -> interactions.Embed:
         "- The 1st/2nd player to finish their track earn 2/1 bonus points respectively.\n" \
         "- Points from resources (see page 3) and points from quests (see page 4).\n" \
         "- Players earn 1 point each time their track intersects another player's track.\n" \
-        "- For every 2 rails less than 30 that a player uses, they gain a point. " \
-        "For every two rails over 30, that player loses a point.\n\n" \
+        "- For every 3 rails less than 26 that a player uses, they gain 2 points. " \
+        "For every 3 rails over 26, that player loses 2 points.\n\n" \
         "3. Automatic score calculation (minus quests) is a planned feature!"
     return embed
 
