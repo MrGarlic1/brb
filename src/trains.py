@@ -157,7 +157,7 @@ def default_shop():
         TrainItem(
             name="Axe",
             emoji=bd.emoji["axe"],
-            description=f"Increase points gained from {bd.emoji["wood"]} tiles by 0.5!",
+            description=f"Increase points gained from {bd.emoji['wood']} tiles by 0.5!",
             cost=3,
             amount=2
         ),
