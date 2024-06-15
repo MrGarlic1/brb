@@ -521,6 +521,7 @@ class TrainGame:
         # Add genre zones
         self.board = generate_zones()
         return None
+
     def update_vis_tiles(
             self, player_idx: int,  shot_row: int, shot_col: int, remove: bool = False, render_dist: int = 4
     ):
@@ -1157,7 +1158,7 @@ class TrainGame:
         embed.color = 0xff9c2c
         embed.description = f"*Pre-quest scoring results are as follows...*"
 
-        self.players.sort(key= lambda p: p.score["total"], reverse=True)
+        self.players.sort(key=lambda p: p.score["total"], reverse=True)
 
         for idx, player in enumerate(self.players):
             place_emojis = {
@@ -1183,6 +1184,8 @@ class TrainGame:
 # Function Definitions
 
 # Manually call to make a zone image if needed
+
+
 """
 def save_zones_img(filepath: str) -> None:
     wb = Workbook()
