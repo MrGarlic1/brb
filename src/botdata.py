@@ -18,7 +18,7 @@ assert "main.py" in listdir(parent), f"Invalid parent directory {parent}, ensure
 
 bot_id: int = 887530423826145310
 bot_avatar_url: str = "https://cdn.discordapp.com/attachments/895549688026124321/1103188621193924708/ursa_cm.png"
-train_zones_url: str = "https://i.imgur.com/pCFbQjL.png"
+train_zones_url: str = "https://i.imgur.com/CRgbw7R.png"
 date_format: str = "%Y/%m/%d %H:%M:%S"
 
 emoji: dict = {

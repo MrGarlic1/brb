@@ -1487,7 +1487,7 @@ genre_colors: dict = {
     'Psychological': (255, 217, 102),
     'Romance': (208, 125, 163),
     'Sci-Fi': (255, 242, 204),
-    'SoL': (121, 157, 222),
+    'Slice of Life': (121, 157, 222),
     'Sports': (237, 125, 49),
     'Supernatural': (244, 176, 132),
     'Thriller': (161, 77, 202),
