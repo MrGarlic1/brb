@@ -377,7 +377,7 @@ async def trains_stats(ctx: interactions.SlashContext, name: str = None):
     # Send stats
     embed, image = game.gen_stats_embed(ctx=ctx, page=0, expired=False)
 
-    stats_msg = await ctx.send(embed=embed, file=image, components=[tr.prevpg_trainstats(), tr.nextpg_trainstats()])
+    stats_msg = await ctx.send(embed=embed, file=image, components=[bu.nextpg_button(), bu.prevpg_button()])
     sent = bu.ListMsg(
         num=stats_msg.id, page=0, guild=ctx.guild, channel=ctx.channel, msg_type="trainstats", payload=game
     )
@@ -511,7 +511,7 @@ async def autocomplete(ctx: interactions.AutocompleteContext) -> None:
 async def send_rules(ctx: interactions.SlashContext):
     rules_msg = await ctx.send(
         embeds=bu.gen_rules_embed(page=0, expired=False),
-        components=[tr.prevpg_trainrules(), tr.nextpg_trainrules()]
+        components=[bu.nextpg_button(), bu.prevpg_button()]
     )
     channel = ctx.channel
     sent = bu.ListMsg(rules_msg.id, 0, ctx.guild, channel, "trainrules")
@@ -670,7 +670,7 @@ async def autocomplete(ctx: interactions.AutocompleteContext):
 async def listrsps(ctx: interactions.SlashContext):
     resp_msg = await ctx.send(
         embeds=bu.gen_resp_list(ctx.guild, 0, False),
-        components=[rsp.prevpg_rsp(), rsp.nextpg_rsp()]
+        components=[bu.nextpg_button(), bu.prevpg_button()]
     )
     channel = ctx.channel
     sent = bu.ListMsg(resp_msg.id, 0, ctx.guild, channel, "rsplist")
@@ -984,46 +984,30 @@ async def on_message_create(event: interactions.api.events.MessageCreate):
 @interactions.listen(interactions.api.events.Component)
 async def on_component(event: interactions.api.events.Component):
     ctx = event.ctx
-    for msg in bd.active_msgs:  # Search active messages for correct one
+    for idx, msg in enumerate(bd.active_msgs):  # Search active messages for correct one
         if msg.num == int(ctx.message.id):
-            idx = bd.active_msgs.index(msg)
             game = msg.payload
 
             # Update page num
             image = None
-            if ctx.custom_id == "prevpg_rsp":
+            embed = None
+            if ctx.custom_id == "prevpg":
                 bd.active_msgs[idx].page -= 1
-                embed = bu.gen_resp_list(ctx.guild, bd.active_msgs[idx].page, False)
-                components = [rsp.prevpg_rsp(), rsp.nextpg_rsp()]
-            elif ctx.custom_id == "nextpg_rsp":
+            elif ctx.custom_id == "nextpg":
                 bd.active_msgs[idx].page += 1
-                embed = bu.gen_resp_list(ctx.guild, bd.active_msgs[idx].page, False)
-                components = [rsp.prevpg_rsp(), rsp.nextpg_rsp()]
-            elif ctx.custom_id == "prevpg_trainrules":
-                bd.active_msgs[idx].page -= 1
-                embed = bu.gen_rules_embed(bd.active_msgs[idx].page, False)
-                components = [tr.prevpg_trainrules(), tr.nextpg_trainrules()]
-            elif ctx.custom_id == "nextpg_trainrules":
-                bd.active_msgs[idx].page += 1
-                embed = bu.gen_rules_embed(bd.active_msgs[idx].page, False)
-                components = [tr.prevpg_trainrules(), tr.nextpg_trainrules()]
-            elif ctx.custom_id == "prevpg_trainstats":
+
+            if msg.msg_type == "trainstats":
                 await ctx.defer(edit_origin=True)
-                bd.active_msgs[idx].page -= 1
                 embed, image = game.gen_stats_embed(
                     ctx=ctx, page=bd.active_msgs[idx].page, expired=False
                 )
-                components = [tr.prevpg_trainstats(), tr.nextpg_trainstats()]
-            elif ctx.custom_id == "nextpg_trainstats":
-                await ctx.defer(edit_origin=True)
-                bd.active_msgs[idx].page += 1
-                embed, image = game.gen_stats_embed(
-                    ctx=ctx, page=bd.active_msgs[idx].page, expired=False
-                )
-                components = [tr.prevpg_trainstats(), tr.nextpg_trainstats()]
-            else:
-                embed = None
-                components = None
+            elif msg.msg_type == "trainrules":
+                embed = bu.gen_rules_embed(bd.active_msgs[idx].page, False)
+            elif msg.msg_type == "rsplist":
+                embed = bu.gen_resp_list(ctx.guild, bd.active_msgs[idx].page, False)
+
+            components = [bu.nextpg_button(), bu.prevpg_button()]
+
             await ctx.edit_origin(
                 embeds=embed,
                 components=components,

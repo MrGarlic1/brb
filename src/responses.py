@@ -164,19 +164,3 @@ def gen_resp_list(guild: interactions.Guild, page: int, expired: bool) -> intera
             value=rsp_field, inline=False
         )
     return list_msg
-
-
-def prevpg_rsp() -> interactions.Button:
-    return interactions.Button(
-        style=interactions.ButtonStyle.SECONDARY,
-        label="←",
-        custom_id="prevpg_rsp",
-    )
-
-
-def nextpg_rsp() -> interactions.Button:
-    return interactions.Button(
-        style=interactions.ButtonStyle.SECONDARY,
-        label="→️",
-        custom_id="nextpg_rsp",
-    )

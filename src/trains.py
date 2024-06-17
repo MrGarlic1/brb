@@ -1439,38 +1439,6 @@ def train_zones_embed() -> interactions.Embed:
     return embed
 
 
-def prevpg_trainrules() -> interactions.Button:
-    return interactions.Button(
-        style=interactions.ButtonStyle.SECONDARY,
-        label="←",
-        custom_id="prevpg_trainrules",
-    )
-
-
-def nextpg_trainrules() -> interactions.Button:
-    return interactions.Button(
-        style=interactions.ButtonStyle.SECONDARY,
-        label="→️",
-        custom_id="nextpg_trainrules",
-    )
-
-
-def prevpg_trainstats() -> interactions.Button:
-    return interactions.Button(
-        style=interactions.ButtonStyle.SECONDARY,
-        label="←",
-        custom_id="prevpg_trainstats",
-    )
-
-
-def nextpg_trainstats() -> interactions.Button:
-    return interactions.Button(
-        style=interactions.ButtonStyle.SECONDARY,
-        label="→️",
-        custom_id="nextpg_trainstats",
-    )
-
-
 genre_colors: dict = {
     'Action': (255, 125, 125),
     'Adventure': (102, 255, 153),

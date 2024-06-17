@@ -175,3 +175,19 @@ async def init_guilds(guilds: list[interactions.Guild], bot: interactions.Client
                 )
             except NotADirectoryError:
                 pass
+
+
+def nextpg_button() -> interactions.Button:
+    return interactions.Button(
+        style=interactions.ButtonStyle.SECONDARY,
+        label="←",
+        custom_id="prevpg",
+    )
+
+
+def prevpg_button() -> interactions.Button:
+    return interactions.Button(
+        style=interactions.ButtonStyle.SECONDARY,
+        label="→️",
+        custom_id="nextpg",
+    )
