@@ -23,6 +23,7 @@ bot = interactions.Client(
     intents=interactions.Intents.DEFAULT | interactions.Intents.MESSAGE_CONTENT | interactions.Intents.GUILDS,
     sync_interactions=True,
     delete_unused_application_cmds=True,
+    debug_scope=895549687417958410
 )
 
 
@@ -508,13 +509,19 @@ async def autocomplete(ctx: interactions.AutocompleteContext) -> None:
     sub_cmd_name="rules",
     sub_cmd_description="Display the rules for playing trains",
 )
-async def send_rules(ctx: interactions.SlashContext):
+@interactions.slash_option(
+    name="page",
+    description="Specify which page of the rules to view.",
+    opt_type=interactions.OptionType.INTEGER,
+    required=False
+)
+async def send_rules(ctx: interactions.SlashContext, page: int = 1):
     rules_msg = await ctx.send(
-        embeds=bu.gen_rules_embed(page=0, expired=False),
+        embeds=bu.gen_rules_embed(page=page, expired=False),
         components=[bu.nextpg_button(), bu.prevpg_button()]
     )
     channel = ctx.channel
-    sent = bu.ListMsg(rules_msg.id, 0, ctx.guild, channel, "trainrules")
+    sent = bu.ListMsg(rules_msg.id, page, ctx.guild, channel, "trainrules")
     bd.active_msgs.append(sent)
     _ = asyncio.create_task(
         bu.close_msg(sent, 300, ctx, rules_msg)
@@ -667,13 +674,19 @@ async def autocomplete(ctx: interactions.AutocompleteContext):
     description="Show list of all responses for the server",
     dm_permission=False
 )
-async def listrsps(ctx: interactions.SlashContext):
+@interactions.slash_option(
+    name="page",
+    description="Specify which page to view.",
+    opt_type=interactions.OptionType.INTEGER,
+    required=False
+)
+async def listrsps(ctx: interactions.SlashContext, page: int = 1):
     resp_msg = await ctx.send(
-        embeds=bu.gen_resp_list(ctx.guild, 0, False),
+        embeds=rsp.gen_resp_list(ctx.guild, page, False),
         components=[bu.nextpg_button(), bu.prevpg_button()]
     )
     channel = ctx.channel
-    sent = bu.ListMsg(resp_msg.id, 0, ctx.guild, channel, "rsplist")
+    sent = bu.ListMsg(resp_msg.id, page, ctx.guild, channel, "rsplist")
     bd.active_msgs.append(sent)
     _ = asyncio.create_task(
         bu.close_msg(sent, 300, ctx, resp_msg)
@@ -1004,7 +1017,7 @@ async def on_component(event: interactions.api.events.Component):
             elif msg.msg_type == "trainrules":
                 embed = bu.gen_rules_embed(bd.active_msgs[idx].page, False)
             elif msg.msg_type == "rsplist":
-                embed = bu.gen_resp_list(ctx.guild, bd.active_msgs[idx].page, False)
+                embed = rsp.gen_resp_list(ctx.guild, bd.active_msgs[idx].page, False)
 
             components = [bu.nextpg_button(), bu.prevpg_button()]
 

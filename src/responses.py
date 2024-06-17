@@ -147,7 +147,7 @@ def gen_resp_list(guild: interactions.Guild, page: int, expired: bool) -> intera
         guild_trigs.append(mtn)
 
     max_pages: int = 1 if len(guild_trigs) <= 10 else len(guild_trigs) // 10 + 1  # Determine max pg @ 10 entries per pg
-    page: int = 1 + (page % max_pages)  # Loop back through pages both ways
+    page: int = 1 + ((page - 1) % max_pages)  # Loop back through pages both ways
     footer_end: str = " | This message is inactive." if expired else " | This message deactivates after 5 minutes."
     list_msg.set_author(name=guild.name, icon_url=bd.bot_avatar_url)
     list_msg.set_thumbnail(url=guild.icon.url)

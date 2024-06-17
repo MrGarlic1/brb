@@ -119,7 +119,7 @@ class TrainPlayer:
             self.inventory.pop(itemname)
 
 
-def default_shop():
+def default_shop() -> dict[str, TrainItem]:
     return {
         "Telescope":
         TrainItem(
@@ -1296,8 +1296,8 @@ def train_game_embed(ctx: interactions.SlashContext, game: TrainGame) -> interac
 
 
 def gen_rules_embed(page: int, expired: bool) -> interactions.Embed:
-    max_pages: int = 5
-    page: int = 1 + (page % max_pages)  # Loop back through pages both ways
+    max_pages: int = 6
+    page: int = 1 + ((page - 1) % max_pages)  # Loop back through pages both ways
     footer_end: str = " | This message is inactive." if expired else " | This message deactivates after 5 minutes."
     if page == 1:
         embed = train_rules_embed()
@@ -1307,6 +1307,8 @@ def gen_rules_embed(page: int, expired: bool) -> interactions.Embed:
         embed = train_symbols_embed()
     elif page == 4:
         embed = train_quests_embed()
+    elif page == 5:
+        embed = train_items_embed()
     else:
         embed = train_scoring_embed()
     embed.set_footer(text=f'Page {page}/{max_pages} {footer_end}')
@@ -1436,6 +1438,20 @@ def train_zones_embed() -> interactions.Embed:
         value="**Genre zones appear as the following colors on the trains board:**"
     )
     embed.set_image(url=bd.train_zones_url)
+    return embed
+
+
+def train_items_embed() -> interactions.Embed:
+    embed = interactions.Embed()
+    embed.set_author(name="Anime Trains", icon_url=bd.bot_avatar_url)
+    embed.color = 0xff9c2c
+    embed.title = "Item Reference"
+    for item in default_shop().values():
+        embed.add_field(
+            name=f"{item.emoji} {item.name}",
+            value=f"*Cost: {item.cost}*\n{item.description}",
+            inline=True
+        )
     return embed
 
 
