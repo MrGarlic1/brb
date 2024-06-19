@@ -1170,7 +1170,7 @@ class TrainGame:
             embed.add_field(
                 name="\u200b",
                 value=f"**{place_emoji} {player.member.mention}**"
-                      f"Score is {player.score["total"]}",
+                      f"Score is {player.score['total']}",
                 inline=False
             )
         embed.add_field(
