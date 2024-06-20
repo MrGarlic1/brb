@@ -545,10 +545,10 @@ class TrainGame:
     def gen_player_locations(self, river_ring: int) -> None:
         row_bounds: tuple[int, int] = (1+river_ring, self.size[1]-river_ring)
         col_bounds: tuple[int, int] = (1+river_ring, self.size[0]-river_ring)
+        taken_spaces: list = []
 
         for player_idx, player in enumerate(self.players):
             quadrant: str = choice(("Left", "Top"))
-            taken_spaces: list = []
 
             # Generate start locations (NOTE: game.size is (width, height) while coordinates are in (row, col)
             attempts: int = 0
@@ -793,6 +793,7 @@ class TrainGame:
         avg_secs_between_shots = round(sum(time_between_shots_list)/len(time_between_shots_list))
 
         embed.add_field(name="🧮 Total Shots", value=total_shots, inline=True)
+        embed.add_field(name="🛤️ Total Rails Used", value=player.rails, inline=True)
         embed.add_field(name="🍥 % in Zone", value=f"{round(in_zone_shots/total_shots*100)}%", inline=True)
         embed.add_field(name="🚂 Done?", value="✅" if player.done else "❌", inline=True)
         embed.add_field(
