@@ -17,7 +17,10 @@ Response bot for discord, now with trains!
 ## Commands
 - /listresponses
 - /trains [newgame/board/stats/shot/undo]
+- /train stats
 - /train rules
+- /train buy [item]
+- /train use [item]
 - /response [add/remove]
 - /mod [add/remove/deleteRspData/deletetrain/restoretrain]
 - /config [allowphrases/limitresponses/userperms/view/reset]
