@@ -1103,6 +1103,7 @@ class TrainGame:
             if player_prison_counts[player.tag] != 0 and "gun" in player.inventory["gun"]:
                 player_prison_counts[player.tag] += 0.5*player.inventory["gun"].amount
 
+        city_coords = {tuple[int, int], str}
         for idx, player in enumerate(self.players):
 
             axe_bonus = 0
@@ -1128,6 +1129,7 @@ class TrainGame:
 
                 if shot_tile.resource == bd.emoji["city"]:
                     has_city = True
+                    city_coords[shot_tile.coords()] = choice(["spring", "summer", "autumn", "winter"])
 
                 if shot_tile.resource == bd.emoji["wheat"]:
                     add_to_score(p=player, key="wheat", val=1)
@@ -1153,7 +1155,6 @@ class TrainGame:
 
         embed = interactions.Embed(
             title=f"Game Complete!"
-
         )
         embed.set_author(name="Anime Trains", icon_url=bd.bot_avatar_url)
         embed.color = 0xff9c2c
@@ -1177,6 +1178,13 @@ class TrainGame:
         embed.add_field(
             name="\u200b",
             value="**Add quest points to calculate the final score!**"
+        )
+        city_shots_string = ""
+        for key, val in city_coords.items():
+            city_shots_string += f"{key[0]}, {key[1]}: {val}\n"
+        embed.add_field(
+            name="Shot Cities",
+            value=city_shots_string
         )
         embed.set_footer(text=self.date)
 
