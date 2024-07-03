@@ -40,13 +40,16 @@ class TrainTile:
 
 
 class TrainItem:
-    def __init__(self, name: str, emoji: str, description: str, amount: int, cost: float, showinfo: str = ""):
+    def __init__(
+            self, name: str, emoji: str, description: str, amount: int, cost: float, showinfo: str = "", uses: int = -1
+    ):
         self.name = name
         self.emoji = emoji
         self.description = description
         self.amount = amount
         self.cost = cost
         self.showinfo = showinfo
+        self.uses = uses
 
     def inv_entry(self):
         return f"{self.emoji}: (x{self.amount})"
@@ -113,9 +116,12 @@ class TrainPlayer:
         return shot_dict
 
     def update_item_count(self, itemname) -> None:
-        if self.inventory[itemname].amount > 1:
+        self.inventory[itemname.uses] -= 1
+
+        if self.inventory[itemname.uses] == 0:
             self.inventory[itemname].amount -= 1
-        else:
+
+        if self.inventory[itemname].amount == 0:
             self.inventory.pop(itemname)
 
 
@@ -142,16 +148,18 @@ def default_shop() -> dict[str, TrainItem]:
             name="Bucket",
             emoji=bd.emoji["bucket"],
             description="Allows you to create a river tile at a location of your choice! (consumable)",
-            cost=1.5,
-            amount=4
+            cost=1,
+            amount=4,
+            uses=3
         ),
         "Pontoon Bridge":
         TrainItem(
             name="Pontoon Bridge",
             emoji=bd.emoji["bridge"],
             description="Allows you to use 0 rails when placing on a river tile! (consumed when entering a river)",
-            cost=1.5,
-            amount=4
+            cost=1,
+            amount=4,
+            uses=3
         ),
         "Axe":
         TrainItem(
@@ -1210,7 +1218,7 @@ async def load_game(
         shop[item["name"]] = \
             TrainItem(
                 name=item["name"], emoji=item["emoji"], description=item["description"],
-                amount=item["amount"], cost=item["cost"], showinfo=item["showinfo"]
+                amount=item["amount"], cost=item["cost"], showinfo=item["showinfo"], uses=item["uses"]
             )
 
     # Convert player dicts back into player classes
@@ -1232,7 +1240,7 @@ async def load_game(
             item_dict[item[name]] = \
                 TrainItem(
                     name=item["name"], emoji=item["emoji"], description=item["description"],
-                    amount=item["amount"], cost=item["cost"], showinfo=item["showinfo"]
+                    amount=item["amount"], cost=item["cost"], showinfo=item["showinfo"], uses=item["showinfo"]
                 )
 
         member = await guild.fetch_member(player["member_id"])
