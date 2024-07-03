@@ -116,9 +116,9 @@ class TrainPlayer:
         return shot_dict
 
     def update_item_count(self, itemname) -> None:
-        self.inventory[itemname.uses] -= 1
+        self.inventory[itemname].uses -= 1
 
-        if self.inventory[itemname.uses] == 0:
+        if self.inventory[itemname].uses == 0:
             self.inventory[itemname].amount -= 1
 
         if self.inventory[itemname].amount == 0:
