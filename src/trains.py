@@ -1237,7 +1237,7 @@ async def load_game(
         for name, item in player["inventory"].items():
             if "showinfo" not in item:
                 item["showinfo"] = ""
-            item_dict[item[name]] = \
+            item_dict[name] = \
                 TrainItem(
                     name=item["name"], emoji=item["emoji"], description=item["description"],
                     amount=item["amount"], cost=item["cost"], showinfo=item["showinfo"], uses=item["showinfo"]
