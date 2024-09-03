@@ -1180,8 +1180,8 @@ class TrainGame:
             value="**Add quest points to calculate the final score!**"
         )
         city_shots_string = ""
-        for key, val in city_coords.items():
-            city_shots_string += f"{key[0]}, {key[1]}: {val}\n"
+        for coords, season in city_coords.items():
+            city_shots_string += f"{coords[0]}, {coords[1]}: {season}\n"
         embed.add_field(
             name="Shot Cities",
             value=city_shots_string
