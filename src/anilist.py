@@ -80,20 +80,3 @@ def query_user_id(username: str) -> int | None:
 def query_user_animelist(user_id: int):
     print(user_id)
     pass
-
-
-def main():
-    media_id = anime_id_from_url(input("Anilist URL: "))
-
-    username = username_from_url(input("Anilist User URL: "))
-
-    media = query_media(media_id=media_id)
-
-    user_id = query_user_id(username=username)
-
-    print(media)
-    print(user_id)
-
-
-if __name__ == "__main__":
-    main()
