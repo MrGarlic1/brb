@@ -9,7 +9,7 @@ Response bot for discord, now with trains!
   - Set response delete permissions to user-specific or global
   - Allow/disallow phrase responses
 - ### Anime trains game (rules to be listed)
-  - Automatic scoring [IN PROGRESS]
+  - Automatic scoring
   - Randomly generated setup for the board
   - Configurable size/players
   - Fully playable through discord/anilist
@@ -17,13 +17,13 @@ Response bot for discord, now with trains!
 ## Commands
 - /listresponses
 - /trains [newgame/board/stats/shot/undo]
-- /train stats
 - /train rules
 - /train buy [item]
 - /train use [item]
 - /response [add/remove]
 - /mod [add/remove/deleteRspData/deletetrain/restoretrain]
 - /config [allowphrases/limitresponses/userperms/view/reset]
+- /anilist link [profile]
 
 ## Installation
 ### MacOS/Linux
