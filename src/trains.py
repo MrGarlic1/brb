@@ -17,10 +17,10 @@ from shutil import rmtree
 
 @dataclass
 class TrainShot:
-    def __init__(self, row: int, col: int, genre: str, info: str, time: str):
+    def __init__(self, row: int, col: int, show_id: int, info: str, time: str):
         self.row = row
         self.col = col
-        self.genre = genre
+        self.show_id = show_id
         self.info = info
         self.time = time
 
@@ -106,15 +106,6 @@ class TrainPlayer:
             "shots": shot_list, "donetime": self.donetime, "vis_tiles": self.vis_tiles, "inventory": item_dict
         }
 
-    def get_shot_genre_count(self) -> dict:
-        shot_dict = {}
-        for shot in self.shots:
-            if shot.genre in shot_dict:
-                shot_dict[shot.genre] += 1
-            else:
-                shot_dict[shot.genre] = 1
-        return shot_dict
-
     def update_item_count(self, itemname) -> None:
         self.inventory[itemname].uses -= 1
 
@@ -125,79 +116,18 @@ class TrainPlayer:
             self.inventory.pop(itemname)
 
 
-def default_shop() -> dict[str, TrainItem]:
-    return {
-        "Telescope":
-        TrainItem(
-            name="Telescope",
-            emoji=bd.emoji["telescope"],
-            description="Permanently increases your vision by 1!",
-            cost=3,
-            amount=2
-            ),
-        "Gun":
-        TrainItem(
-            name="Gun",
-            emoji=bd.emoji["gun"],
-            description="Increase the prison's intersection penalty for other players by 0.5!",
-            cost=5,
-            amount=1
-        ),
-        "Bucket":
-        TrainItem(
-            name="Bucket",
-            emoji=bd.emoji["bucket"],
-            description="Allows you to create a river tile at a location of your choice! (consumable)",
-            cost=1,
-            amount=4,
-            uses=3
-        ),
-        "Pontoon Bridge":
-        TrainItem(
-            name="Pontoon Bridge",
-            emoji=bd.emoji["bridge"],
-            description="Allows you to use 0 rails when placing on a river tile! (consumed when entering a river)",
-            cost=1,
-            amount=4,
-            uses=3
-        ),
-        "Axe":
-        TrainItem(
-            name="Axe",
-            emoji=bd.emoji["axe"],
-            description=f"Increase points gained from {bd.emoji['wood']} tiles by 0.5!",
-            cost=3,
-            amount=2
-        ),
-        "Coin":
-        TrainItem(
-            name="Coin",
-            emoji=bd.emoji["coin"],
-            description="Increases your score by 2!",
-            cost=3,
-            amount=4
-        ),
-        "MagLev":
-        TrainItem(
-            name="MagLev",
-            emoji=bd.emoji["maglev"],
-            description="Faster trains! Permanently decreases the anime requirement for rails from 3 hours to 2 hours.",
-            cost=3,
-            amount=2
-        )
-    }
-
-
 class TrainGame:
     def __init__(
             self, name: str = None, date: str = None, players: list[TrainPlayer] = None,
             board: dict[tuple[int, int]: TrainTile] = None, gameid: int = None, active: bool = True, size: tuple = None,
-            shop: dict = None
+            shop: dict = None, known_shows: dict[int, dict] = None
     ):
         if players is None:
             players: list[TrainPlayer] = []
         if shop is None:
             shop = default_shop()
+        if known_shows is None:
+            known_shows = {}
         self.name = name
         self.date = date
         self.players = players
@@ -206,6 +136,7 @@ class TrainGame:
         self.size = size
         self.board = board
         self.shop = shop
+        self.known_shows = known_shows
 
     def asdict(self) -> dict:
         player_list = []
@@ -790,7 +721,7 @@ class TrainGame:
 
         # Get time deltas for all previous shots and current time, take average
         for shot_idx, shot in enumerate(player.shots):
-            if shot.genre == self.board[(shot.row, shot.col)].zone:
+            if self.board[(shot.row, shot.col)].zone in self.known_shows[shot.show_id]["genres"]:
                 in_zone_shots += 1
             time_between_shots_list.append(
                 (datetime.strptime(shot.time, bd.date_format) - prev_shot_time).total_seconds()
@@ -824,7 +755,14 @@ class TrainGame:
 
         # Shot genre pie chart
 
-        genre_counts = self.players[player_idx].get_shot_genre_count()
+        genre_counts = {}
+        for shot in self.players[player_idx].shots:
+            for genre in self.known_shows[shot.show_id]["genres"]:
+                if genre in genre_counts:
+                    genre_counts[genre] += 1
+                else:
+                    genre_counts[genre] = 1
+
         plt.style.use("dark_background")
         fig, ax = plt.subplots()
 
@@ -1047,7 +985,7 @@ class TrainGame:
         else:
             rails = 1
 
-        if self.board[(shot.row, shot.col)].zone == shot.genre:
+        if self.board[(shot.row, shot.col)].zone in self.known_shows[shot.show_id]["genres"]:
             rails *= 0.5
         if undo:
             self.players[sender_idx].rails -= rails
@@ -1111,7 +1049,7 @@ class TrainGame:
             if player_prison_counts[player.tag] != 0 and "gun" in player.inventory["gun"]:
                 player_prison_counts[player.tag] += 0.5*player.inventory["gun"].amount
 
-        city_coords = {tuple[int, int], str}
+        city_coords: dict[tuple[int, int], str] = {}
         for idx, player in enumerate(self.players):
 
             axe_bonus = 0
@@ -1237,7 +1175,7 @@ async def load_game(
         for shot in player["shots"]:
             shot_list.append(
                 TrainShot(
-                    row=shot["row"], col=shot["col"], genre=shot["genre"], info=shot["info"], time=shot["time"]
+                    row=shot["row"], col=shot["col"], show_id=shot["show_id"], info=shot["info"], time=shot["time"]
                 )
             )
 
@@ -1270,7 +1208,8 @@ async def load_game(
         gameid=game_dict["gameid"],
         active=game_dict["active"],
         size=tuple(game_dict["size"]),
-        shop=shop
+        shop=shop,
+        known_shows=game_dict["known_shows"]
     )
     return game
 
@@ -1470,6 +1409,69 @@ def train_items_embed() -> interactions.Embed:
             inline=True
         )
     return embed
+
+
+def default_shop() -> dict[str, TrainItem]:
+    return {
+        "Telescope":
+        TrainItem(
+            name="Telescope",
+            emoji=bd.emoji["telescope"],
+            description="Permanently increases your vision by 1!",
+            cost=3,
+            amount=2
+            ),
+        "Gun":
+        TrainItem(
+            name="Gun",
+            emoji=bd.emoji["gun"],
+            description="Increase the prison's intersection penalty for other players by 0.5!",
+            cost=5,
+            amount=1
+        ),
+        "Bucket":
+        TrainItem(
+            name="Bucket",
+            emoji=bd.emoji["bucket"],
+            description="Allows you to create a river tile at a location of your choice! (consumable)",
+            cost=1,
+            amount=4,
+            uses=3
+        ),
+        "Pontoon Bridge":
+        TrainItem(
+            name="Pontoon Bridge",
+            emoji=bd.emoji["bridge"],
+            description="Allows you to use 0 rails when placing on a river tile! (consumed when entering a river)",
+            cost=1,
+            amount=4,
+            uses=3
+        ),
+        "Axe":
+        TrainItem(
+            name="Axe",
+            emoji=bd.emoji["axe"],
+            description=f"Increase points gained from {bd.emoji['wood']} tiles by 0.5!",
+            cost=3,
+            amount=2
+        ),
+        "Coin":
+        TrainItem(
+            name="Coin",
+            emoji=bd.emoji["coin"],
+            description="Increases your score by 2!",
+            cost=3,
+            amount=4
+        ),
+        "MagLev":
+        TrainItem(
+            name="MagLev",
+            emoji=bd.emoji["maglev"],
+            description="Faster trains! Permanently decreases the anime requirement for rails from 3 hours to 2 hours.",
+            cost=3,
+            amount=2
+        )
+    }
 
 
 genre_colors: dict = {

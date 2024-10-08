@@ -9,6 +9,7 @@ from random import choice
 import botdata as bd
 import botutils as bu
 import trains as tr
+import anilist as al
 import responses as rsp
 import asyncio
 import interactions
@@ -24,6 +25,35 @@ bot = interactions.Client(
     sync_interactions=True,
     delete_unused_application_cmds=True
 )
+
+
+@interactions.slash_command(
+    name="anilist",
+    sub_cmd_name="link",
+    sub_cmd_description="Link your discord profile to an anilist profile",
+    dm_permission=True
+)
+@interactions.slash_option(
+    name="url",
+    description="Anilist profile link (e.g. https://anilist.co/User/[name]",
+    required=True,
+    opt_type=interactions.OptionType.STRING
+)
+async def link_anilist(ctx: interactions.SlashContext, url: str):
+    username = al.username_from_url(url)
+    if username is None:
+        await ctx.send(content="Could not find user, please check URL.")
+        return True
+    anilist_user_id = al.query_user_id(username)
+    if anilist_user_id is None:
+        await ctx.send(content="Could not find user, please check URL.")
+        return True
+
+    bd.linked_profiles[ctx.author_id] = anilist_user_id
+    with open(f"{bd.parent}/Data/linked_profiles.json", "w") as f:
+        json.dump(bd.linked_profiles, f, indent=4)
+    await ctx.send(content=bd.pass_str)
+    return False
 
 
 @interactions.slash_command(
@@ -254,19 +284,19 @@ async def trains_use_bucket(ctx: interactions.SlashContext, item: str, row: int,
     opt_type=interactions.OptionType.INTEGER
 )
 @interactions.slash_option(
-    name="genre",
-    description="Genre of show used for shot",
+    name="link",
+    description="Anilist link of show",
     required=True,
     opt_type=interactions.OptionType.STRING,
     choices=bu.dict_to_choices(tr.genre_colors)
 )
 @interactions.slash_option(
     name="info",
-    description="Show/stock information",
+    description="Time/stock information",
     required=True,
     opt_type=interactions.OptionType.STRING
 )
-async def record_shot(ctx: interactions.SlashContext, row: int, column: int, genre: str, info: str):
+async def record_shot(ctx: interactions.SlashContext, row: int, column: int, link: str, info: str):
     await ctx.defer(ephemeral=False)
     if ctx.guild_id not in bd.active_trains:
         await ctx.send(content="There is no active game! To make one, use /trains newgame", ephemeral=True)
@@ -282,13 +312,26 @@ async def record_shot(ctx: interactions.SlashContext, row: int, column: int, gen
         ignore=ignore_patterns("*.png")
     )
     # Get player, validate shot
+    show_id = al.anime_id_from_url(url=link)
+    if show_id is None:
+        await ctx.send(content="Invalid anilist link.")
+        return True
+
     sender_idx, player = game.get_player(int(ctx.author_id))
     if not game.is_valid_shot(player, row, column):
         await ctx.send(content=bd.fail_str)
         return True
 
+    # Fetch anilist show information if it isn't already cached
+    if show_id not in game.known_shows:
+        show_info = al.query_media(media_id=show_id)
+        if show_info is None:
+            await ctx.send(content="Error connecting to anilist, please check URL and try again.")
+            return True
+        game.known_shows[show_id] = show_info
+
     # Update board, player rails
-    shot = tr.TrainShot(row=row, col=column, genre=genre, info=info, time=datetime.now().strftime(bd.date_format))
+    shot = tr.TrainShot(row=row, col=column, show_id=show_id, info=info, time=datetime.now().strftime(bd.date_format))
     game.update_player_stats_after_shot(sender_idx=sender_idx, player=player, shot=shot)
 
     # Save/update games
@@ -946,6 +989,13 @@ async def on_guild_join(event: interactions.api.events.GuildJoin):
 async def on_ready():
     guilds = bot.guilds
     assert guilds, "Error connecting to Discord, no guilds listed."
+    if not path.exists(f"{bd.parent}/Data/linked_profiles.json"):
+        with open(f"{bd.parent}/Data/linked_profiles.json", "w") as f:
+            pass
+    with open(f"{bd.parent}/Data/linked_profiles.json", "r"):
+        bd.linked_profiles = json.load(f)
+
+
     bu.load_fonts(f"{bd.parent}/Data")
     print(
         Fore.WHITE + f'{strftime(bd.date_format)} :  Connected to the following guilds: ' +
