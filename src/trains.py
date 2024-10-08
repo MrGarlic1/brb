@@ -149,8 +149,8 @@ class TrainGame:
         for name, item in self.shop.items():
             item_dict[name] = item.__dict__
         return {
-            "name": self.name, "date": self.date, "players": player_list,
-            "gameid": self.gameid, "active": self.active, "size": self.size, "board": board_dict, "shop": item_dict
+            "name": self.name, "date": self.date, "players": player_list, "gameid": self.gameid, "active": self.active,
+            "size": self.size, "board": board_dict, "shop": item_dict, "known_shows": self.known_shows
         }
 
     def __repr__(self) -> str:
@@ -1160,6 +1160,7 @@ async def load_game(
         )
 
     shop: dict = {}
+
     for item in game_dict["shop"].values():
         shop[item["name"]] = \
             TrainItem(
@@ -1209,7 +1210,7 @@ async def load_game(
         active=game_dict["active"],
         size=tuple(game_dict["size"]),
         shop=shop,
-        known_shows=game_dict["known_shows"]
+        known_shows={int(show_id):show_info for show_id, show_info in game_dict["known_shows"].items()}
     )
     return game
 

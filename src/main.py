@@ -295,7 +295,6 @@ async def trains_use_bucket(ctx: interactions.SlashContext, item: str, row: int,
     description="Anilist link of show",
     required=True,
     opt_type=interactions.OptionType.STRING,
-    choices=bu.dict_to_choices(tr.genre_colors)
 )
 @interactions.slash_option(
     name="info",
@@ -321,7 +320,7 @@ async def record_shot(ctx: interactions.SlashContext, row: int, column: int, lin
     # Get player, validate shot
     show_id = al.anime_id_from_url(url=link)
     if show_id is None:
-        await ctx.send(content="Invalid anilist link.")
+        await ctx.send(content="Could not find show, please check anilist URL!")
         return True
 
     sender_idx, player = game.get_player(int(ctx.author_id))
@@ -1000,7 +999,7 @@ async def on_ready():
         with open(f"{bd.parent}/Data/linked_profiles.json", "w") as f:
             json.dump({}, f, indent=4)
     with open(f"{bd.parent}/Data/linked_profiles.json", "r") as f:
-        bd.linked_profiles = json.load(f)
+        bd.linked_profiles = {int(key):int(val) for key, val in json.load(f).items()}
 
     bu.load_fonts(f"{bd.parent}/Data")
     print(

@@ -167,7 +167,8 @@ async def init_guilds(guilds: list[interactions.Guild], bot: interactions.Client
                 if game.active:
                     bd.active_trains[guild.id] = game
                     break
-            except (FileNotFoundError, TypeError, ValueError, KeyError):
+            except (FileNotFoundError, TypeError, ValueError, KeyError) as e:
+                print(e)
                 del_game_files(guild_id=guild.id, game_name=name)
                 print(
                     Fore.WHITE + f'{strftime(bd.date_format)} :  ' +
