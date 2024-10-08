@@ -1,5 +1,6 @@
 # BRBot database
 Guilds/
+Data/linked_profiles.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -166,6 +167,7 @@ cython_debug/
 .idea/**/usage.statistics.xml
 .idea/**/dictionaries
 .idea/**/shelf
+.idea/**/misc.xml
 
 # AWS User-specific
 .idea/**/aws.xml
