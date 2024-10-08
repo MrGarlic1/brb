@@ -106,6 +106,11 @@ async def create_trains(
     tags: list = bu.get_player_tags(members)
 
     for member, tag in zip(members, tags):
+        if member.id not in bd.linked_profiles:
+            await ctx.send(
+                content=f"Could not create game, <@{member.id}> must link their anilist profile (/anilist link)"
+            )
+
         dm = await member.fetch_dm(force=False)
         players.append(
             tr.TrainPlayer(member=member, tag=tag, dmchannel=dm)
