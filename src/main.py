@@ -23,7 +23,8 @@ bot = interactions.Client(
     token=bd.token,
     intents=interactions.Intents.DEFAULT | interactions.Intents.MESSAGE_CONTENT | interactions.Intents.GUILDS,
     sync_interactions=True,
-    delete_unused_application_cmds=True
+    delete_unused_application_cmds=True,
+    debug_scope=895549687417958410
 )
 
 
@@ -42,11 +43,11 @@ bot = interactions.Client(
 async def link_anilist(ctx: interactions.SlashContext, url: str):
     username = al.username_from_url(url)
     if username is None:
-        await ctx.send(content="Could not find user, please check URL.")
+        await ctx.send(content="Could not find anilist profile, please check URL!")
         return True
     anilist_user_id = al.query_user_id(username)
     if anilist_user_id is None:
-        await ctx.send(content="Could not find user, please check URL.")
+        await ctx.send(content="Could not find anilist profile, please check URL!")
         return True
 
     bd.linked_profiles[ctx.author_id] = anilist_user_id
@@ -108,8 +109,9 @@ async def create_trains(
     for member, tag in zip(members, tags):
         if member.id not in bd.linked_profiles:
             await ctx.send(
-                content=f"Could not create game, <@{member.id}> must link their anilist profile (/anilist link)"
+                content=f"Could not create game, <@{member.id}> must link their anilist profile! (/anilist link)"
             )
+            return True
 
         dm = await member.fetch_dm(force=False)
         players.append(
@@ -996,10 +998,9 @@ async def on_ready():
     assert guilds, "Error connecting to Discord, no guilds listed."
     if not path.exists(f"{bd.parent}/Data/linked_profiles.json"):
         with open(f"{bd.parent}/Data/linked_profiles.json", "w") as f:
-            pass
-    with open(f"{bd.parent}/Data/linked_profiles.json", "r"):
+            json.dump({}, f, indent=4)
+    with open(f"{bd.parent}/Data/linked_profiles.json", "r") as f:
         bd.linked_profiles = json.load(f)
-
 
     bu.load_fonts(f"{bd.parent}/Data")
     print(

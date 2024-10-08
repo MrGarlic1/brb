@@ -18,7 +18,7 @@ def anime_id_from_url(url: str) -> int | None:
 def username_from_url(url: str) -> str | None:
     url = url.split("/")
     url = tuple(filter(None, url))
-    if not url[-1]:
+    if not url:
         return None
 
     return url[-1]
@@ -49,7 +49,6 @@ def query_media(*, media_id: int):
         json={'query': query, 'variables': variables}
     )
     if r.status_code != 200:
-        print("Error communicating with anilist.")
         return None
     else:
         return r.json()["data"]["Media"]
@@ -71,7 +70,6 @@ def query_user_id(username: str) -> int | None:
         json={'query': query, 'variables': variables}
     )
     if r.status_code != 200:
-        print("Error communicating with anilist.")
         return None
     else:
         return r.json()["data"]["User"]["id"]
