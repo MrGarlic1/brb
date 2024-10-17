@@ -2,6 +2,7 @@
 Response bot for discord, now with trains!
 
 ## Features
+### Responses
 - Add a trigger phrase and response text that the bot will automatically respond to (can specify if the message has to exactly match or just contain the trigger phrase)
 - Remove and list existing responses
 - Permission configuration options
