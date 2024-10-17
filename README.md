@@ -40,7 +40,7 @@ Response bot for discord, now with trains!
 ### Build from source
 1. Clone repo: `git clone https://github.com/MrGarlic1/Brb`
 2. Change dir: `cd Brb`
-3. Create and activate venv: `python -m venv venv` `source ./venv/bin/activate`
+3. Create and activate venv: `python -m venv venv; source ./venv/bin/activate`
 4. Install requirements: `pip install -r requirements.txt`
 5. Edit .env file with bot token
 6. Run bot: `python src/main.py`
