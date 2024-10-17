@@ -28,25 +28,31 @@ def query_media(*, media_id: int):
     query = """
     query Media($mediaId: Int) {
       Media(id: $mediaId) {
+        episodes
         genres
+        meanScore
+        popularity
         season
         source
-        title {
-          english
-        }
-        episodes
         startDate {
           year
+        }
+        tags {
+          name
+          rank
+        }
+        title {
+          english
         }
       }
     }
     """
     variables = {
-    'mediaId': media_id
+    "mediaId": media_id
     }
     r = httpx.post(
-        url='https://graphql.anilist.co',
-        json={'query': query, 'variables': variables}
+        url="https://graphql.anilist.co",
+        json={"query": query, "variables": variables}
     )
     if r.status_code != 200:
         return None
@@ -63,11 +69,11 @@ def query_user_id(username: str) -> int | None:
     }
     """
     variables = {
-    'name': username
+    "name": username
     }
     r = httpx.post(
-        url='https://graphql.anilist.co',
-        json={'query': query, 'variables': variables}
+        url="https://graphql.anilist.co",
+        json={"query": query, "variables": variables}
     )
     if r.status_code != 200:
         return None
