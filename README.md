@@ -9,7 +9,7 @@ Response bot for discord, now with trains!
   - Max responses per user
   - Set response delete permissions to user-specific or global
   - Allow/disallow phrase responses
-- ### Anime trains game (rules to be listed)
+### Anime trains game (rules to be listed)
   - Automatic scoring
   - Randomly generated setup for the board
   - Configurable size/players
