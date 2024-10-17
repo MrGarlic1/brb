@@ -48,16 +48,17 @@ def query_media(*, media_id: int):
     }
     """
     variables = {
-    "mediaId": media_id
+        "mediaId": media_id
     }
-    r = httpx.post(
+    response = httpx.post(
         url="https://graphql.anilist.co",
         json={"query": query, "variables": variables}
     )
-    if r.status_code != 200:
+    if response.status_code != 200:
         return None
     else:
-        return r.json()["data"]["Media"]
+        return response.json()["data"]["Media"]
+
 
 def query_user_id(username: str) -> int | None:
     query = """
@@ -69,16 +70,16 @@ def query_user_id(username: str) -> int | None:
     }
     """
     variables = {
-    "name": username
+        "name": username
     }
-    r = httpx.post(
+    response = httpx.post(
         url="https://graphql.anilist.co",
         json={"query": query, "variables": variables}
     )
-    if r.status_code != 200:
+    if response.status_code != 200:
         return None
     else:
-        return r.json()["data"]["User"]["id"]
+        return response.json()["data"]["User"]["id"]
 
 
 def query_user_animelist(user_id: int):
