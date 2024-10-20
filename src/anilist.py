@@ -56,8 +56,8 @@ def query_media(*, media_id: int):
     )
     if response.status_code != 200:
         return None
-    else:
-        return response.json()["data"]["Media"]
+
+    return response.json()["data"]["Media"]
 
 
 def query_user_id(username: str) -> int | None:
@@ -78,10 +78,39 @@ def query_user_id(username: str) -> int | None:
     )
     if response.status_code != 200:
         return None
-    else:
-        return response.json()["data"]["User"]["id"]
+
+    return response.json()["data"]["User"]["id"]
 
 
-def query_user_animelist(user_id: int):
-    print(user_id)
-    pass
+# Query a user's anime list. Data is in form of [{"mediaId": 160181, "status": "CURRENT"}, {...]
+def query_user_animelist(user_id: int) -> list | None:
+    query = """
+    query MediaListCollection($type: MediaType, $userId: Int, $statusNotIn: [MediaListStatus]) {
+    MediaListCollection(type: $type, userId: $userId, status_not_in: $statusNotIn) {
+      lists {
+        entries {
+          mediaId
+          status
+          }
+        }
+      }
+    }
+    """
+    variables = {
+        "userId": user_id,
+        "type": "ANIME",
+        "statusNotIn": "PLANNING"
+    }
+    response = httpx.post(
+        url="https://graphql.anilist.co",
+        json={"query": query, "variables": variables}
+    )
+    if response.status_code != 200:
+        return None
+
+    full_user_list: list = []
+    for anime_list in response.json()["data"]["MediaListCollection"]["lists"]:
+        anime_list = anime_list["entries"]
+        full_user_list += anime_list
+
+    return full_user_list
