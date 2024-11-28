@@ -13,7 +13,7 @@ import matplotlib.font_manager
 from PIL import Image, ImageFont, ImageDraw
 from pilmoji import Pilmoji
 from shutil import rmtree
-
+from time import strptime
 
 @dataclass
 class TrainShot:
@@ -741,17 +741,20 @@ class TrainGame:
 
         # Projected completion time
         if not player.shots:
-            embed.add_field(
-                name="🗓️ Projected Completion Date", value="N/A", inline=False
-            )
+            projected_time = "N/A"
+        elif player.done:
+            projected_time = strptime(player.donetime, "%Y%m%d%H%M%S")
+            projected_time = projected_time.strftime("%Y/%m/%d at %H:%M:%S")
         else:
+            # player.end is [ROW, COL]
             last_shot = player.shots[-1]
             dist_left = abs(last_shot.row - player.end[0]) + abs(last_shot.col - player.end[1])
             projected_time = datetime.now() + timedelta(seconds=round(dist_left*1.5)*avg_secs_between_shots)
+            projected_time = projected_time.strftime("%Y/%m/%d at %H:%M:%S")
 
-            embed.add_field(
-                name="🗓️ Projected Completion Date", value=projected_time.strftime("%Y/%m/%d at %H:%M:%S"), inline=False
-            )
+        embed.add_field(
+            name="🗓️ Projected Completion Date", value=projected_time, inline=False
+        )
 
         # Shot genre pie chart
 
@@ -1210,7 +1213,7 @@ async def load_game(
         active=game_dict["active"],
         size=tuple(game_dict["size"]),
         shop=shop,
-        known_shows={int(show_id):show_info for show_id, show_info in game_dict["known_shows"].items()}
+        known_shows={int(show_id): show_info for show_id, show_info in game_dict["known_shows"].items()}
     )
     return game
 
