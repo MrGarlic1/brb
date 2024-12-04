@@ -14,6 +14,8 @@ from PIL import Image, ImageFont, ImageDraw
 from pilmoji import Pilmoji
 from shutil import rmtree
 from time import strptime
+import anilist as al
+
 
 @dataclass
 class TrainShot:
@@ -67,7 +69,8 @@ class TrainPlayer:
             self, member: interactions.Member = None, tag: str = None, dmchannel: interactions.DMChannel = None,
             rails: int = 0, shots: list[TrainShot] = None, vis_tiles: list[tuple] = None, score: dict = None,
             start: tuple = None, end: tuple = None, done: bool = False, donetime: str = None,
-            inventory: dict = None, shops_used: list[tuple[int, int]] = None
+            inventory: dict = None, shops_used: list[tuple[int, int]] = None, starting_anilist: dict = None,
+            anilist_id: int = None
     ):
         if vis_tiles is None:
             vis_tiles = []
@@ -79,6 +82,11 @@ class TrainPlayer:
             inventory = {}
         if shops_used is None:
             shops_used = []
+        if starting_anilist is None:
+            starting_anilist = al.query_user_animelist(bd.linked_profiles[member.id])
+        if anilist_id is None:
+            anilist_id = bd.linked_profiles[member.id]
+
         self.member = member
         self.tag = tag
         self.done = done
@@ -92,6 +100,8 @@ class TrainPlayer:
         self.vis_tiles = vis_tiles
         self.inventory = inventory
         self.shops_used: list[tuple[int, int]] = shops_used
+        self.starting_anilist = starting_anilist
+        self.anilist_id = anilist_id
 
     def asdict(self) -> dict:
         shot_list = []
@@ -758,7 +768,7 @@ class TrainGame:
 
         # Shot genre pie chart
 
-        genre_counts = {}
+        genre_counts: dict[str, int] = {}
         for shot in self.players[player_idx].shots:
             for genre in self.known_shows[shot.show_id]["genres"]:
                 if genre in genre_counts:
@@ -772,7 +782,6 @@ class TrainGame:
         plt.rcParams["font.size"] = 14
         plt.rcParams["font.family"] = "gg sans"
         plt.rcParams["font.weight"] = "bold"
-
         wedges, text, autotexts = ax.pie(genre_counts.values(), autopct="%1.1f%%")
         plt.setp(autotexts, size=16, weight="medium", color="black")
         plt.title(
@@ -1055,18 +1064,28 @@ class TrainGame:
         city_coords: dict[tuple[int, int], str] = {}
         for idx, player in enumerate(self.players):
 
-            axe_bonus = 0
-            if "Axe" in player.inventory:
-                axe_bonus += 0.5*player.inventory["Axe"].amount
+            # Quest Scoring
 
-            if "Coin" in player.inventory:
-                add_to_score(p=player, key="coins", val=2*player.inventory["Coin"].amount)
+            ending_anilist = al.query_user_animelist(player.anilist_id)
+            anilist_changes = al.find_anilist_changes(player.starting_anilist, ending_anilist)
+
+            ####################################
+            # QUEST SCORING ALGORITHMS GO HERE #
+            ####################################
 
             # Fast finish scoring
             if idx == 0:
                 player.score["speed_bonus"] = 2
             elif idx == 1:
                 player.score["speed_bonus"] = 1
+
+            # Item score bonuses
+            axe_bonus = 0
+            if "Axe" in player.inventory:
+                axe_bonus += 0.5*player.inventory["Axe"].amount
+
+            if "Coin" in player.inventory:
+                add_to_score(p=player, key="coins", val=2*player.inventory["Coin"].amount)
 
             has_city = False
             num_houses = 0
@@ -1199,8 +1218,8 @@ async def load_game(
                 member=member, tag=player["tag"], done=player["done"], rails=player["rails"],
                 dmchannel=await bot.fetch_channel(player["dmchannel"]), start=tuple(player["start"]),
                 end=tuple(player["end"]), score=player["score"], shots=shot_list,
-                vis_tiles=[tuple(tile) for tile in player["vis_tiles"]],
-                donetime=player["donetime"], inventory=item_dict
+                vis_tiles=[tuple(tile) for tile in player["vis_tiles"]], donetime=player["donetime"],
+                inventory=item_dict, starting_anilist=player["starting_anilist"], anilist_id=player["anilist_id"]
             )
         )
 

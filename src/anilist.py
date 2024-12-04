@@ -83,7 +83,7 @@ def query_user_id(username: str) -> int | None:
 
 
 # Query a user's anime list. Data is in form of [{"mediaId": 160181, "status": "CURRENT"}, {...]
-def query_user_animelist(user_id: int) -> list | None:
+def query_user_animelist(anilist_user_id: int) -> list | None:
     query = """
     query MediaListCollection($type: MediaType, $userId: Int, $statusNotIn: [MediaListStatus]) {
     MediaListCollection(type: $type, userId: $userId, status_not_in: $statusNotIn) {
@@ -91,13 +91,14 @@ def query_user_animelist(user_id: int) -> list | None:
         entries {
           mediaId
           status
+          progress
           }
         }
       }
     }
     """
     variables = {
-        "userId": user_id,
+        "userId": anilist_user_id,
         "type": "ANIME",
         "statusNotIn": "PLANNING"
     }
@@ -114,3 +115,35 @@ def query_user_animelist(user_id: int) -> list | None:
         full_user_list += anime_list
 
     return full_user_list
+
+
+def find_anilist_changes(start_anilist: list[dict], end_anilist: list[dict]) -> list[dict]:
+
+    anilist_changes = []
+    for end_anime in end_anilist:
+        start_anime = next(
+            (start_anime for start_anime in start_anilist if start_anime["mediaId"] == end_anime["mediaId"]), None
+        )
+        if start_anime == end_anime:  # Skip if the show is the same at the beginning and end of game
+            continue
+
+        if not start_anime:  # Show was not on player's anilist when the game started
+            anilist_changes.append(end_anime)
+        else:
+            episode_changes = end_anime["progress"] - start_anime["progress"]
+            anilist_changes.append(
+                {"mediaId": end_anime["mediaId"], "status": end_anime["status"], "progress": episode_changes}
+            )
+
+    return anilist_changes
+
+
+"""
+anilist = query_user_animelist(anilist_user_id=5862798)
+print(anilist)
+test_case = {'mediaId': 160181, 'status': 'COMPLETED', 'progress': 11}
+for entry in anilist:
+    if entry["mediaId"] == 160181:
+        print(set(entry.values()) - set(test_case.values()))
+    print(set(entry.values()) - set(entry.values()))
+"""

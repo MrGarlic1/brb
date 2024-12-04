@@ -998,7 +998,7 @@ async def on_ready():
         with open(f"{bd.parent}/Data/linked_profiles.json", "w") as f:
             json.dump({}, f, indent=4)
     with open(f"{bd.parent}/Data/linked_profiles.json", "r") as f:
-        bd.linked_profiles = {int(key):int(val) for key, val in json.load(f).items()}
+        bd.linked_profiles = {int(key): int(val) for key, val in json.load(f).items()}
 
     bu.load_fonts(f"{bd.parent}/Data")
     print(
