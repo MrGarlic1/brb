@@ -552,8 +552,9 @@ async def send_rules(ctx: interactions.SlashContext, page: int = 1):
     required=True,
     opt_type=interactions.OptionType.BOOLEAN,
 )
-async def add_response(ctx: interactions.SlashContext, trigger: str, response_text: str, exact: bool):
-
+async def add_response(ctx: interactions.SlashContext, trigger: str, response: str, exact: bool):
+    response_text = response
+    del response
     # Config permission checks
     if not bd.config[ctx.guild_id]["ALLOW_PHRASES"] and not exact:
         await ctx.send(
@@ -734,9 +735,9 @@ async def delete_data(ctx: interactions.SlashContext):
     required=True,
     opt_type=interactions.OptionType.BOOLEAN,
 )
-async def mod_add(ctx: interactions.SlashContext, trigger: str, response: str, exact: bool):
+async def mod_add(ctx: interactions.SlashContext, trigger: str, response_text: str, exact: bool):
 
-    error = rsp.add_response(ctx.guild_id, rsp.Response(exact, trigger.lower(), response, int(ctx.author.id)))
+    error = rsp.add_response(ctx.guild_id, rsp.Response(exact, trigger.lower(), response_text, int(ctx.author.id)))
     if not error:
         await ctx.send(content=bd.pass_str)
     else:
