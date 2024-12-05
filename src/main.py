@@ -600,7 +600,7 @@ async def send_rules(ctx: interactions.SlashContext, page: int = 1):
     required=True,
     opt_type=interactions.OptionType.BOOLEAN,
 )
-async def add_response(ctx: interactions.SlashContext, trigger: str, response: str, exact: bool):
+async def add_response(ctx: interactions.SlashContext, trigger: str, response_text: str, exact: bool):
 
     # Config permission checks
     if not bd.config[ctx.guild_id]["ALLOW_PHRASES"] and not exact:
@@ -624,7 +624,7 @@ async def add_response(ctx: interactions.SlashContext, trigger: str, response: s
             )
             return True
 
-    error = rsp.add_response(ctx.guild_id, rsp.Response(exact, trigger.lower(), response, int(ctx.author.id)))
+    error = rsp.add_response(ctx.guild_id, rsp.Response(exact, trigger.lower(), response_text, int(ctx.author.id)))
 
     # Update responses
     if exact:

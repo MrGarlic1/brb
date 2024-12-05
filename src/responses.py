@@ -34,7 +34,7 @@ def dict_to_rsp(rsp_dict: dict) -> Response | None:
     return rsp
 
 
-def add_response(guild_id, rsp) -> bool:
+def add_response(guild_id: int, rsp: Response) -> bool:
     f_name: str = "responses.json" if rsp.exact else "mentions.json"
     rsp.trig, rsp.text = demojize(rsp.trig), demojize(rsp.text)
     if not rsp.text:
