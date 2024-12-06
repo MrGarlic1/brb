@@ -782,7 +782,7 @@ class TrainGame:
         plt.rcParams["font.size"] = 14
         plt.rcParams["font.family"] = "gg sans"
         plt.rcParams["font.weight"] = "bold"
-        wedges, text, autotexts = ax.pie(genre_counts.values(), autopct="%1.1f%%")
+        wedges, text, autotexts = ax.pie(list(genre_counts.values()), autopct="%1.1f%%")
         plt.setp(autotexts, size=16, weight="medium", color="black")
         plt.title(
             label="Shot Genre Percentages              ",
