@@ -614,9 +614,6 @@ async def add_response(ctx: interactions.SlashContext, trigger: str, response: s
         for existing_response in bd.responses[ctx.guild_id]:
             if existing_response.user_id == int(ctx.author.id):
                 user_rsps += 1
-        for existing_response in bd.mentions[ctx.guild_id]:
-            if existing_response.user_id == int(ctx.author.id):
-                user_rsps += 1
         if user_rsps >= bd.config[ctx.guild_id]["MAX_USER_RESPONSES"]:
             await ctx.send(
                 content=f"You currently have the maximum of {bd.config[ctx.guild_id]['MAX_USER_RESPONSES']} responses.",
@@ -627,10 +624,7 @@ async def add_response(ctx: interactions.SlashContext, trigger: str, response: s
     error = rsp.add_response(ctx.guild_id, rsp.Response(exact, trigger.lower(), response, int(ctx.author.id)))
 
     # Update responses
-    if exact:
-        bd.responses[ctx.guild_id] = rsp.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/responses.json")
-    else:
-        bd.mentions[ctx.guild_id] = rsp.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/mentions.json")
+    bd.responses[ctx.guild_id] = rsp.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/responses.json")
 
     if not error:
         await ctx.send(content=bd.pass_str)
@@ -684,17 +678,14 @@ async def remove_response(ctx: interactions.SlashContext, trigger: str = "", res
         return True
 
     # Update responses
-    if exact:
-        bd.responses[ctx.guild_id] = rsp.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/responses.json")
-    else:
-        bd.mentions[ctx.guild_id] = rsp.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/mentions.json")
+    bd.responses[ctx.guild_id] = rsp.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/responses.json")
 
 
 @remove_response.autocomplete("trigger")
 async def autocomplete(ctx: interactions.AutocompleteContext):
     trigs: list = []
     # Add autocomplete options if they match input text, remove duplicates. 25 maximum values (discord limit)
-    for response in bd.responses[ctx.guild_id] + bd.mentions[ctx.guild_id]:
+    for response in bd.responses[ctx.guild_id]:
         if response.trig not in trigs and ctx.input_text in response.trig:
             trigs.append(response.trig)
     choices = list(map(bu.autocomplete_filter, trigs))
@@ -707,7 +698,7 @@ async def autocomplete(ctx: interactions.AutocompleteContext):
 async def autocomplete(ctx: interactions.AutocompleteContext):
     # Add autocomplete response options for the specified trigger.
     responses = [
-        response.text for response in bd.mentions[ctx.guild_id] + bd.responses[ctx.guild_id]
+        response.text for response in bd.responses[ctx.guild_id]
         if response.trig == ctx.kwargs.get("trigger")
         ]
     choices = list(map(bu.autocomplete_filter, responses))
@@ -750,10 +741,9 @@ async def listrsps(ctx: interactions.SlashContext, page: int = 1):
 )
 async def delete_data(ctx: interactions.SlashContext):
     
-    open(f"{bd.parent}/Guilds/{ctx.guild_id}/responses.json", "w")
-    f = open(f"{bd.parent}/Guilds/{ctx.guild_id}/mentions.json", "w")
+    f = open(f"{bd.parent}/Guilds/{ctx.guild_id}/responses.json", "w")
     f.close()
-    bd.responses[ctx.guild_id], bd.mentions[ctx.guild_id] = [], []
+    bd.responses[ctx.guild_id]= []
     await ctx.send(content=bd.pass_str)
 
 
@@ -792,10 +782,7 @@ async def mod_add(ctx: interactions.SlashContext, trigger: str, response: str, e
         return True
 
     # Update responses
-    if exact:
-        bd.responses[ctx.guild_id] = rsp.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/responses.json")
-    else:
-        bd.mentions[ctx.guild_id] = rsp.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/mentions.json")
+    bd.responses[ctx.guild_id] = rsp.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/responses.json")
 
 
 @interactions.slash_command(
@@ -835,17 +822,14 @@ async def mod_remove(ctx: interactions.SlashContext, trigger: str = "", response
         return True
 
     # Update responses
-    if exact:
-        bd.responses[ctx.guild_id] = rsp.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/responses.json")
-    else:
-        bd.mentions[ctx.guild_id] = rsp.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/mentions.json")
+    bd.responses[ctx.guild_id] = rsp.load_responses(f"{bd.parent}/Guilds/{ctx.guild_id}/responses.json")
 
 
 @mod_remove.autocomplete("trigger")
 async def autocomplete(ctx: interactions.AutocompleteContext):
     trigs: list = []
     # Add autocomplete options if they match input text, remove duplicates. 25 maximum values (discord limit)
-    for response in bd.responses[ctx.guild_id] + bd.mentions[ctx.guild_id]:
+    for response in bd.responses[ctx.guild_id]:
         if response.trig not in trigs and ctx.input_text in response.trig:
             trigs.append(response.trig)
     choices = list(map(bu.autocomplete_filter, trigs))
@@ -858,7 +842,7 @@ async def autocomplete(ctx: interactions.AutocompleteContext):
 async def autocomplete(ctx: interactions.AutocompleteContext):
     # Add autocomplete response options for the specified trigger.
     responses = [
-        response.text for response in bd.mentions[ctx.guild_id] + bd.responses[ctx.guild_id]
+        response.text for response in bd.responses[ctx.guild_id]
         if response.trig == ctx.kwargs.get("trigger")
         ]
     choices = list(map(bu.autocomplete_filter, responses))
@@ -984,7 +968,6 @@ async def on_guild_join(event: interactions.api.events.GuildJoin):
             json.dump(bd.default_config, f, indent=4)
         bd.config[int(guild.id)] = bd.default_config
         bd.responses[int(guild.id)] = []
-        bd.mentions[int(guild.id)] = []
     print(
         Fore.WHITE + f"{strftime(bd.date_format)}:  " + Fore.RESET + f"Added to guild {guild.id}."
     )
@@ -1021,27 +1004,28 @@ async def on_message_create(event: interactions.api.events.MessageCreate):
 
     guild_id = int(message.guild.id)
 
-    to_send = []
     done = False
 
-    for i in bd.responses[guild_id]:
-        if i.trig == message.content.lower():
-            to_send.append(i.text)
-            done = True
-    if done:
-        to_send = choice(to_send) if len(to_send) > 1 else to_send[0]
+    to_send = [
+        response.text for response in bd.responses[guild_id]
+        if response.trig == message.content.lower() and response.exact
+    ]
+
+    if to_send:
+        to_send = choice(to_send)
         await message.reply(to_send)
         return False
 
     if not bd.config[guild_id]["ALLOW_PHRASES"]:
         return False
 
-    for i in bd.mentions[guild_id]:
-        if i.trig in message.content.lower():
-            to_send.append(i.text)
-            done = True
-    if done:
-        to_send = choice(to_send) if len(to_send) > 1 else to_send[0]
+    to_send = [
+        response.text for response in bd.responses[guild_id]
+        if response.trig in message.content.lower() and not response.exact
+    ]
+
+    if to_send:
+        to_send = choice(to_send)
         await message.reply(to_send)
 
     return False

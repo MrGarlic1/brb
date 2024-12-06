@@ -3,7 +3,6 @@ from emoji import emojize, demojize
 import json
 import botdata as bd
 from colorama import Fore
-from dataclasses import dataclass
 
 
 class Response:
@@ -35,7 +34,7 @@ def dict_to_rsp(rsp_dict: dict) -> Response | None:
 
 
 def add_response(guild_id: int, rsp: Response) -> bool:
-    f_name: str = "responses.json" if rsp.exact else "mentions.json"
+    f_name: str = "responses.json"
     rsp.trig, rsp.text = demojize(rsp.trig), demojize(rsp.text)
     if not rsp.text:
         return True
@@ -63,8 +62,7 @@ def add_response(guild_id: int, rsp: Response) -> bool:
 
 
 def rmv_response(guild_id: int, delete_req: Response) -> bool:
-
-    f_name: str = "responses.json" if delete_req.exact else "mentions.json"
+    f_name: str = "responses.json"
     try:
         with open(f"{bd.parent}/Guilds/{guild_id}/{f_name}", "r") as f:
             lines: list[dict] = json.load(f)
@@ -114,23 +112,12 @@ def load_responses(file) -> list:
     return lines
 
 
-def get_resp(guild_id, trig, text, exact) -> Response | None:
-    if exact:
-        for rsp in bd.responses[guild_id]:
-            if rsp.trig != trig:
-                continue
-            if not text:
-                return rsp
-            elif rsp.text == text:
-                return rsp
-    else:
-        for rsp in bd.mentions[guild_id]:
-            if rsp.trig != trig:
-                continue
-            if not text:
-                return rsp
-            elif rsp.text == text:
-                return rsp
+def get_resp(guild_id: int, trig: str, text: str = "", exact: bool = None) -> Response | None:
+    for rsp in bd.responses[guild_id]:
+        if rsp.trig == trig:
+            if rsp.text == text or not text:
+                if rsp.exact == exact or exact is None:
+                    return rsp
     return None
 
 
@@ -140,24 +127,21 @@ def gen_resp_list(guild: interactions.Guild, page: int, expired: bool) -> intera
     list_msg = interactions.Embed(
         description="*Your response list, sir.*"
     )
-    guild_trigs: list = []
-    for rsp in bd.responses[guild_id]:
-        guild_trigs.append(rsp)
-    for mtn in bd.mentions[guild_id]:
-        guild_trigs.append(mtn)
 
-    max_pages: int = 1 if len(guild_trigs) <= 10 else len(guild_trigs) // 10 + 1  # Determine max pg @ 10 entries per pg
+    # Determine max pg @ 10 entries per pg
+    max_pages: int = 1 if len(bd.responses[guild_id]) <= 10 else len(bd.responses[guild_id]) // 10 + 1
     page: int = 1 + ((page - 1) % max_pages)  # Loop back through pages both ways
     footer_end: str = " | This message is inactive." if expired else " | This message deactivates after 5 minutes."
     list_msg.set_author(name=guild.name, icon_url=bd.bot_avatar_url)
     list_msg.set_thumbnail(url=guild.icon.url)
     list_msg.set_footer(text=f"Page {page}/{max_pages} {footer_end}")
-    nums: range = range((page-1)*10, len(guild_trigs)) if page == max_pages else range((page-1)*10, page*10)
+    nums: range = range((page-1)*10, len(bd.responses[guild_id])) if page == max_pages else range((page-1)*10, page*10)
     for i in nums:
-        pref: str = "**Exact Trigger:** " if guild_trigs[i].exact else "**Phrase Trigger:** "
-        rsp_field: str = f"{pref}{guild_trigs[i].trig} \n **Respond: ** {guild_trigs[i].text}"
+        pref: str = "**Exact Trigger:** " if bd.responses[guild_id][i].exact else "**Phrase Trigger:** "
+        rsp_field: str = f"{pref}{bd.responses[guild_id][i].trig} \n **Respond: ** {bd.responses[guild_id][i].text}"
         if len(rsp_field) >= 1024:
-            rsp_field: str = f"{pref}{guild_trigs[i].trig} \n **Respond: ** *[Really, really, really long response]*"
+            rsp_field: str = (f"{pref}{bd.responses[guild_id][i].trig} \n "
+                              f"**Respond: ** *[Really, really, really long response]*")
 
         list_msg.add_field(
             name="\u200b",

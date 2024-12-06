@@ -14,7 +14,7 @@ from colorama import Fore
 from dataclasses import dataclass
 import asyncio
 import matplotlib.font_manager
-from os import makedirs, listdir, path
+from os import makedirs, listdir, path, remove
 from re import findall
 
 
@@ -148,13 +148,23 @@ async def init_guilds(guilds: list[interactions.Guild], bot: interactions.Client
             )
 
         load_config(guild)
-        bd.mentions[guild.id] = load_responses(f"{bd.parent}/Guilds/{guild.id}/mentions.json")
         bd.responses[guild.id] = load_responses(f"{bd.parent}/Guilds/{guild.id}/responses.json")
 
         print(
             Fore.WHITE + f"{strftime(bd.date_format)}:  " +
             Fore.GREEN + f"Responses loaded for {guild.name}" + Fore.RESET
         )
+
+        # DELETE THESE LINES ONCE BOT HAS BEEN LOADED ONCE
+        if path.exists(f"{bd.parent}/Guilds/{guild.id}/mentions.json"):
+            bd.responses[guild.id] += load_responses(f"{bd.parent}/Guilds/{guild.id}/mentions.json")
+
+            temp_lines = [response.__dict__ for response in bd.responses[guild.id]]
+            with open(f"{bd.parent}/Guilds/{guild.id}/responses.json", "w") as f:
+                json.dump(temp_lines, f, indent=4)
+            remove(f"{bd.parent}/Guilds/{guild.id}/mentions.json")
+            print("Legacy mentions file removed and rolled into response file.")
+        # END DELETE OF LINES
 
         # Load trains games
 
