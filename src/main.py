@@ -600,7 +600,7 @@ async def send_rules(ctx: interactions.SlashContext, page: int = 1):
     required=True,
     opt_type=interactions.OptionType.BOOLEAN,
 )
-async def add_response(ctx: interactions.SlashContext, trigger: str, response_text: str, exact: bool):
+async def add_response(ctx: interactions.SlashContext, trigger: str, response: str, exact: bool):
 
     # Config permission checks
     if not bd.config[ctx.guild_id]["ALLOW_PHRASES"] and not exact:
@@ -611,11 +611,11 @@ async def add_response(ctx: interactions.SlashContext, trigger: str, response_te
         return True
     if bd.config[ctx.guild_id]["LIMIT_USER_RESPONSES"]:
         user_rsps = 0
-        for response in bd.responses[ctx.guild_id]:
-            if response.user_id == int(ctx.author.id):
+        for existing_response in bd.responses[ctx.guild_id]:
+            if existing_response.user_id == int(ctx.author.id):
                 user_rsps += 1
-        for response in bd.mentions[ctx.guild_id]:
-            if response.user_id == int(ctx.author.id):
+        for existing_response in bd.mentions[ctx.guild_id]:
+            if existing_response.user_id == int(ctx.author.id):
                 user_rsps += 1
         if user_rsps >= bd.config[ctx.guild_id]["MAX_USER_RESPONSES"]:
             await ctx.send(
@@ -624,7 +624,7 @@ async def add_response(ctx: interactions.SlashContext, trigger: str, response_te
             )
             return True
 
-    error = rsp.add_response(ctx.guild_id, rsp.Response(exact, trigger.lower(), response_text, int(ctx.author.id)))
+    error = rsp.add_response(ctx.guild_id, rsp.Response(exact, trigger.lower(), response, int(ctx.author.id)))
 
     # Update responses
     if exact:
