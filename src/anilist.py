@@ -114,6 +114,41 @@ def query_user_animelist(anilist_user_id: int) -> list | None:
         anime_list = anime_list["entries"]
         full_user_list += anime_list
 
+    query = """
+    query Statistics($userId: Int) {
+      User(id: $userId) {
+        statistics {
+          anime {
+            genres {
+              genre
+              minutesWatched
+            }
+          }
+        }
+      }
+    }
+    """
+    variables = {
+        "userId": anilist_user_id,
+    }
+    response = httpx.post(
+        url="https://graphql.anilist.co",
+        json={"query": query, "variables": variables}
+    )
+    if response.status_code != 200:
+        return None
+
+    user_genres = response.json()["data"]["User"]["statistics"]["anime"]["genres"]
+    user_genres = sorted(user_genres, key=lambda genre: genre["minutesWatched"])
+
+    try:
+        if user_genres[0]["genre"] == "Hentai":  # Exclude hentai per game rules
+            least_watched_genre = user_genres[1]["genre"]
+        else:
+            least_watched_genre = user_genres[0]["genre"]
+    except IndexError:  # User has not watched more than one genre
+        least_watched_genre = ""
+
     return full_user_list
 
 
@@ -136,6 +171,9 @@ def find_anilist_changes(start_anilist: list[dict], end_anilist: list[dict]) -> 
             )
 
     return anilist_changes
+
+
+anilist = query_user_animelist(anilist_user_id=5862798)
 
 
 """
