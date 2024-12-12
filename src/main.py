@@ -19,6 +19,7 @@ from os import listdir, mkdir, path, makedirs
 import io
 from shutil import copytree, ignore_patterns
 
+
 bot = interactions.Client(
     token=bd.token,
     intents=interactions.Intents.DEFAULT | interactions.Intents.MESSAGE_CONTENT | interactions.Intents.GUILDS,
@@ -100,11 +101,21 @@ async def create_trains(
         await ctx.send(content="Name already exists!")
         return True
 
+    async def add_trains_player(m: interactions.Member, t: str):
+        dm = await m.fetch_dm(force=False)
+        starting_anilist = await al.query_user_animelist(bd.linked_profiles[m.id])
+        least_watched_genre = await al.query_user_genres(bd.linked_profiles[m.id])
+        players.append(tr.TrainPlayer(
+            member=m, tag=t, dmchannel=dm, starting_anilist=starting_anilist,
+            least_watched_genre=least_watched_genre)
+        )
+
     # Create player list and tags
     members = await bu.get_members_from_str(ctx.guild, players)
     players: list = []
     tags: list = bu.get_player_tags(members)
 
+    tasks: list = []
     for member, tag in zip(members, tags):
         if member.id not in bd.linked_profiles:
             await ctx.send(
@@ -112,10 +123,11 @@ async def create_trains(
             )
             return True
 
-        dm = await member.fetch_dm(force=False)
-        players.append(
-            tr.TrainPlayer(member=member, tag=tag, dmchannel=dm)
-        )
+        tasks.append(asyncio.create_task(
+            add_trains_player(m=member, t=tag)
+        ))
+    await asyncio.gather(*tasks)
+
     # Return error if player list is empty
     if not players:
         await ctx.send(content="No valid players specified.")
@@ -150,8 +162,8 @@ async def create_trains(
         return True
 
     # Push updates to player boards
-    await game.update_boards_after_create(ctx=ctx)
     await ctx.send(embed=tr.train_game_embed(ctx=ctx, game=game))
+    await game.update_boards_after_create(ctx=ctx)
     return False
 
 
@@ -340,6 +352,7 @@ async def record_shot(ctx: interactions.SlashContext, row: int, column: int, lin
     game.update_player_stats_after_shot(sender_idx=sender_idx, player=player, shot=shot)
 
     # Save/update games
+    await ctx.send(content=bd.pass_str)
     await game.update_boards_after_shot(
         ctx=ctx, row=row, column=column
     )
@@ -743,7 +756,7 @@ async def delete_data(ctx: interactions.SlashContext):
     
     f = open(f"{bd.parent}/Guilds/{ctx.guild_id}/responses.json", "w")
     f.close()
-    bd.responses[ctx.guild_id]= []
+    bd.responses[ctx.guild_id] = []
     await ctx.send(content=bd.pass_str)
 
 
@@ -1003,8 +1016,6 @@ async def on_message_create(event: interactions.api.events.MessageCreate):
         return False
 
     guild_id = int(message.guild.id)
-
-    done = False
 
     to_send = [
         response.text for response in bd.responses[guild_id]

@@ -69,8 +69,8 @@ class TrainPlayer:
             self, member: interactions.Member = None, tag: str = None, dmchannel: interactions.DMChannel = None,
             rails: int = 0, shots: list[TrainShot] = None, vis_tiles: list[tuple] = None, score: dict = None,
             start: tuple = None, end: tuple = None, done: bool = False, donetime: str = None,
-            inventory: dict = None, shops_used: list[tuple[int, int]] = None, starting_anilist: dict = None,
-            anilist_id: int = None
+            inventory: dict = None, shops_used: list[tuple[int, int]] = None, anilist_id: int = None,
+            least_watched_genre: str = None, starting_anilist: list = None
     ):
         if vis_tiles is None:
             vis_tiles = []
@@ -82,8 +82,6 @@ class TrainPlayer:
             inventory = {}
         if shops_used is None:
             shops_used = []
-        if starting_anilist is None:
-            starting_anilist = al.query_user_animelist(bd.linked_profiles[member.id])
         if anilist_id is None:
             anilist_id = bd.linked_profiles[member.id]
 
@@ -100,8 +98,9 @@ class TrainPlayer:
         self.vis_tiles = vis_tiles
         self.inventory = inventory
         self.shops_used: list[tuple[int, int]] = shops_used
-        self.starting_anilist = starting_anilist
         self.anilist_id = anilist_id
+        self.least_watched_genre = least_watched_genre
+        self.starting_anilist = starting_anilist
 
     def asdict(self) -> dict:
         shot_list = []
@@ -113,7 +112,9 @@ class TrainPlayer:
         return {
             "member_id": self.member.id, "tag": self.tag, "done": self.done, "rails": self.rails,
             "dmchannel": self.dmchannel.id, "start": self.start, "end": self.end, "score": self.score,
-            "shots": shot_list, "donetime": self.donetime, "vis_tiles": self.vis_tiles, "inventory": item_dict
+            "shots": shot_list, "donetime": self.donetime, "vis_tiles": self.vis_tiles, "inventory": item_dict,
+            "anilist_id": self.anilist_id, "starting_anilist": self.starting_anilist,
+            "least_watched_genre": self.least_watched_genre
         }
 
     def update_item_count(self, itemname) -> None:
@@ -594,7 +595,6 @@ class TrainGame:
                 player_idx=p_idx, player_board=True
             )
             board_img_path: str = f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}/{board_name}.png"
-            await ctx.send(content=bd.pass_str, ephemeral=False)
             await p.dmchannel.send(
                 file=interactions.File(board_img_path),
                 content=f"## Train board update for \"{self.name}\" in {ctx.guild.name}!"
@@ -620,7 +620,7 @@ class TrainGame:
         if self.active:
             bd.active_trains[ctx.guild_id] = self
         else:
-            await ctx.send(embed=self.get_score_embed())
+            await ctx.send(embed=await self.get_score_embed())
             del bd.active_trains[ctx.guild_id]
 
         self.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}")
@@ -1043,7 +1043,7 @@ class TrainGame:
         player.update_item_count("Bucket")
         return False
 
-    def get_score_embed(self) -> interactions.Embed:
+    async def get_score_embed(self) -> interactions.Embed:
 
         def add_to_score(p: TrainPlayer, key: str, val: int):
             if key in player.score:
@@ -1066,7 +1066,7 @@ class TrainGame:
 
             # Quest Scoring
 
-            ending_anilist = al.query_user_animelist(player.anilist_id)
+            ending_anilist = await al.query_user_animelist(player.anilist_id)
             anilist_changes = al.find_anilist_changes(player.starting_anilist, ending_anilist)
 
             ####################################
@@ -1219,7 +1219,8 @@ async def load_game(
                 dmchannel=await bot.fetch_channel(player["dmchannel"]), start=tuple(player["start"]),
                 end=tuple(player["end"]), score=player["score"], shots=shot_list,
                 vis_tiles=[tuple(tile) for tile in player["vis_tiles"]], donetime=player["donetime"],
-                inventory=item_dict, starting_anilist=player["starting_anilist"], anilist_id=player["anilist_id"]
+                inventory=item_dict, starting_anilist=player["starting_anilist"], anilist_id=player["anilist_id"],
+                least_watched_genre=player["least_watched_genre"]
             )
         )
 

@@ -83,7 +83,7 @@ def query_user_id(username: str) -> int | None:
 
 
 # Query a user's anime list. Data is in form of [{"mediaId": 160181, "status": "CURRENT"}, {...]
-def query_user_animelist(anilist_user_id: int) -> list | None:
+async def query_user_animelist(anilist_user_id: int) -> list | None:
     query = """
     query MediaListCollection($type: MediaType, $userId: Int, $statusNotIn: [MediaListStatus]) {
     MediaListCollection(type: $type, userId: $userId, status_not_in: $statusNotIn) {
@@ -114,6 +114,10 @@ def query_user_animelist(anilist_user_id: int) -> list | None:
         anime_list = anime_list["entries"]
         full_user_list += anime_list
 
+    return full_user_list
+
+
+async def query_user_genres(anilist_user_id: int) -> str | None:
     query = """
     query Statistics($userId: Int) {
       User(id: $userId) {
@@ -140,7 +144,7 @@ def query_user_animelist(anilist_user_id: int) -> list | None:
 
     user_genres = response.json()["data"]["User"]["statistics"]["anime"]["genres"]
     user_genres = sorted(user_genres, key=lambda genre: genre["minutesWatched"])
-
+    print(user_genres)
     try:
         if user_genres[0]["genre"] == "Hentai":  # Exclude hentai per game rules
             least_watched_genre = user_genres[1]["genre"]
@@ -148,8 +152,7 @@ def query_user_animelist(anilist_user_id: int) -> list | None:
             least_watched_genre = user_genres[0]["genre"]
     except IndexError:  # User has not watched more than one genre
         least_watched_genre = ""
-
-    return full_user_list
+    return least_watched_genre
 
 
 def find_anilist_changes(start_anilist: list[dict], end_anilist: list[dict]) -> list[dict]:
