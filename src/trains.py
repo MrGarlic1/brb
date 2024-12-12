@@ -1089,8 +1089,13 @@ class TrainGame:
 
             has_city = False
             num_houses = 0
+
+            least_watched_genre_shots = 0
+
             for shot in player.shots:
                 shot_tile = self.board[(shot.row, shot.col)]
+                shot_anime_info = self.known_shows[shot.show_id]
+
                 if len(shot_tile.rails) > 1:
                     intersecting_player_tag = [tag for tag in shot_tile.rails if tag != player.tag][0]
                     add_to_score(p=player, key="intersects", val=1-player_prison_counts[intersecting_player_tag])
@@ -1112,6 +1117,9 @@ class TrainGame:
                     num_houses += 1
                     add_to_score(p=player, key="house", val=1)
 
+                if player.least_watched_genre in shot_anime_info["genres"]:
+                    least_watched_genre_shots += 1
+
             if has_city and "wheat" in player.score:
                 player.score["wheat"] += 3
             if has_city and "house" in player.score:
@@ -1120,6 +1128,9 @@ class TrainGame:
 
             player.score["rails"] = -2*int((player.rails-26)/3)
             player.score["total"] = sum(player.score.values())
+
+            if least_watched_genre_shots >= 2:
+                player.score["least_watched_genre_quest"] = 4
 
         embed = interactions.Embed(
             title=f"Game Complete!"
