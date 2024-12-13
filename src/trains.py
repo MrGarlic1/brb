@@ -731,7 +731,7 @@ class TrainGame:
 
         # Get time deltas for all previous shots and current time, take average
         for shot_idx, shot in enumerate(player.shots):
-            if self.board[(shot.row, shot.col)].zone in self.known_shows[shot.show_id]["genres"]:
+            if self.board[shot.coords()].zone in self.known_shows[shot.show_id]["genres"]:
                 in_zone_shots += 1
             time_between_shots_list.append(
                 (datetime.strptime(shot.time, bd.date_format) - prev_shot_time).total_seconds()
@@ -956,14 +956,14 @@ class TrainGame:
             self, sender_idx: int, player: TrainPlayer, undo: bool = False, shot: TrainShot = None
     ):
         check_gem_time = False
-        if self.board[(shot.row, shot.col)].resource == bd.emoji["gems"]:
+        if self.board[shot.coords()].resource == bd.emoji["gems"]:
             shot_list = player.shots[:-1] if undo else player.shots
-            if not bd.emoji["gems"] in [self.board[(shot.row, shot.col)].resource for shot in shot_list]:
+            if not bd.emoji["gems"] in [self.board[shot.coords()].resource for shot in shot_list]:
                 check_gem_time = True
 
         if undo:
             shot = player.shots[-1]
-            self.board[(shot.row, shot.col)].rails.remove(player.tag)
+            self.board[shot.coords()].rails.remove(player.tag)
             del self.players[sender_idx].shots[-1]
             if self.players[sender_idx].done:
                 self.players[sender_idx].done = False
@@ -971,9 +971,9 @@ class TrainGame:
             if check_gem_time:
                 self.players[sender_idx].score.pop("GemTime")
         else:
-            self.board[(shot.row, shot.col)].rails.append(player.tag)
+            self.board[shot.coords()].rails.append(player.tag)
             self.players[sender_idx].shots.append(shot)
-            if (shot.row, shot.col) == player.end:
+            if shot.coords() == player.end:
                 self.players[sender_idx].done = True
                 self.players[sender_idx].donetime = datetime.now().strftime("%Y%m%d%H%M%S")
             if check_gem_time:
@@ -988,7 +988,7 @@ class TrainGame:
             self.update_vis_tiles(player_idx=sender_idx, shot_row=player.start[0], shot_col=player.start[1])
             self.update_vis_tiles(player_idx=sender_idx, shot_row=player.end[0], shot_col=player.end[1], render_dist=0)
 
-        if self.board[(shot.row, shot.col)].terrain == "river":
+        if self.board[shot.coords()].terrain == "river":
             if "Pontoon Bridge" in player.inventory:
                 rails = 0
                 player.update_item_count("Pontoon Bridge")
@@ -997,7 +997,7 @@ class TrainGame:
         else:
             rails = 1
 
-        if self.board[(shot.row, shot.col)].zone in self.known_shows[shot.show_id]["genres"]:
+        if self.board[shot.coords()].zone in self.known_shows[shot.show_id]["genres"]:
             rails *= 0.5
         if undo:
             self.players[sender_idx].rails -= rails
@@ -1056,7 +1056,7 @@ class TrainGame:
         # Find player prison counts and gun effects before counting score for intersection scoring
         player_prison_counts = {}
         for player in self.players:
-            track_resources = [self.board[(shot.row, shot.col)].resource for shot in player.shots]
+            track_resources = [self.board[shot.coords()].resource for shot in player.shots]
             player_prison_counts[player.tag] = track_resources.count(bd.emoji["prison"])
             if player_prison_counts[player.tag] != 0 and "gun" in player.inventory["gun"]:
                 player_prison_counts[player.tag] += 0.5*player.inventory["gun"].amount
@@ -1091,9 +1091,13 @@ class TrainGame:
             num_houses = 0
 
             least_watched_genre_shots = 0
+            anime_sources = []
+            genre_zone_matched = False
+            shots_without_resources = 0
+            shots_without_resources_quest_complete = False
 
             for shot in player.shots:
-                shot_tile = self.board[(shot.row, shot.col)]
+                shot_tile: TrainTile = self.board[shot.coords()]
                 shot_anime_info = self.known_shows[shot.show_id]
 
                 if len(shot_tile.rails) > 1:
@@ -1102,9 +1106,9 @@ class TrainGame:
 
                 if shot_tile.resource == bd.emoji["city"]:
                     has_city = True
-                    city_coords[shot_tile.coords()] = choice(["spring", "summer", "autumn", "winter"])
+                    city_coords[shot.coords()] = choice(["spring", "summer", "autumn", "winter"])
 
-                if shot_tile.resource == bd.emoji["wheat"]:
+                elif shot_tile.resource == bd.emoji["wheat"]:
                     add_to_score(p=player, key="wheat", val=1)
 
                 elif shot_tile.resource == bd.emoji["wood"]:
@@ -1117,8 +1121,19 @@ class TrainGame:
                     num_houses += 1
                     add_to_score(p=player, key="house", val=1)
 
+                if not shots_without_resources_quest_complete:
+                    if not shot_tile.resource:
+                        shots_without_resources += 1
+                        if shots_without_resources >= 6:
+                            shots_without_resources_quest_complete = True
+                    else:
+                        shots_without_resources = 0
                 if player.least_watched_genre in shot_anime_info["genres"]:
                     least_watched_genre_shots += 1
+                if shot_anime_info["source"] not in anime_sources:
+                    anime_sources.append(shot_anime_info["source"])
+                if shot_tile.zone in shot_anime_info["genres"]:
+                    genre_zone_matched = True
 
             if has_city and "wheat" in player.score:
                 player.score["wheat"] += 3
@@ -1131,6 +1146,12 @@ class TrainGame:
 
             if least_watched_genre_shots >= 2:
                 player.score["least_watched_genre_quest"] = 4
+            if len(anime_sources) >= 4:
+                player.score["different_source_quest"] = 3
+            if not genre_zone_matched:
+                player.score["genre_zone_match_quest"] = 3
+            if shots_without_resources_quest_complete:
+                player.score["shots_without_resources_quest"] = 3
 
         embed = interactions.Embed(
             title=f"Game Complete!"
