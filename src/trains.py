@@ -1055,7 +1055,10 @@ class TrainGame:
 
         # Find player prison counts and gun effects before counting score for intersection scoring
         player_prison_counts = {}
+        player_starting_anilists = []
+
         for player in self.players:
+            player_starting_anilists += player.starting_anilist
             track_resources = [self.board[shot.coords()].resource for shot in player.shots]
             player_prison_counts[player.tag] = track_resources.count(bd.emoji["prison"])
             if player_prison_counts[player.tag] != 0 and "gun" in player.inventory["gun"]:
@@ -1095,6 +1098,7 @@ class TrainGame:
             genre_zone_matched = False
             shots_without_resources = 0
             shots_without_resources_quest_complete = False
+            different_player_anime_shots = []
 
             for shot in player.shots:
                 shot_tile: TrainTile = self.board[shot.coords()]
@@ -1134,6 +1138,10 @@ class TrainGame:
                     anime_sources.append(shot_anime_info["source"])
                 if shot_tile.zone in shot_anime_info["genres"]:
                     genre_zone_matched = True
+                if (any(shot.show_id == d["mediaId"] for d in player_starting_anilists) and
+                        not any(d["mediaId"] == shot.show_id for d in player.starting_anilist)):
+                    if shot.show_id not in different_player_anime_shots:
+                        different_player_anime_shots.append(shot.show_id)
 
             if has_city and "wheat" in player.score:
                 player.score["wheat"] += 3
@@ -1142,7 +1150,6 @@ class TrainGame:
                 player.score["house"] -= player_prison_counts[player.tag]*num_houses
 
             player.score["rails"] = -2*int((player.rails-26)/3)
-            player.score["total"] = sum(player.score.values())
 
             if least_watched_genre_shots >= 2:
                 player.score["least_watched_genre_quest"] = 4
@@ -1152,6 +1159,10 @@ class TrainGame:
                 player.score["genre_zone_match_quest"] = 3
             if shots_without_resources_quest_complete:
                 player.score["shots_without_resources_quest"] = 3
+            if len(different_player_anime_shots) >= 3:
+                player.score["other_players_shows_quest"] = 2
+
+            player.score["total"] = sum(player.score.values())
 
         embed = interactions.Embed(
             title=f"Game Complete!"
