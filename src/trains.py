@@ -1051,6 +1051,9 @@ class TrainGame:
             else:
                 p.score[key] = val
 
+        for player in self.players:
+            if player.donetime is None:
+                player.donetime = datetime.now().strftime("%Y%m%d%H%M%S")
         self.players.sort(key=lambda p: p.donetime)
 
         # Find player prison counts and gun effects before counting score for intersection scoring
@@ -1061,7 +1064,7 @@ class TrainGame:
             player_starting_anilists += player.starting_anilist
             track_resources = [self.board[shot.coords()].resource for shot in player.shots]
             player_prison_counts[player.tag] = track_resources.count(bd.emoji["prison"])
-            if player_prison_counts[player.tag] != 0 and "gun" in player.inventory["gun"]:
+            if player_prison_counts[player.tag] != 0 and "Gun" in player.inventory:
                 player_prison_counts[player.tag] += 0.5*player.inventory["gun"].amount
 
         city_coords: dict[tuple[int, int], str] = {}
@@ -1106,7 +1109,7 @@ class TrainGame:
                 shot_anime_info = self.known_shows[shot.show_id]
 
                 if (not train_tag_quest_complete and
-                        any(tag.name == "Trains" and tag.rank > 40 for tag in shot_anime_info["tags"])):
+                        any(tag["name"] == "Trains" and tag["rank"] > 40 for tag in shot_anime_info["tags"])):
                     if any(
                             anime["mediaId"] == shot.show_id and
                             anime["progress"] == shot_anime_info["episodes"]
@@ -1176,6 +1179,9 @@ class TrainGame:
                 player.score["train_tag_quest"] = 3
 
             player.score["total"] = sum(player.score.values())
+            ######################################################################## For testing
+            print(player.member.username)
+            print(player.score)
 
         embed = interactions.Embed(
             title=f"Game Complete!"
@@ -1185,7 +1191,6 @@ class TrainGame:
         embed.description = f"*Scoring results are as follows...*"
 
         self.players.sort(key=lambda p: p.score["total"], reverse=True)
-
         for idx, player in enumerate(self.players):
             place_emojis = {
                 0: bd.emoji["first"],
@@ -1195,16 +1200,16 @@ class TrainGame:
             place_emoji = place_emojis.get(idx, "")
             embed.add_field(
                 name="\u200b",
-                value=f"**{place_emoji} {player.member.mention}**"
-                      f"Score is {player.score['total']}",
+                value=f"{place_emoji} {player.member.mention}'s score is **{player.score['total']}**",
                 inline=False
             )
         city_shots_string = ""
         for coords, season in city_coords.items():
             city_shots_string += f"{coords[0]}, {coords[1]}: {season}\n"
+
         embed.add_field(
             name="Shot Cities",
-            value=city_shots_string
+            value=city_shots_string if city_shots_string else "No cities!"
         )
         embed.set_footer(text=self.date)
 
@@ -1434,8 +1439,7 @@ def train_scoring_embed() -> interactions.Embed:
         "- Points from resources (see page 3) and points from quests (see page 4).\n" \
         "- Players earn 1 point each time their track intersects another player's track.\n" \
         "- For every 3 rails less than 26 that a player uses, they gain 2 points. " \
-        "For every 3 rails over 26, that player loses 2 points.\n\n" \
-        "3. Automatic score calculation (minus quests) is a planned feature!"
+        "For every 3 rails over 26, that player loses 2 points.\n"
     return embed
 
 

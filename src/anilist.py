@@ -144,7 +144,7 @@ async def query_user_genres(anilist_user_id: int) -> str | None:
 
     user_genres = response.json()["data"]["User"]["statistics"]["anime"]["genres"]
     user_genres = sorted(user_genres, key=lambda genre: genre["minutesWatched"])
-    print(user_genres)
+
     try:
         if user_genres[0]["genre"] == "Hentai":  # Exclude hentai per game rules
             least_watched_genre = user_genres[1]["genre"]
@@ -174,17 +174,3 @@ def find_anilist_changes(start_anilist: list[dict], end_anilist: list[dict]) -> 
             )
 
     return anilist_changes
-
-
-anilist = query_user_animelist(anilist_user_id=5862798)
-
-
-"""
-anilist = query_user_animelist(anilist_user_id=5862798)
-print(anilist)
-test_case = {'mediaId': 160181, 'status': 'COMPLETED', 'progress': 11}
-for entry in anilist:
-    if entry["mediaId"] == 160181:
-        print(set(entry.values()) - set(test_case.values()))
-    print(set(entry.values()) - set(entry.values()))
-"""

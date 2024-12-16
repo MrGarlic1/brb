@@ -25,6 +25,7 @@ bot = interactions.Client(
     intents=interactions.Intents.DEFAULT | interactions.Intents.MESSAGE_CONTENT | interactions.Intents.GUILDS,
     sync_interactions=True,
     delete_unused_application_cmds=True,
+    debug_scope=895549687417958410
 )
 
 
@@ -281,6 +282,18 @@ async def trains_use_bucket(ctx: interactions.SlashContext, item: str, row: int,
         await game.update_boards_after_shot(
             ctx=ctx, row=row, column=column
         )
+
+
+@interactions.slash_command(
+    name="trains",
+    sub_cmd_name="end",
+    sub_cmd_description="Command for testing. Shows score screen.",
+    dm_permission=False,
+)
+async def end_trains(ctx: interactions.SlashContext):
+    await ctx.defer()
+    score_embed = await bd.active_trains[ctx.guild_id].get_score_embed()
+    await ctx.send(embed=score_embed)
 
 
 @interactions.slash_command(
