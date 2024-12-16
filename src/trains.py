@@ -1099,19 +1099,30 @@ class TrainGame:
             shots_without_resources = 0
             shots_without_resources_quest_complete = False
             different_player_anime_shots = []
+            train_tag_quest_complete = False
 
             for shot in player.shots:
                 shot_tile: TrainTile = self.board[shot.coords()]
                 shot_anime_info = self.known_shows[shot.show_id]
 
+                if (not train_tag_quest_complete and
+                        any(tag.name == "Trains" and tag.rank > 40 for tag in shot_anime_info["tags"])):
+                    if any(
+                            anime["mediaId"] == shot.show_id and
+                            anime["progress"] == shot_anime_info["episodes"]
+                            for anime in anilist_changes
+                    ):
+                        train_tag_quest_complete = True
                 if len(shot_tile.rails) > 1:
                     intersecting_player_tag = [tag for tag in shot_tile.rails if tag != player.tag][0]
                     add_to_score(p=player, key="intersects", val=1-player_prison_counts[intersecting_player_tag])
 
                 if shot_tile.resource == bd.emoji["city"]:
                     has_city = True
-                    city_coords[shot.coords()] = choice(["spring", "summer", "autumn", "winter"])
-
+                    if shot.coords() not in city_coords:
+                        city_coords[shot.coords()] = choice(["SPRING", "SUMMER", "AUTUMN", "WINTER"])
+                    if shot_anime_info["season"] == city_coords[shot.coords()]:
+                        add_to_score(p=player, key="city_season", val=3)
                 elif shot_tile.resource == bd.emoji["wheat"]:
                     add_to_score(p=player, key="wheat", val=1)
 
@@ -1161,6 +1172,8 @@ class TrainGame:
                 player.score["shots_without_resources_quest"] = 3
             if len(different_player_anime_shots) >= 3:
                 player.score["other_players_shows_quest"] = 2
+            if train_tag_quest_complete:
+                player.score["train_tag_quest"] = 3
 
             player.score["total"] = sum(player.score.values())
 
@@ -1169,7 +1182,7 @@ class TrainGame:
         )
         embed.set_author(name="Anime Trains", icon_url=bd.bot_avatar_url)
         embed.color = 0xff9c2c
-        embed.description = f"*Pre-quest scoring results are as follows...*"
+        embed.description = f"*Scoring results are as follows...*"
 
         self.players.sort(key=lambda p: p.score["total"], reverse=True)
 
@@ -1186,10 +1199,6 @@ class TrainGame:
                       f"Score is {player.score['total']}",
                 inline=False
             )
-        embed.add_field(
-            name="\u200b",
-            value="**Add quest points to calculate the final score!**"
-        )
         city_shots_string = ""
         for coords, season in city_coords.items():
             city_shots_string += f"{coords[0]}, {coords[1]}: {season}\n"
