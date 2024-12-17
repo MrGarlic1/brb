@@ -1061,6 +1061,7 @@ class TrainGame:
         player_starting_anilists = []
 
         for player in self.players:
+            player.score = {}  # Avoid re-adding to non-zero score
             player_starting_anilists += player.starting_anilist
             track_resources = [self.board[shot.coords()].resource for shot in player.shots]
             player_prison_counts[player.tag] = track_resources.count(bd.emoji["prison"])
