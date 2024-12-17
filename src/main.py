@@ -53,7 +53,7 @@ async def link_anilist(ctx: interactions.SlashContext, url: str):
 
     bd.linked_profiles[ctx.author_id] = anilist_user_id
     with open(f"{bd.parent}/Data/linked_profiles.json", "w") as f:
-        json.dump(bd.linked_profiles, f, indent=4)
+        json.dump(bd.linked_profiles, f, separators=(",", ":"))
     await ctx.send(content=bd.pass_str)
     return False
 
@@ -292,8 +292,21 @@ async def trains_use_bucket(ctx: interactions.SlashContext, item: str, row: int,
 )
 async def end_trains(ctx: interactions.SlashContext):
     await ctx.defer()
-    score_embed = await bd.active_trains[ctx.guild_id].get_score_embed()
-    await ctx.send(embed=score_embed)
+    game: tr.TrainGame = bd.active_trains[ctx.guild_id]
+    await game.calculate_player_scores(ctx=ctx)
+    embed, image = game.gen_score_embed(ctx=ctx, page=0, expired=False)
+    score_msg = await ctx.send(
+        embed=embed,
+        file=image,
+        components=[bu.nextpg_button(), bu.prevpg_button()]
+    )
+    sent = bu.ListMsg(
+        num=score_msg.id, page=0, guild=ctx.guild, channel=ctx.channel, msg_type="trainscores", payload=game
+    )
+    bd.active_msgs.append(sent)
+    _ = asyncio.create_task(
+        bu.close_msg(sent, 300, ctx, score_msg)
+    )
 
 
 @interactions.slash_command(
@@ -369,6 +382,21 @@ async def record_shot(ctx: interactions.SlashContext, row: int, column: int, lin
     await game.update_boards_after_shot(
         ctx=ctx, row=row, column=column
     )
+    if not game.active:
+        await game.calculate_player_scores(ctx=ctx)
+        embed, image = game.gen_score_embed(ctx=ctx, page=0, expired=False)
+        score_msg = await ctx.send(
+            embed=embed,
+            file=image,
+            components=[bu.nextpg_button(), bu.prevpg_button()]
+        )
+        sent = bu.ListMsg(
+            num=score_msg.id, page=0, guild=ctx.guild, channel=ctx.channel, msg_type="trainscores", payload=game
+        )
+        bd.active_msgs.append(sent)
+        _ = asyncio.create_task(
+            bu.close_msg(sent, 300, ctx, score_msg)
+        )
 
 
 @interactions.slash_command(
@@ -1005,7 +1033,7 @@ async def on_ready():
     assert guilds, "Error connecting to Discord, no guilds listed."
     if not path.exists(f"{bd.parent}/Data/linked_profiles.json"):
         with open(f"{bd.parent}/Data/linked_profiles.json", "w") as f:
-            json.dump({}, f, indent=4)
+            json.dump({}, f, separators=(",", ":"))
     with open(f"{bd.parent}/Data/linked_profiles.json", "r") as f:
         bd.linked_profiles = {int(key): int(val) for key, val in json.load(f).items()}
 
@@ -1075,6 +1103,12 @@ async def on_component(event: interactions.api.events.Component):
                 embed, image = game.gen_stats_embed(
                     ctx=ctx, page=bd.active_msgs[idx].page, expired=False
                 )
+            elif msg.msg_type == "trainscores":
+                await ctx.defer(edit_origin=True)
+                embed, image = game.gen_score_embed(
+                    ctx=ctx, page=bd.active_msgs[idx].page, expired=False
+                )
+
             elif msg.msg_type == "trainrules":
                 embed = bu.gen_rules_embed(bd.active_msgs[idx].page, False)
             elif msg.msg_type == "rsplist":

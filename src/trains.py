@@ -15,6 +15,7 @@ from pilmoji import Pilmoji
 from shutil import rmtree
 from time import strptime
 import anilist as al
+from os import path
 
 
 @dataclass
@@ -196,7 +197,7 @@ class TrainGame:
 
     def save_game(self, filepath: str) -> None:
         with open(f"{filepath}/gamedata.json", "w") as f:
-            json.dump(self.asdict(), f, indent=4)
+            json.dump(self.asdict(), f, separators=(",", ":"))
 
     def gen_trains_board(
             self, play_area_size: tuple[int, int] = (16, 16), river_ring: int = 0
@@ -620,7 +621,6 @@ class TrainGame:
         if self.active:
             bd.active_trains[ctx.guild_id] = self
         else:
-            await ctx.send(embed=await self.get_score_embed())
             del bd.active_trains[ctx.guild_id]
 
         self.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}")
@@ -642,7 +642,7 @@ class TrainGame:
         return None
 
     def gen_stats_embed(self, ctx: Union[interactions.SlashContext, interactions.ComponentContext],
-                        page: int, expired: bool) -> tuple[interactions.Embed, Union[None, interactions.File]]:
+                        expired: bool, page: int = 0) -> tuple[interactions.Embed, Union[None, interactions.File]]:
         embed: interactions.Embed = interactions.Embed()
         embed.set_author(name=f"Anime Trains", icon_url=bd.bot_avatar_url)
         footer_end: str = ' | This message is inactive.' if expired else ' | This message deactivates after 5 minutes.'
@@ -1043,7 +1043,7 @@ class TrainGame:
         player.update_item_count("Bucket")
         return False
 
-    async def get_score_embed(self) -> interactions.Embed:
+    async def calculate_player_scores(self, ctx: interactions.SlashContext) -> None:
 
         def add_to_score(p: TrainPlayer, key: str, val: int):
             if key in player.score:
@@ -1179,41 +1179,62 @@ class TrainGame:
                 player.score["train_tag_quest"] = 3
 
             player.score["total"] = sum(player.score.values())
-            ######################################################################## For testing
-            print(player.member.username)
-            print(player.score)
 
-        embed = interactions.Embed(
-            title=f"Game Complete!"
-        )
+        self.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}")
+
+    def gen_score_embed(self, ctx: Union[interactions.SlashContext, interactions.ComponentContext],
+                        expired: bool, page: int = 0) -> tuple[interactions.Embed, Union[None, interactions.File]]:
+
+        embed = interactions.Embed()
+
+        max_pages: int = len(self.players) + 1
+        page: int = 1 + (page % max_pages)  # Loop back through pages both ways
+        footer_end: str = " | This message is inactive." if expired else " | This message deactivates after 5 minutes."
+        embed.set_footer(text=f"Page {page}/{max_pages} {footer_end}")
         embed.set_author(name="Anime Trains", icon_url=bd.bot_avatar_url)
         embed.color = 0xff9c2c
-        embed.description = f"*Scoring results are as follows...*"
 
         self.players.sort(key=lambda p: p.score["total"], reverse=True)
-        for idx, player in enumerate(self.players):
-            place_emojis = {
-                0: bd.emoji["first"],
-                1: bd.emoji["second"],
-                2: bd.emoji["third"]
-            }
-            place_emoji = place_emojis.get(idx, "")
-            embed.add_field(
-                name="\u200b",
-                value=f"{place_emoji} {player.member.mention}'s score is **{player.score['total']}**",
-                inline=False
+
+        if page == 1:
+            embed.title = f"Game Complete!"
+            embed.description = f"*Scoring results are as follows...*"
+            for idx, player in enumerate(self.players):
+                place_emojis = {
+                    0: bd.emoji["first"],
+                    1: bd.emoji["second"],
+                    2: bd.emoji["third"]
+                }
+                place_emoji = place_emojis.get(idx, "")
+                embed.add_field(
+                    name="\u200b",
+                    value=f"{place_emoji} {player.member.mention}'s score is **{player.score['total']}**",
+                    inline=False
+                )
+            board_img_path = f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}/MASTER.png"
+            if not path.exists(board_img_path):
+                self.draw_board_img(
+                    filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}",
+                    board_name="MASTER", player_board=False
+                )
+            image = interactions.File(board_img_path, file_name="MASTER.png")
+            embed.set_image(
+                url="attachment://MASTER.png"
             )
-        city_shots_string = ""
-        for coords, season in city_coords.items():
-            city_shots_string += f"{coords[0]}, {coords[1]}: {season}\n"
+            return embed, image
 
-        embed.add_field(
-            name="Shot Cities",
-            value=city_shots_string if city_shots_string else "No cities!"
-        )
-        embed.set_footer(text=self.date)
-
-        return embed
+        player_idx: int = page - 2
+        embed.set_thumbnail(url=self.players[player_idx].member.avatar_url)
+        embed.title = f"{self.players[player_idx].member.username}"
+        for category, score in self.players[player_idx].score.items():
+            embed.add_field(
+                name=category,
+                value=score
+            )
+        with open(f"{bd.parent}/Data/nothing.png", "rb") as f:
+            file = io.BytesIO(f.read())
+        image: interactions.File = interactions.File(file, file_name="there is nothing here")
+        return embed, image
 
 
 async def load_game(
