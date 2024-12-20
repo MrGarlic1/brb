@@ -68,7 +68,7 @@ class TrainItem:
 class TrainPlayer:
     def __init__(
             self, member: interactions.Member = None, tag: str = None, dmchannel: interactions.DMChannel = None,
-            rails: int = 0, shots: list[TrainShot] = None, vis_tiles: list[tuple] = None, score: dict = None,
+            rails: int = 0, shots: list[TrainShot] = None, vis_tiles: list[tuple] = None, score: dict[str, int] = None,
             start: tuple = None, end: tuple = None, done: bool = False, donetime: str = None,
             inventory: dict = None, shops_used: list[tuple[int, int]] = None, anilist_id: int = None,
             least_watched_genre: str = None, starting_anilist: list = None
@@ -93,7 +93,7 @@ class TrainPlayer:
         self.dmchannel = dmchannel
         self.start = start
         self.end = end
-        self.score = score
+        self.score: dict[str, int] = score
         self.shots = shots
         self.donetime = donetime
         self.vis_tiles = vis_tiles
@@ -131,8 +131,8 @@ class TrainPlayer:
 class TrainGame:
     def __init__(
             self, name: str = None, date: str = None, players: list[TrainPlayer] = None,
-            board: dict[tuple[int, int]: TrainTile] = None, gameid: int = None, active: bool = True, size: tuple = None,
-            shop: dict = None, known_shows: dict[int, dict] = None
+            board: dict[tuple[int, int], TrainTile] = None, gameid: int = None, active: bool = True,
+            size: tuple = None, shop: dict[str, TrainItem] = None, known_shows: dict[int, dict] = None
     ):
         if players is None:
             players: list[TrainPlayer] = []
@@ -705,7 +705,10 @@ class TrainGame:
             else:
                 with open(f"{bd.parent}/Data/nothing.png", "rb") as f:
                     file = io.BytesIO(f.read())
-                image: interactions.File = interactions.File(file, file_name="there is nothing here")
+                image: interactions.File = interactions.File(file, file_name="nothing.png")
+                embed.set_image(
+                    url="attachment://nothing.png"
+                )
             return embed, image
 
         # Player stats page
@@ -716,7 +719,10 @@ class TrainGame:
             embed.description = f"### {player.member.mention} has not placed any rails yet!"
             with open(f"{bd.parent}/Data/nothing.png", "rb") as f:
                 file = io.BytesIO(f.read())
-            image = interactions.File(file, file_name="there is nothing here")
+            image: interactions.File = interactions.File(file, file_name="nothing.png")
+            embed.set_image(
+                url="attachment://nothing.png"
+            )
             return embed, image
 
         embed.set_thumbnail(url=player.member.avatar_url)
@@ -1066,7 +1072,7 @@ class TrainGame:
             track_resources = [self.board[shot.coords()].resource for shot in player.shots]
             player_prison_counts[player.tag] = track_resources.count(bd.emoji["prison"])
             if player_prison_counts[player.tag] != 0 and "Gun" in player.inventory:
-                player_prison_counts[player.tag] += 0.5*player.inventory["gun"].amount
+                player_prison_counts[player.tag] += 0.5*player.inventory["Gun"].amount
 
         city_coords: dict[tuple[int, int], str] = {}
         for idx, player in enumerate(self.players):
@@ -1082,9 +1088,9 @@ class TrainGame:
 
             # Fast finish scoring
             if idx == 0:
-                player.score["speed_bonus"] = 2
+                player.score["speed bonus"] = 2
             elif idx == 1:
-                player.score["speed_bonus"] = 1
+                player.score["speed bonus"] = 1
 
             # Item score bonuses
             axe_bonus = 0
@@ -1119,14 +1125,14 @@ class TrainGame:
                         train_tag_quest_complete = True
                 if len(shot_tile.rails) > 1:
                     intersecting_player_tag = [tag for tag in shot_tile.rails if tag != player.tag][0]
-                    add_to_score(p=player, key="intersects", val=1-player_prison_counts[intersecting_player_tag])
+                    add_to_score(p=player, key="intersections", val=1-player_prison_counts[intersecting_player_tag])
 
                 if shot_tile.resource == bd.emoji["city"]:
                     has_city = True
                     if shot.coords() not in city_coords:
                         city_coords[shot.coords()] = choice(["SPRING", "SUMMER", "AUTUMN", "WINTER"])
                     if shot_anime_info["season"] == city_coords[shot.coords()]:
-                        add_to_score(p=player, key="city_season", val=3)
+                        add_to_score(p=player, key="city season bonus", val=3)
                 elif shot_tile.resource == bd.emoji["wheat"]:
                     add_to_score(p=player, key="wheat", val=1)
 
@@ -1138,7 +1144,7 @@ class TrainGame:
 
                 elif shot_tile.resource == bd.emoji["house"]:
                     num_houses += 1
-                    add_to_score(p=player, key="house", val=1)
+                    add_to_score(p=player, key="houses", val=1)
 
                 if not shots_without_resources_quest_complete:
                     if not shot_tile.resource:
@@ -1160,24 +1166,24 @@ class TrainGame:
 
             if has_city and "wheat" in player.score:
                 player.score["wheat"] += 3
-            if has_city and "house" in player.score:
-                player.score["house"] += 1*num_houses
-                player.score["house"] -= player_prison_counts[player.tag]*num_houses
+            if has_city and "houses" in player.score:
+                player.score["houses"] += 1*num_houses
+                player.score["houses"] -= player_prison_counts[player.tag]*num_houses
 
-            player.score["rails"] = -2*int((player.rails-26)/3)
+            player.score["rails bonus"] = -2*int((player.rails-26)/3)
 
             if least_watched_genre_shots >= 2:
-                player.score["least_watched_genre_quest"] = 4
+                player.score["quest: least watched genre"] = 4
             if len(anime_sources) >= 4:
-                player.score["different_source_quest"] = 3
+                player.score["quest: different sources"] = 3
             if not genre_zone_matched:
-                player.score["genre_zone_match_quest"] = 3
+                player.score["quest: genre zone match"] = 3
             if shots_without_resources_quest_complete:
-                player.score["shots_without_resources_quest"] = 3
+                player.score["quest: shots without resources"] = 3
             if len(different_player_anime_shots) >= 3:
-                player.score["other_players_shows_quest"] = 2
+                player.score["quest: other player's shows"] = 2
             if train_tag_quest_complete:
-                player.score["train_tag_quest"] = 3
+                player.score["quest: train tag"] = 3
 
             player.score["total"] = sum(player.score.values())
 
@@ -1229,12 +1235,15 @@ class TrainGame:
         embed.title = f"{self.players[player_idx].member.username}"
         for category, score in self.players[player_idx].score.items():
             embed.add_field(
-                name=category,
+                name=category.title(),
                 value=score
             )
         with open(f"{bd.parent}/Data/nothing.png", "rb") as f:
             file = io.BytesIO(f.read())
-        image: interactions.File = interactions.File(file, file_name="there is nothing here")
+        image: interactions.File = interactions.File(file, file_name="nothing.png")
+        embed.set_image(
+            url="attachment://nothing.png"
+        )
         return embed, image
 
 
