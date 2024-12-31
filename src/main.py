@@ -713,7 +713,7 @@ async def add_response(ctx: interactions.SlashContext, trigger: str, response: s
     required=False,
     opt_type=interactions.OptionType.BOOLEAN,
 )
-async def remove_response(ctx: interactions.SlashContext, trigger: str = "", response: str = "", exact: bool = True):
+async def remove_response(ctx: interactions.SlashContext, trigger: str = "", response: str = "", exact: bool = None):
     # Config permission checks
     
     if bd.config[ctx.guild_id]["USER_ONLY_DELETE"] and \
@@ -724,7 +724,7 @@ async def remove_response(ctx: interactions.SlashContext, trigger: str = "", res
         )
         return True
 
-    error = rsp.rmv_response(ctx.guild_id, rsp.Response(exact, trigger.lower(), response))
+    error = rsp.rmv_response(ctx.guild_id, rsp.Response(exact=exact, trig=trigger.lower(), text=response))
     if not error:
         await ctx.send(content=bd.pass_str)
     else:

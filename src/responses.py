@@ -78,7 +78,7 @@ def rmv_response(guild_id: int, delete_req: Response) -> bool:
         to_del: list = [i for i in to_del if lines[i]["text"].startswith(demojize(delete_req.text))]
     if len(to_del) > 1:
         to_del: list = [i for i in to_del if lines[i]["exact"] == delete_req.exact]
-    if not to_del:
+    if not to_del or len(to_del) > 1:
         return True
 
     lines.pop(to_del[0])
