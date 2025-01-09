@@ -707,7 +707,7 @@ class TrainGame:
         footer_end: str = ' | This message is inactive.' if expired else ' | This message deactivates after 5 minutes.'
 
         max_pages: int = len(self.players) + 1
-        page: int = 1 + (page % max_pages)  # Loop back through pages both ways
+        page: int = 1 + ((page - 1) % max_pages)  # Loop back through pages both ways
         embed.set_footer(text=f'Page {page}/{max_pages} {footer_end}')
 
         # Game stats page
@@ -1455,7 +1455,7 @@ def train_howto_embed() -> interactions.Embed:
         " using `/anilist link!`\n" \
         "As players watch anime episodes, they can place a rail on the board for every 3 hours of watch time they" \
         " accumulate for a show. Rails are placed using `/trains shot`, e.g. `/trains shot row:1 column:1" \
-        " link:https://anilist.co/anime/121/Fullmetal-Alchemist/ info:Fullmetal Alchemist 1st shot`. The 'info'" \
+        " link:https://anilist.co/anime/121/Fullmetal-Alchemist/ info:Fullmetal Alchemist, 1st shot`. The 'info'" \
         " section is used only for record keeping, so feel free to include any information you'd like.\n" \
         # TODO: Add more instructions prob
     return embed
