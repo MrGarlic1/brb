@@ -128,63 +128,63 @@ class TrainPlayer:
 def default_shop() -> dict[str, TrainItem]:
     return {
         "Telescope":
-        TrainItem(
-            name="Telescope",
-            emoji=bd.emoji["telescope"],
-            description="Permanently increases your vision by 1!",
-            cost=3,
-            amount=2
+            TrainItem(
+                name="Telescope",
+                emoji=bd.emoji["telescope"],
+                description="Permanently increases your vision by 1!",
+                cost=3,
+                amount=2
             ),
         "Gun":
-        TrainItem(
-            name="Gun",
-            emoji=bd.emoji["gun"],
-            description="Increase the prison's intersection penalty for other players by 0.5!",
-            cost=5,
-            amount=1
-        ),
+            TrainItem(
+                name="Gun",
+                emoji=bd.emoji["gun"],
+                description="Increase the prison's intersection penalty for other players by 0.5!",
+                cost=5,
+                amount=1
+            ),
         "Bucket":
-        TrainItem(
-            name="Bucket",
-            emoji=bd.emoji["bucket"],
-            description="Allows you to create a river tile at a location of your choice! (consumable)",
-            cost=1,
-            amount=4,
-            uses=3
-        ),
+            TrainItem(
+                name="Bucket",
+                emoji=bd.emoji["bucket"],
+                description="Allows you to create a river tile at a location of your choice! (consumable)",
+                cost=1,
+                amount=4,
+                uses=3
+            ),
         "Pontoon Bridge":
-        TrainItem(
-            name="Pontoon Bridge",
-            emoji=bd.emoji["bridge"],
-            description="Allows you to use 0 rails when placing on a river tile! (consumed when entering a river)",
-            cost=1,
-            amount=4,
-            uses=3
-        ),
+            TrainItem(
+                name="Pontoon Bridge",
+                emoji=bd.emoji["bridge"],
+                description="Allows you to use 0 rails when placing on a river tile! (consumed when entering a river)",
+                cost=1,
+                amount=4,
+                uses=3
+            ),
         "Axe":
-        TrainItem(
-            name="Axe",
-            emoji=bd.emoji["axe"],
-            description=f"Increase points gained from {bd.emoji['wood']} tiles by 0.5!",
-            cost=3,
-            amount=2
-        ),
+            TrainItem(
+                name="Axe",
+                emoji=bd.emoji["axe"],
+                description=f"Increase points gained from {bd.emoji['wood']} tiles by 0.5!",
+                cost=3,
+                amount=2
+            ),
         "Coin":
-        TrainItem(
-            name="Coin",
-            emoji=bd.emoji["coin"],
-            description="Increases your score by 2!",
-            cost=3,
-            amount=4
-        ),
+            TrainItem(
+                name="Coin",
+                emoji=bd.emoji["coin"],
+                description="Increases your score by 2!",
+                cost=3,
+                amount=4
+            ),
         "MagLev":
-        TrainItem(
-            name="MagLev",
-            emoji=bd.emoji["maglev"],
-            description="Faster trains! Permanently decreases the anime requirement for rails from 3 hours to 2 hours.",
-            cost=3,
-            amount=2
-        )
+            TrainItem(
+                name="MagLev",
+                emoji=bd.emoji["maglev"],
+                description="Faster trains! Permanently decreases the anime requirement for rails from 3 hours to 2 hours.",
+                cost=3,
+                amount=2
+            )
     }
 
 
@@ -269,14 +269,14 @@ class TrainGame:
             x = tilepos[0]
             y = tilepos[1]
 
-            for x_new in (x-1, x+1):
+            for x_new in (x - 1, x + 1):
                 try:
                     if self.board[(x_new, y)].resource == resource:
                         return True
                 except KeyError:
                     pass
 
-            for y_new in (y-1, y+1):
+            for y_new in (y - 1, y + 1):
                 try:
                     if self.board[(x, y_new)].resource == resource:
                         return True
@@ -291,8 +291,8 @@ class TrainGame:
             x = tilepos[0]
             y = tilepos[1]
 
-            for x_new in range(x-spread, x+spread):
-                for y_new in range(y-spread, y+spread):
+            for x_new in range(x - spread, x + spread):
+                for y_new in range(y - spread, y + spread):
                     try:
                         if self.board[(x_new, y_new)].resource == resource:
                             return True
@@ -383,15 +383,15 @@ class TrainGame:
             if play_width % 4 != 0 or play_height % 4 != 0:
                 raise self.BoardGenError("Width and height must be divisible by 4.")
 
-            zone_width: int = play_width//4
-            zone_height: int = play_height//4
+            zone_width: int = play_width // 4
+            zone_height: int = play_height // 4
             zone_order: list = list(genre_colors.keys())
             shuffle(zone_order)
 
             for i in range(16):
                 zone_pos = (
-                    zone_height*(i // 4) + river_ring + 1,
-                    zone_width*(i % 4) + river_ring + 1
+                    zone_height * (i // 4) + river_ring + 1,
+                    zone_width * (i % 4) + river_ring + 1
                 )
                 add_zone(zone_width, zone_height, zone_pos, zone_order[i])
             return self.board
@@ -409,77 +409,77 @@ class TrainGame:
 
             if direction == 'Right':
                 river_start = (
-                    randint(round(width*0.25), round(width*0.75)),
-                    randint(1, round(width*0.25))
+                    randint(round(width * 0.25), round(width * 0.75)),
+                    randint(1, round(width * 0.25))
                 )
                 river_tiles.append(river_start)
                 river_center = [river_start[0]]
 
                 for col in range(river_start[1] + 1, width + 1):
-                    if randint(1, 1000) <= base_chance*1000:
+                    if randint(1, 1000) <= base_chance * 1000:
                         river_center.append(river_center[-1] + randint(-1, 1))
                     else:
                         break
                     for row in range(1, height + 1):
                         diff = abs(row - river_center[-1])
-                        chance = 1000*(base_chance - 0.25/avg_width*diff**density)
+                        chance = 1000 * (base_chance - 0.25 / avg_width * diff ** density)
                         if randint(1, 1000) <= chance:
                             river_tiles.append((row, col))
 
             elif direction == 'DownRight':
                 river_start = (
-                    randint(1, round(width*0.25)),
-                    randint(1, round(width*0.25))
+                    randint(1, round(width * 0.25)),
+                    randint(1, round(width * 0.25))
                 )
                 river_tiles.append(river_start)
                 river_center = [river_start[0]]
 
                 for col in range(river_start[1] + 1, width + 1):
-                    if randint(1, 1000) <= base_chance*1000:
+                    if randint(1, 1000) <= base_chance * 1000:
                         river_center.append(river_center[-1] + randint(0, 2))
                     else:
                         break
                     for row in range(1, height + 1):
                         diff = abs(row - river_center[-1])
-                        chance = 1000*(base_chance - 0.25/avg_width*diff**density)
+                        chance = 1000 * (base_chance - 0.25 / avg_width * diff ** density)
                         if randint(1, 1000) <= chance:
                             river_tiles.append((row, col))
 
             elif direction == 'Down':
                 river_start = (
-                    randint(1, round(width*0.25)),
-                    randint(round(width*0.25), round(width*0.75))
+                    randint(1, round(width * 0.25)),
+                    randint(round(width * 0.25), round(width * 0.75))
                 )
                 river_tiles.append(river_start)
                 river_center = [river_start[1]]
 
                 for row in range(river_start[0] + 1, height + 1):
-                    if randint(1, 1000) <= base_chance*1000:
+                    if randint(1, 1000) <= base_chance * 1000:
                         river_center.append(river_center[-1] + randint(-1, 1))
                     else:
                         break
                     for col in range(1, width + 1):
                         diff = abs(col - river_center[-1])
-                        chance = 1000*(base_chance - 0.25/avg_width*diff**density)
+                        chance = 1000 * (base_chance - 0.25 / avg_width * diff ** density)
                         if randint(1, 1000) <= chance:
                             river_tiles.append((row, col))
 
             elif direction == 'DownLeft':
                 river_start = (
-                    randint(round(height*0.75), height),
-                    randint(1, round(width*0.25))
+                    randint(round(height * 0.75), height),
+                    randint(1, round(width * 0.25))
                 )
                 river_tiles.append(river_start)
                 river_center = [river_start[0]]
 
                 for col in range(river_start[1] + 1, width + 1):
-                    if randint(1, 1000) <= base_chance*1000:
+                    if randint(1, 1000) <= base_chance * 1000:
                         river_center.append(river_center[-1] + randint(-2, 0))
                     else:
                         break
                     for row in range(1, height + 1):
                         diff = abs(row - river_center[-1])
-                        chance = 1000*(base_chance - 0.25/avg_width*diff**density)
+                        chance = 1000 * (base_chance - 0.25 / avg_width * diff ** density)
                         if randint(1, 1000) <= chance:
                             river_tiles.append((row, col))
 
@@ -496,13 +496,13 @@ class TrainGame:
         self.board = {}
         for r in range(height):
             for c in range(width):
-                if r+1 <= river_ring or r+1 > height - river_ring:
+                if r + 1 <= river_ring or r + 1 > height - river_ring:
                     terrain = "river"
-                elif c+1 <= river_ring or c+1 > width - river_ring:
+                elif c + 1 <= river_ring or c + 1 > width - river_ring:
                     terrain = "river"
                 else:
                     terrain = None
-                self.board[(r+1, c+1)] = TrainTile(terrain=terrain)
+                self.board[(r + 1, c + 1)] = TrainTile(terrain=terrain)
 
         # Add terrain (chance out of 1000)
         river_chance = 900
@@ -524,14 +524,14 @@ class TrainGame:
         # Add random resources
         for c in range(width):
             for r in range(height):
-                self.board[(r+1, c+1)].resource = generate_random_resources((r+1, c+1))
+                self.board[(r + 1, c + 1)].resource = generate_random_resources((r + 1, c + 1))
 
         # Add genre zones
         self.board = generate_zones()
         return None
 
     def update_vis_tiles(
-            self, player_idx: int,  shot_row: int, shot_col: int, remove: bool = False, render_dist: int = 4
+            self, player_idx: int, shot_row: int, shot_col: int, remove: bool = False, render_dist: int = 4
     ):
         if "Telescope" in self.players[player_idx].inventory:
             render_dist += self.players[player_idx].inventory["Telescope"].amount
@@ -551,8 +551,8 @@ class TrainGame:
                     self.players[player_idx].vis_tiles.append((row, col))
 
     def gen_player_locations(self, river_ring: int) -> None:
-        row_bounds: tuple[int, int] = (1+river_ring, self.size[1]-river_ring)
-        col_bounds: tuple[int, int] = (1+river_ring, self.size[0]-river_ring)
+        row_bounds: tuple[int, int] = (1 + river_ring, self.size[1] - river_ring)
+        col_bounds: tuple[int, int] = (1 + river_ring, self.size[0] - river_ring)
         taken_spaces: list = []
 
         for player_idx, player in enumerate(self.players):
@@ -798,11 +798,11 @@ class TrainGame:
             prev_shot_time = datetime.strptime(shot.time, bd.date_format)
 
         time_between_shots_list.append((datetime.now() - prev_shot_time).total_seconds())
-        avg_secs_between_shots = round(sum(time_between_shots_list)/len(time_between_shots_list))
+        avg_secs_between_shots = round(sum(time_between_shots_list) / len(time_between_shots_list))
 
         embed.add_field(name="🧮 Total Shots", value=total_shots, inline=True)
         embed.add_field(name="🛤️ Total Rails Used", value=player.rails, inline=True)
-        embed.add_field(name="🍥 % in Zone", value=f"{round(in_zone_shots/total_shots*100)}%", inline=True)
+        embed.add_field(name="🍥 % in Zone", value=f"{round(in_zone_shots / total_shots * 100)}%", inline=True)
         embed.add_field(name="🚂 Done?", value="✅" if player.done else "❌", inline=True)
         embed.add_field(
             name="⏳ Avg. Time Between Shots", value=str(timedelta(seconds=avg_secs_between_shots)), inline=False
@@ -816,7 +816,7 @@ class TrainGame:
         else:
             last_shot = player.shots[-1]
             dist_left = abs(last_shot.row - player.end[0]) + abs(last_shot.col - player.end[1])
-            projected_time = datetime.now() + timedelta(seconds=round(dist_left*1.5)*avg_secs_between_shots)
+            projected_time = datetime.now() + timedelta(seconds=round(dist_left * 1.5) * avg_secs_between_shots)
 
             embed.add_field(
                 name="🗓️ Projected Completion Date", value=projected_time.strftime("%Y/%m/%d at %H:%M:%S"), inline=False
@@ -875,7 +875,7 @@ class TrainGame:
         player = self.players[player_idx]
         board_img = Image.new(
             mode="RGB",
-            size=((self.size[0]+label_offset)*tile_pixels, (self.size[1]+label_offset)*tile_pixels),
+            size=((self.size[0] + label_offset) * tile_pixels, (self.size[1] + label_offset) * tile_pixels),
             color=0xFFFFFF
         )
         draw: ImageDraw = ImageDraw.Draw(board_img)
@@ -887,43 +887,43 @@ class TrainGame:
             hatch_color: tuple[int, int, int] = (40, 40, 40)
             padding: int = 1
 
-            x_start: int = tile_pixels*(hatch_col - 1)
-            y_start: int = tile_pixels*(hatch_row - 1)
+            x_start: int = tile_pixels * (hatch_col - 1)
+            y_start: int = tile_pixels * (hatch_row - 1)
 
             x, y = x_start, y_start
             while y < y_start + tile_pixels:
-                xy = ((x_start+padding, y+padding), (x+tile_pixels-padding, y_start+tile_pixels-padding))
+                xy = ((x_start + padding, y + padding), (x + tile_pixels - padding, y_start + tile_pixels - padding))
                 draw.line(xy=xy, fill=hatch_color, width=1)
                 x -= 4
                 y += 4
 
             x, y = x_start, y_start
             while x < x_start + tile_pixels:
-                xy = ((x+padding, y_start+padding), (x_start+tile_pixels-padding, y+tile_pixels-padding))
+                xy = ((x + padding, y_start + padding), (x_start + tile_pixels - padding, y + tile_pixels - padding))
                 draw.line(xy=xy, fill=hatch_color, width=1)
                 x += 4
                 y -= 4
 
         # Draw column labels/tile borders
 
-        for label_x in range(1, self.size[0]+1):
-
+        for label_x in range(1, self.size[0] + 1):
             draw.rectangle(
-                xy=((label_x*tile_pixels, 1), ((label_x+1)*tile_pixels, tile_pixels)),
+                xy=((label_x * tile_pixels, 1), ((label_x + 1) * tile_pixels, tile_pixels)),
                 fill=hidden_tile_color, outline=border_color, width=1
             )
             draw.text(
-                xy=(label_x*tile_pixels + tile_pixels/2, tile_pixels/2), text=str(label_x), font=font, anchor="mm",
+                xy=(label_x * tile_pixels + tile_pixels / 2, tile_pixels / 2), text=str(label_x), font=font,
+                anchor="mm",
                 fill=font_color
             )
         # Draw row labels/tile borders
-        for label_y in range(1, self.size[1]+1):
+        for label_y in range(1, self.size[1] + 1):
             draw.rectangle(
-                xy=((1, label_y*tile_pixels), (tile_pixels, (label_y+1)*tile_pixels)),
+                xy=((1, label_y * tile_pixels), (tile_pixels, (label_y + 1) * tile_pixels)),
                 fill=hidden_tile_color, outline=border_color, width=1
             )
             draw.text(
-                xy=(round(tile_pixels/2), label_y*tile_pixels + round(tile_pixels/2)),
+                xy=(round(tile_pixels / 2), label_y * tile_pixels + round(tile_pixels / 2)),
                 text=str(label_y), font=font, anchor="mm", fill=font_color
             )
         # Draw game tiles
@@ -939,7 +939,7 @@ class TrainGame:
             # Draw hidden tile as gray, skip to next tile
             if player_board and coords not in player.vis_tiles:
                 draw.rectangle(
-                    xy=((col*tile_pixels, row*tile_pixels), ((col+1)*tile_pixels, (row+1)*tile_pixels)),
+                    xy=((col * tile_pixels, row * tile_pixels), ((col + 1) * tile_pixels, (row + 1) * tile_pixels)),
                     fill=hidden_tile_color, outline=border_color, width=1
                 )
                 continue
@@ -953,7 +953,8 @@ class TrainGame:
                 tile_color = genre_colors[tile_zone]
 
             draw.rectangle(
-                xy=((col*tile_pixels, row*tile_pixels), (col*tile_pixels+tile_pixels, row*tile_pixels+tile_pixels)),
+                xy=((col * tile_pixels, row * tile_pixels),
+                    (col * tile_pixels + tile_pixels, row * tile_pixels + tile_pixels)),
                 fill=tile_color, outline=border_color, width=1
             )
             if self.board[coords].terrain == "river":
@@ -968,16 +969,16 @@ class TrainGame:
                 rail_text = "End"
             else:
                 rail_text = "".join(self.board[coords].rails)
-            text_pixels = draw.textlength(text=resource_text+rail_text, font=font)
+            text_pixels = draw.textlength(text=resource_text + rail_text, font=font)
 
             # Dynamic font/emoji sizing depending on length of text
             if resource_text and rail_text:
                 text_pixels += emoji_pixels
-                text_offset = round(emoji_pixels*0.4)
+                text_offset = round(emoji_pixels * 0.4)
             else:
                 text_offset = 0
 
-            while text_pixels > 0.8*tile_pixels and font_size > 6:
+            while text_pixels > 0.8 * tile_pixels and font_size > 6:
                 font_size -= 2
                 emoji_pixels -= 2
                 font = ImageFont.truetype(f"{bd.parent}/Data/ggsans/ggsans-Bold.ttf", font_size)
@@ -987,9 +988,10 @@ class TrainGame:
 
             # Draw tile resource and rails
             pilmoji.text(
-                xy=(col*tile_pixels + round(tile_pixels/2) - text_offset, row*tile_pixels + round(tile_pixels/2)),
-                text=rail_text+resource_text, anchor="mm", fill=font_color, font=font,
-                emoji_position_offset=(-round(font_size/2), -round(font_size/2)), emoji_scale_factor=1.1
+                xy=(
+                col * tile_pixels + round(tile_pixels / 2) - text_offset, row * tile_pixels + round(tile_pixels / 2)),
+                text=rail_text + resource_text, anchor="mm", fill=font_color, font=font,
+                emoji_position_offset=(-round(font_size / 2), -round(font_size / 2)), emoji_scale_factor=1.1
             )
             if font_size != default_font_size:
                 font_size = default_font_size
@@ -1109,17 +1111,17 @@ class TrainGame:
             track_resources = [self.board[(shot.row, shot.col)].resource for shot in player.shots]
             player_prison_counts[player.tag] = track_resources.count(bd.emoji["prison"])
             if player_prison_counts[player.tag] != 0 and "gun" in player.inventory["gun"]:
-                player_prison_counts[player.tag] += 0.5*player.inventory["gun"].amount
+                player_prison_counts[player.tag] += 0.5 * player.inventory["gun"].amount
 
         city_coords = {tuple[int, int], str}
         for idx, player in enumerate(self.players):
 
             axe_bonus = 0
             if "Axe" in player.inventory:
-                axe_bonus += 0.5*player.inventory["Axe"].amount
+                axe_bonus += 0.5 * player.inventory["Axe"].amount
 
             if "Coin" in player.inventory:
-                add_to_score(p=player, key="coins", val=2*player.inventory["Coin"].amount)
+                add_to_score(p=player, key="coins", val=2 * player.inventory["Coin"].amount)
 
             # Fast finish scoring
             if idx == 0:
@@ -1133,7 +1135,7 @@ class TrainGame:
                 shot_tile = self.board[(shot.row, shot.col)]
                 if len(shot_tile.rails) > 1:
                     intersecting_player_tag = [tag for tag in shot_tile.rails if tag != player.tag][0]
-                    add_to_score(p=player, key="intersects", val=1-player_prison_counts[intersecting_player_tag])
+                    add_to_score(p=player, key="intersects", val=1 - player_prison_counts[intersecting_player_tag])
 
                 if shot_tile.resource == bd.emoji["city"]:
                     has_city = True
@@ -1155,10 +1157,10 @@ class TrainGame:
             if has_city and "wheat" in player.score:
                 player.score["wheat"] += 3
             if has_city and "house" in player.score:
-                player.score["house"] += 1*num_houses
-                player.score["house"] -= player_prison_counts[player.tag]*num_houses
+                player.score["house"] += 1 * num_houses
+                player.score["house"] -= player_prison_counts[player.tag] * num_houses
 
-            player.score["rails"] = -2*int((player.rails-26)/3)
+            player.score["rails"] = -2 * int((player.rails - 26) / 3)
             player.score["total"] = sum(player.score.values())
 
         embed = interactions.Embed(
@@ -1313,18 +1315,20 @@ def train_game_embed(ctx: interactions.SlashContext, game: TrainGame) -> interac
 
 
 def gen_rules_embed(page: int, expired: bool) -> interactions.Embed:
-    max_pages: int = 6
+    max_pages: int = 7
     page: int = 1 + ((page - 1) % max_pages)  # Loop back through pages both ways
     footer_end: str = " | This message is inactive." if expired else " | This message deactivates after 5 minutes."
     if page == 1:
-        embed = train_rules_embed()
+        embed = train_howto_embed()
     elif page == 2:
-        embed = train_zones_embed()
+        embed = train_rules_embed()
     elif page == 3:
-        embed = train_symbols_embed()
+        embed = train_zones_embed()
     elif page == 4:
-        embed = train_quests_embed()
+        embed = train_symbols_embed()
     elif page == 5:
+        embed = train_quests_embed()
+    elif page == 6:
         embed = train_items_embed()
     else:
         embed = train_scoring_embed()
@@ -1438,6 +1442,22 @@ def train_rules_embed() -> interactions.Embed:
         "unless they are connected.\n\n" \
         "**4.** The board is generated randomly at the start of the game, and the points are tallied at " \
         "the end of the game. The player with the most points at the end of the game wins.\n\n"
+    return embed
+
+
+def train_howto_embed() -> interactions.Embed:
+    embed = interactions.Embed()
+    embed.set_author(name="Anime Trains", icon_url=bd.bot_avatar_url)
+    embed.color = 0xff9c2c
+    embed.title = "How to Play"
+    embed.description = \
+        "This bot uses Anilist to find shows and check stats. Please link your Anilist profile to Discord account" \
+        " using `/anilist link!`\n" \
+        "As players watch anime episodes, they can place a rail on the board for every 3 hours of watch time they" \
+        " accumulate for a show. Rails are placed using `/trains shot`, e.g. `/trains shot row:1 column:1" \
+        " link:https://anilist.co/anime/121/Fullmetal-Alchemist/ info:Fullmetal Alchemist 1st shot`. The 'info'" \
+        " section is used only for record keeping, so feel free to include any information you'd like.\n" \
+        # TODO: Add more instructions prob
     return embed
 
 
