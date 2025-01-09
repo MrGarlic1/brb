@@ -6,7 +6,6 @@ def anime_id_from_url(url: str) -> int | None:
     url = tuple(filter(None, url))
     if "anime" not in url:
         return None
-    print(url[-2])
     if url[-1].isdigit():
         return int(url[-1])
     elif url[-2].isdigit():

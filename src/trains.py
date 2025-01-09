@@ -13,7 +13,6 @@ import matplotlib.font_manager
 from PIL import Image, ImageFont, ImageDraw
 from pilmoji import Pilmoji
 from shutil import rmtree
-from time import strptime
 import anilist as al
 from os import path
 
@@ -759,7 +758,7 @@ class TrainGame:
         if not player.shots:
             projected_time = "N/A"
         elif player.done:
-            projected_time = strptime(player.donetime, "%Y%m%d%H%M%S")
+            projected_time = datetime.strptime(player.donetime, "%Y%m%d%H%M%S")
             projected_time = projected_time.strftime("%Y/%m/%d at %H:%M:%S")
         else:
             # player.end is [ROW, COL]

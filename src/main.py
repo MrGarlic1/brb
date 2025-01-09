@@ -1016,7 +1016,7 @@ async def on_guild_join(event: interactions.api.events.GuildJoin):
     if not path.exists(f'{bd.parent}/Guilds/{guild.id}'):
         makedirs(f'{bd.parent}/Guilds/{guild.id}/Trains')
         print(
-            Fore.WHITE + '{strftime("%Y-%m-%d %H:%M:%S")}:  ' +
+            Fore.WHITE + '("%Y-{strftime(%m-%d %H:%M:%S")}:  ' +
             Fore.GREEN + f'Guild folder for guild {guild.id} created successfully.' + Fore.RESET
         )
         with open(f'{bd.parent}/Guilds/{int(guild.id)}/config.json', 'w') as f:
