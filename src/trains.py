@@ -1364,7 +1364,7 @@ def train_game_embed(ctx: interactions.SlashContext, game: TrainGame) -> interac
 
 def gen_rules_embed(page: int, expired: bool) -> interactions.Embed:
     max_pages: int = 6
-    page: int = 1 + ((page - 1) % max_pages)  # Loop back through pages both ways
+    page: int = 1 + (page % max_pages)  # Loop back through pages both ways
     footer_end: str = " | This message is inactive." if expired else " | This message deactivates after 5 minutes."
     if page == 1:
         embed = train_rules_embed()

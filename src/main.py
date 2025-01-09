@@ -617,7 +617,7 @@ async def autocomplete(ctx: interactions.AutocompleteContext) -> None:
     opt_type=interactions.OptionType.INTEGER,
     required=False
 )
-async def send_rules(ctx: interactions.SlashContext, page: int = 1):
+async def send_rules(ctx: interactions.SlashContext, page: int = 0):
     rules_msg = await ctx.send(
         embeds=bu.gen_rules_embed(page=page, expired=False),
         components=[bu.nextpg_button(), bu.prevpg_button()]
