@@ -437,6 +437,7 @@ async def undo_shot(ctx: interactions.SlashContext):
 
     game.update_player_stats_after_shot(sender_idx=sender_idx, player=player, undo=True, shot=shot)
 
+    await ctx.send(content=bd.pass_str)
     # Save/update games
     await game.update_boards_after_shot(
         ctx=ctx, row=shot.row, column=shot.col
