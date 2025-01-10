@@ -1543,7 +1543,7 @@ def default_shop() -> dict[str, TrainItem]:
         TrainItem(
             name="Bucket",
             emoji=bd.emoji["bucket"],
-            description="Allows you to create a river tile at a location of your choice! (consumable)",
+            description="Allows you to create 3 river tiles at locations of your choice! (consumable)",
             cost=1,
             amount=4,
             uses=3
