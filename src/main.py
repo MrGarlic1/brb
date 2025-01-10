@@ -279,6 +279,7 @@ async def trains_use_bucket(ctx: interactions.SlashContext, item: str, row: int,
         if err:
             await ctx.send(content=bd.fail_str)
             return True
+        await ctx.send(content=bd.pass_str)
         await game.update_boards_after_shot(
             ctx=ctx, row=row, column=column
         )
