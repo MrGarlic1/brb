@@ -1,6 +1,7 @@
 # File containing global variables for bot.
 
 from os import environ, listdir, path
+
 from dotenv import load_dotenv
 
 load_dotenv()

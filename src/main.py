@@ -3,20 +3,22 @@ Ben Samans
 main.py
 """
 
-from time import strftime
-from colorama import init, Fore
-from random import choice
-import botdata as bd
-import botutils as bu
-import trains as tr
-import responses as rsp
 import asyncio
-import interactions
+import io
 import json
 from datetime import datetime
 from os import listdir, mkdir, path, makedirs
-import io
+from random import choice
 from shutil import copytree, ignore_patterns
+from time import strftime
+
+import interactions
+from colorama import init, Fore
+
+import botdata as bd
+import botutils as bu
+import responses as rsp
+import trains as tr
 
 bot = interactions.Client(
     token=bd.token,
@@ -96,7 +98,7 @@ async def create_trains(
         board=None,
         gameid=gameid,
         active=True,
-        size=(width + 2*river_ring, height + 2*river_ring)  # Add space on board for river border
+        size=(width + 2 * river_ring, height + 2 * river_ring)  # Add space on board for river border
     )
     try:
         game.gen_trains_board(
@@ -620,7 +622,7 @@ async def add_response(ctx: interactions.SlashContext, trigger: str, response: s
 )
 async def remove_response(ctx: interactions.SlashContext, trigger: str = "", response: str = "", exact: bool = True):
     # Config permission checks
-    
+
     if bd.config[ctx.guild_id]["USER_ONLY_DELETE"] and \
             rsp.get_resp(ctx.guild_id, trigger, response, exact).user_id != ctx.author.id:
         await ctx.send(
@@ -662,7 +664,7 @@ async def autocomplete(ctx: interactions.AutocompleteContext):
     responses = [
         response.text for response in bd.mentions[ctx.guild_id] + bd.responses[ctx.guild_id]
         if response.trig == ctx.kwargs.get("trigger")
-        ]
+    ]
     choices = list(map(bu.autocomplete_filter, responses))
     if len(choices) > 25:
         choices = choices[0:24]
@@ -702,7 +704,6 @@ async def listrsps(ctx: interactions.SlashContext, page: int = 1):
     dm_permission=False
 )
 async def delete_data(ctx: interactions.SlashContext):
-    
     open(f"{bd.parent}/Guilds/{ctx.guild_id}/responses.json", "w")
     f = open(f"{bd.parent}/Guilds/{ctx.guild_id}/mentions.json", "w")
     f.close()
@@ -736,7 +737,6 @@ async def delete_data(ctx: interactions.SlashContext):
     opt_type=interactions.OptionType.BOOLEAN,
 )
 async def mod_add(ctx: interactions.SlashContext, trigger: str, response_text: str, exact: bool):
-
     error = rsp.add_response(ctx.guild_id, rsp.Response(exact, trigger.lower(), response_text, int(ctx.author.id)))
     if not error:
         await ctx.send(content=bd.pass_str)
@@ -779,7 +779,6 @@ async def mod_add(ctx: interactions.SlashContext, trigger: str, response_text: s
     opt_type=interactions.OptionType.BOOLEAN,
 )
 async def mod_remove(ctx: interactions.SlashContext, trigger: str = "", response: str = "", exact: bool = True):
-    
     error = rsp.rmv_response(ctx.guild_id, rsp.Response(exact, trigger.lower(), response))
     if not error:
         await ctx.send(content=bd.pass_str)
@@ -813,7 +812,7 @@ async def autocomplete(ctx: interactions.AutocompleteContext):
     responses = [
         response.text for response in bd.mentions[ctx.guild_id] + bd.responses[ctx.guild_id]
         if response.trig == ctx.kwargs.get("trigger")
-        ]
+    ]
     choices = list(map(bu.autocomplete_filter, responses))
     if len(choices) > 25:
         choices = choices[0:24]
@@ -828,7 +827,6 @@ async def autocomplete(ctx: interactions.AutocompleteContext):
     dm_permission=False
 )
 async def cfg_reset(ctx: interactions.SlashContext):
-    
     with open(f"{bd.parent}/Guilds/{ctx.guild_id}/config.json", "w") as f:
         json.dump(bd.default_config, f, indent=4)
     bd.config[ctx.guild_id] = bd.default_config
@@ -843,12 +841,11 @@ async def cfg_reset(ctx: interactions.SlashContext):
     dm_permission=False
 )
 async def cfg_view(ctx: interactions.SlashContext):
-    
     await ctx.send(
         content=f"Allow Phrases: {bd.config[ctx.guild_id]['ALLOW_PHRASES']}\n"
-        f"Limit Responses: {bd.config[ctx.guild_id]['LIMIT_USER_RESPONSES']}\n"
-        f"Response Limit # (Only if Limit Responses is True): {bd.config[ctx.guild_id]['MAX_USER_RESPONSES']}\n"
-        f"Restrict User Response Deleting: {bd.config[ctx.guild_id]['USER_ONLY_DELETE']}\n"
+                f"Limit Responses: {bd.config[ctx.guild_id]['LIMIT_USER_RESPONSES']}\n"
+                f"Response Limit # (Only if Limit Responses is True): {bd.config[ctx.guild_id]['MAX_USER_RESPONSES']}\n"
+                f"Restrict User Response Deleting: {bd.config[ctx.guild_id]['USER_ONLY_DELETE']}\n"
     )
 
 
@@ -866,7 +863,6 @@ async def cfg_view(ctx: interactions.SlashContext):
     required=True
 )
 async def cfg_user_perms(ctx: interactions.SlashContext, enable: bool = True):
-    
     bd.config[ctx.guild_id]["USER_ONLY_DELETE"] = not enable
     with open(f"{bd.parent}/Guilds/{ctx.guild_id}/config.json", "w") as f:
         json.dump(bd.config[ctx.guild_id], f, indent=4)
@@ -893,7 +889,6 @@ async def cfg_user_perms(ctx: interactions.SlashContext, enable: bool = True):
     required=False
 )
 async def cfg_set_limit(ctx: interactions.SlashContext, enable: bool = True, limit: int = 10):
-    
     if limit < 1:
         limit = 1
     bd.config[ctx.guild_id]["LIMIT_USER_RESPONSES"] = enable
@@ -917,7 +912,6 @@ async def cfg_set_limit(ctx: interactions.SlashContext, enable: bool = True, lim
     required=True
 )
 async def cfg_allow_phrases(ctx: interactions.SlashContext, enable: bool = True):
-    
     bd.config[ctx.guild_id]["ALLOW_PHRASES"] = enable
     with open(f"{bd.parent}/Guilds/{ctx.guild_id}/config.json", "w") as f:
         json.dump(bd.config[ctx.guild_id], f, indent=4)

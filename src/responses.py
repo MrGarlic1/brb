@@ -1,9 +1,10 @@
-import interactions
-from emoji import emojize, demojize
 import json
-import botdata as bd
+
+import interactions
 from colorama import Fore
-from dataclasses import dataclass
+from emoji import emojize, demojize
+
+import botdata as bd
 
 
 class Response:
@@ -63,7 +64,6 @@ def add_response(guild_id: int, rsp: Response) -> bool:
 
 
 def rmv_response(guild_id: int, delete_req: Response) -> bool:
-
     f_name: str = "responses.json" if delete_req.exact else "mentions.json"
     try:
         with open(f"{bd.parent}/Guilds/{guild_id}/{f_name}", "r") as f:
@@ -135,7 +135,6 @@ def get_resp(guild_id, trig, text, exact) -> Response | None:
 
 
 def gen_resp_list(guild: interactions.Guild, page: int, expired: bool) -> interactions.Embed:
-
     guild_id = int(guild.id)
     list_msg = interactions.Embed(
         description="*Your response list, sir.*"
@@ -152,7 +151,7 @@ def gen_resp_list(guild: interactions.Guild, page: int, expired: bool) -> intera
     list_msg.set_author(name=guild.name, icon_url=bd.bot_avatar_url)
     list_msg.set_thumbnail(url=guild.icon.url)
     list_msg.set_footer(text=f"Page {page}/{max_pages} {footer_end}")
-    nums: range = range((page-1)*10, len(guild_trigs)) if page == max_pages else range((page-1)*10, page*10)
+    nums: range = range((page - 1) * 10, len(guild_trigs)) if page == max_pages else range((page - 1) * 10, page * 10)
     for i in nums:
         pref: str = "**Exact Trigger:** " if guild_trigs[i].exact else "**Phrase Trigger:** "
         rsp_field: str = f"{pref}{guild_trigs[i].trig} \n **Respond: ** {guild_trigs[i].text}"

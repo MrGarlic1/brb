@@ -1,18 +1,20 @@
-import interactions
-import json
-import botdata as bd
-from colorama import Fore
-from dataclasses import dataclass
 import asyncio
-from random import randint, shuffle, choice
-from typing import Union
-from datetime import datetime, timedelta
-import matplotlib.pyplot as plt
 import io
-import matplotlib.font_manager
-from PIL import Image, ImageFont, ImageDraw
-from pilmoji import Pilmoji
+import json
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from random import randint, shuffle, choice
 from shutil import rmtree
+from typing import Union
+
+import interactions
+import matplotlib.font_manager
+import matplotlib.pyplot as plt
+from PIL import Image, ImageFont, ImageDraw
+from colorama import Fore
+from pilmoji import Pilmoji
+
+import botdata as bd
 
 
 @dataclass
@@ -989,7 +991,8 @@ class TrainGame:
             # Draw tile resource and rails
             pilmoji.text(
                 xy=(
-                col * tile_pixels + round(tile_pixels / 2) - text_offset, row * tile_pixels + round(tile_pixels / 2)),
+                    col * tile_pixels + round(tile_pixels / 2) - text_offset,
+                    row * tile_pixels + round(tile_pixels / 2)),
                 text=rail_text + resource_text, anchor="mm", fill=font_color, font=font,
                 emoji_position_offset=(-round(font_size / 2), -round(font_size / 2)), emoji_scale_factor=1.1
             )
