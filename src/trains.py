@@ -15,6 +15,7 @@ from pilmoji import Pilmoji
 from shutil import rmtree
 import anilist as al
 from os import path
+from math import log
 
 
 @dataclass
@@ -733,17 +734,25 @@ class TrainGame:
         in_zone_shots: int = 0
         prev_shot_time = datetime.strptime(self.date, bd.date_format)
         time_between_shots_list = []
+        weights = []
 
-        # Get time deltas for all previous shots and current time, take average
+        # Get time deltas for all previous shots and current time, take weighted average
         for shot_idx, shot in enumerate(player.shots):
             if self.board[shot.coords()].zone in self.known_shows[shot.show_id]["genres"]:
                 in_zone_shots += 1
             time_between_shots_list.append(
                 (datetime.strptime(shot.time, bd.date_format) - prev_shot_time).total_seconds()
             )
+            # Weight based on seconds elapsed since shot. Time delta minimum is 300
+            weights.append(
+                log(0.01 * max((datetime.now() - prev_shot_time).total_seconds(), 300)) ** -.9
+            )
             prev_shot_time = datetime.strptime(shot.time, bd.date_format)
 
         time_between_shots_list.append((datetime.now() - prev_shot_time).total_seconds())
+        weights.append(
+            log((datetime.now() - prev_shot_time).total_seconds()) ** -1
+        )
         avg_secs_between_shots = round(sum(time_between_shots_list)/len(time_between_shots_list))
 
         embed.add_field(name="🧮 Total Shots", value=total_shots, inline=True)
@@ -764,7 +773,9 @@ class TrainGame:
             # player.end is [ROW, COL]
             last_shot = player.shots[-1]
             dist_left = abs(last_shot.row - player.end[0]) + abs(last_shot.col - player.end[1])
-            projected_time = datetime.now() + timedelta(seconds=round(dist_left*1.5)*avg_secs_between_shots)
+            weighted_time_deltas = [t * w for t, w in zip(time_between_shots_list, weights)]
+            weighted_avg_secs_between_shots = sum(weighted_time_deltas)/sum(weights)
+            projected_time = datetime.now() + timedelta(seconds=round(dist_left*1.5)*weighted_avg_secs_between_shots)
             projected_time = projected_time.strftime("%Y/%m/%d at %H:%M:%S")
 
         embed.add_field(
