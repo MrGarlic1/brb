@@ -1455,11 +1455,15 @@ def train_howto_embed() -> interactions.Embed:
     embed.title = "How to Play"
     embed.description = \
         "This bot uses Anilist to find shows and check stats. Please link your Anilist profile to Discord account" \
-        " using `/anilist link!`\n" \
+        " using `/anilist link`!\n" \
         "As players watch anime episodes, they can place a rail on the board for every 3 hours of watch time they" \
         " accumulate for a show. Rails are placed using `/trains shot`, e.g. `/trains shot row:1 column:1" \
         " link:https://anilist.co/anime/121/Fullmetal-Alchemist/ info:Fullmetal Alchemist 1st shot`. The 'info'" \
-        " section is used only for record keeping, so feel free to include any information you'd like.\n" \
+        " section is used only for record keeping, so feel free to include any information you'd like. You must place" \
+        " your first rail on your start space.\n" \
+        "The goal of the game is to build a railroad from your start tile to your end tile. Along the way, you can" \
+        " accumulate bonuses, buy items from shops, and meet your fellow players on the board. Scores are calculated" \
+        " based on the rules listed in the following pages."
         # TODO: Add more instructions prob
     return embed
 
