@@ -1461,6 +1461,9 @@ def train_howto_embed() -> interactions.Embed:
         " link:https://anilist.co/anime/121/Fullmetal-Alchemist/ info:Fullmetal Alchemist 1st shot`. The 'info'" \
         " section is used only for record keeping, so feel free to include any information you'd like. You must place" \
         " your first rail on your start space.\n" \
+        "If you wish to undo a shot, you can undo using `/trains undo`. You can only undo the latest track placed (as" \
+        " all tracks must be connected), but you may use the command as many times in a row as you'd like to" \
+        " continuously remove from the end of your railroad.\n" \
         "The goal of the game is to build a railroad from your start tile to your end tile. Along the way, you can" \
         " accumulate bonuses, buy items from shops, and meet your fellow players on the board. Scores are calculated" \
         " based on the rules listed in the following pages."
