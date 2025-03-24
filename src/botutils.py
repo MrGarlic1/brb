@@ -5,8 +5,8 @@ Bot functions
 """
 
 import interactions
-from responses import gen_resp_list, load_responses
-from trains import gen_rules_embed, load_game, del_game_files
+from Features.Responses.data import gen_resp_list, load_responses
+from Features.Trains.data import gen_rules_embed, load_game, del_game_files
 import json
 import botdata as bd
 from time import strftime
