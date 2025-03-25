@@ -4,19 +4,21 @@ botutils.py
 Bot functions
 """
 
+import asyncio
+import json
+from dataclasses import dataclass
+from os import makedirs, listdir, path, remove
+from random import choice
+from re import findall
+from time import strftime
+
 import interactions
+import matplotlib.font_manager
+from colorama import Fore
+
+import botdata as bd
 from Features.Responses.data import gen_resp_list, load_responses
 from Features.Trains.data import gen_rules_embed, load_game, del_game_files
-import json
-import botdata as bd
-from time import strftime
-from colorama import Fore
-from dataclasses import dataclass
-import asyncio
-import matplotlib.font_manager
-from os import makedirs, listdir, path, remove
-from re import findall
-from random import choice
 
 
 # Class Definitions
@@ -47,7 +49,6 @@ def load_fonts(filepath) -> None:
 
 
 def load_config(guild: interactions.Guild) -> None:
-    
     # Load and validate guild bd.configs
     try:
 
@@ -123,8 +124,8 @@ def get_player_tags(users: list[interactions.Member]) -> list[str]:
     for user in users:
         done = False
         for idx, letter in enumerate(user.global_name):
-            if user.global_name[0:idx+1] not in tags:
-                tags.append(user.global_name[0:idx+1].upper())
+            if user.global_name[0:idx + 1] not in tags:
+                tags.append(user.global_name[0:idx + 1].upper())
                 done = True
                 break
         if not done:

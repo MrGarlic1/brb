@@ -3,14 +3,16 @@ Ben Samans
 main.py
 """
 
-from time import strftime
-from colorama import init, Fore
-import botdata as bd
-import botutils as bu
-import interactions
 import json
 from os import path, makedirs
 from time import sleep
+from time import strftime
+
+import interactions
+from colorama import init, Fore
+
+import botdata as bd
+import botutils as bu
 
 bot = interactions.Client(
     token=bd.token,
