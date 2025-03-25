@@ -16,6 +16,7 @@ import asyncio
 import matplotlib.font_manager
 from os import makedirs, listdir, path, remove
 from re import findall
+from random import choice
 
 
 # Class Definitions
@@ -172,7 +173,7 @@ async def init_guilds(guilds: list[interactions.Guild], bot: interactions.Client
 
             try:
                 game = await load_game(
-                    filepath=f"{bd.parent}/Guilds/{guild.id}/Trains/{name}", bot=bot, guild=guild, active_only=True
+                    filepath=f"{bd.parent}/Guilds/{guild.id}/Trains/{name}", guild=guild, active_only=True
                 )
                 if game.active:
                     bd.active_trains[guild.id] = game
@@ -186,6 +187,70 @@ async def init_guilds(guilds: list[interactions.Guild], bot: interactions.Client
                 )
             except NotADirectoryError:
                 pass
+
+
+def handle_page_change(ctx: interactions.api.events.Component.ctx) -> tuple[
+    None | interactions.Embed, list[interactions.Button], None | interactions.File
+]:
+    for idx, msg in enumerate(bd.active_msgs):  # Search active messages for correct one
+        if msg.num != int(ctx.message.id):
+            continue
+
+        game = msg.payload
+        image = None
+        embed = None
+
+        # Update page num
+        if ctx.custom_id == "prevpg":
+            bd.active_msgs[idx].page -= 1
+        elif ctx.custom_id == "nextpg":
+            bd.active_msgs[idx].page += 1
+
+        if msg.msg_type == "trainstats":
+            embed, image = game.gen_stats_embed(
+                ctx=ctx, page=bd.active_msgs[idx].page, expired=False
+            )
+        elif msg.msg_type == "trainscores":
+            embed, image = game.gen_score_embed(
+                ctx=ctx, page=bd.active_msgs[idx].page, expired=False
+            )
+        elif msg.msg_type == "trainrules":
+            embed = gen_rules_embed(bd.active_msgs[idx].page, False)
+        elif msg.msg_type == "rsplist":
+            embed = gen_resp_list(ctx.guild, bd.active_msgs[idx].page, False)
+
+        components = [nextpg_button(), prevpg_button()]
+
+        return embed, components, image
+
+
+def generate_response(message: interactions.api.events.MessageCreate.message) -> str | None:
+    if message.author.bot:
+        return None
+    channel = message.channel
+    if channel.type == 1:  # Ignore DMs
+        return None
+
+    guild_id = message.guild.id
+
+    to_send = [
+        response.text for response in bd.responses[guild_id]
+        if response.trig == message.content.lower() and response.exact
+    ]
+    if to_send:
+        return choice(to_send)
+
+    if not bd.config[guild_id]["ALLOW_PHRASES"]:
+        return None
+
+    to_send = [
+        response.text for response in bd.responses[guild_id]
+        if response.trig in message.content.lower() and not response.exact
+    ]
+    if to_send:
+        return choice(to_send)
+
+    return None
 
 
 def nextpg_button() -> interactions.Button:

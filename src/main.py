@@ -17,8 +17,7 @@ bot = interactions.Client(
     token=bd.token,
     intents=interactions.Intents.DEFAULT | interactions.Intents.MESSAGE_CONTENT | interactions.Intents.GUILDS,
     sync_interactions=True,
-    delete_unused_application_cmds=False,
-    debug_scope=895549687417958410
+    delete_unused_application_cmds=False
 )
 
 
@@ -72,77 +71,27 @@ async def on_ready():
 @interactions.listen()
 async def on_message_create(event: interactions.api.events.MessageCreate):
     message = event.message
-    if message.author.bot:
-        return False
-    channel = message.channel
-    if channel.type == 1:  # Ignore DMs
-        return False
+    response = bu.generate_response(message)
 
-    guild_id = int(message.guild.id)
-
-    to_send = [
-        response.text for response in bd.responses[guild_id]
-        if response.trig == message.content.lower() and response.exact
-    ]
-    if to_send:
-        to_send = choice(to_send)
-        await message.reply(to_send)
+    if response is None:
         return False
 
-    if not bd.config[guild_id]["ALLOW_PHRASES"]:
-        return False
-
-    to_send = [
-        response.text for response in bd.responses[guild_id]
-        if response.trig in message.content.lower() and not response.exact
-    ]
-
-    if to_send:
-        to_send = choice(to_send)
-        await message.reply(to_send)
-
+    await message.reply(response)
     return False
 
 
 @interactions.listen(interactions.api.events.Component)
 async def on_component(event: interactions.api.events.Component):
     ctx = event.ctx
-    for idx, msg in enumerate(bd.active_msgs):  # Search active messages for correct one
-        if msg.num == int(ctx.message.id):
-            game = msg.payload
+    await ctx.defer(edit_origin=True)
 
-            # Update page num
-            image = None
-            embed = None
-            if ctx.custom_id == "prevpg":
-                bd.active_msgs[idx].page -= 1
-            elif ctx.custom_id == "nextpg":
-                bd.active_msgs[idx].page += 1
-
-            if msg.msg_type == "trainstats":
-                await ctx.defer(edit_origin=True)
-                embed, image = game.gen_stats_embed(
-                    ctx=ctx, page=bd.active_msgs[idx].page, expired=False
-                )
-            elif msg.msg_type == "trainscores":
-                await ctx.defer(edit_origin=True)
-                embed, image = game.gen_score_embed(
-                    ctx=ctx, page=bd.active_msgs[idx].page, expired=False
-                )
-
-            elif msg.msg_type == "trainrules":
-                embed = bu.gen_rules_embed(bd.active_msgs[idx].page, False)
-            elif msg.msg_type == "rsplist":
-                embed = bu.gen_resp_list(ctx.guild, bd.active_msgs[idx].page, False)
-
-            components = [bu.nextpg_button(), bu.prevpg_button()]
-
-            await ctx.edit_origin(
-                embeds=embed,
-                components=components,
-                file=image,
-            )
-            break
+    embed, components, image = bu.handle_page_change(ctx=ctx)
+    await ctx.edit_origin(
+        embeds=embed,
+        components=components,
+        file=image,
+    )
+    return False
 
 
 def main():
