@@ -25,16 +25,7 @@ bot = interactions.Client(
 @interactions.listen()
 async def on_guild_join(event: interactions.api.events.GuildJoin):
     guild = event.guild
-    if not path.exists(f'{bd.parent}/Guilds/{guild.id}'):
-        makedirs(f'{bd.parent}/Guilds/{guild.id}/Trains')
-        print(
-            Fore.WHITE + '("%Y-{strftime(%m-%d %H:%M:%S")}:  ' +
-            Fore.GREEN + f'Guild folder for guild {guild.id} created successfully.' + Fore.RESET
-        )
-        with open(f'{bd.parent}/Guilds/{int(guild.id)}/config.json', 'w') as f:
-            json.dump(bd.default_config, f, indent=4)
-        bd.config[int(guild.id)] = bd.default_config
-        bd.responses[int(guild.id)] = []
+    bu.setup_guild(guild)
     print(
         Fore.WHITE + f"{strftime(bd.date_format)}:  " + Fore.RESET + f"Added to guild {guild.id}."
     )
