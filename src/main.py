@@ -5,7 +5,6 @@ main.py
 
 from time import strftime
 from colorama import init, Fore
-from random import choice
 import botdata as bd
 import botutils as bu
 import interactions
