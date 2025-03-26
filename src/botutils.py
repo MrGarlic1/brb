@@ -254,6 +254,21 @@ def generate_response(message: interactions.api.events.MessageCreate.message) ->
     return None
 
 
+def setup_guild(guild: interactions.Guild):
+    if not path.exists(f'{bd.parent}/Guilds/{guild.id}'):
+        makedirs(f'{bd.parent}/Guilds/{guild.id}/Trains')
+        with open(f'{bd.parent}/Guilds/{int(guild.id)}/config.json', 'w') as f:
+            json.dump(bd.default_config, f, indent=4)
+        bd.config[int(guild.id)] = bd.default_config
+        bd.responses[int(guild.id)] = []
+        return False
+
+    elif not path.isfile(f'{bd.parent}/Guilds/{int(guild.id)}/config.json'):
+        with open(f'{bd.parent}/Guilds/{int(guild.id)}/config.json', 'w') as f:
+            json.dump(bd.default_config, f, indent=4)
+        return False
+
+
 def nextpg_button() -> interactions.Button:
     return interactions.Button(
         style=interactions.ButtonStyle.SECONDARY,
