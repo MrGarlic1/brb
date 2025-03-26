@@ -958,7 +958,8 @@ class TrainGame:
             # Draw tile resource and rails
             pilmoji.text(
                 xy=(
-                col * tile_pixels + round(tile_pixels / 2) - text_offset, row * tile_pixels + round(tile_pixels / 2)),
+                    col * tile_pixels + round(tile_pixels / 2) - text_offset, row * tile_pixels + round(tile_pixels / 2)
+                ),
                 text=rail_text + resource_text, anchor="mm", fill=font_color, font=font,
                 emoji_position_offset=(-round(font_size / 2), -round(font_size / 2)), emoji_scale_factor=1.1
             )
