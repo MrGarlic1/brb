@@ -9,5 +9,5 @@ if [ ! -f ./../.venv/bin/activate ]; then
     pip install -r ./../requirements.txt
 fi
 
-source ./../venv/bin/activate
+source ./../.venv/bin/activate
 python main.py
