@@ -6,7 +6,7 @@ cd "$SOURCE_DIR"
 if [ ! -f ./../.venv/bin/activate ]; then
     python3.13 -m venv .venv
     source ./../.venv/bin/activate
-    pip install -r ./../requirements.txt
+    python3.13 -m pip install -r ./../requirements.txt
 fi
 
 source ./../.venv/bin/activate
