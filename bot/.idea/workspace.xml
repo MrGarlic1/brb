@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="eee0f583-7247-46f6-9074-3cbd9f1d4ddf" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/../src/.env" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../src/Data/ggsans/ggsans-Bold.ttf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../src/Data/ggsans/ggsans-BoldItalic.ttf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../src/Data/ggsans/ggsans-ExtraBold.ttf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../src/Data/ggsans/ggsans-ExtraBoldItalic.ttf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../src/Data/ggsans/ggsans-Medium.ttf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../src/Data/ggsans/ggsans-MediumItalic.ttf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../src/Data/ggsans/ggsans-Normal.ttf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../src/Data/ggsans/ggsans-NormalItalic.ttf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../src/Data/ggsans/ggsans-Semibold.ttf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../src/Data/ggsans/ggsans-SemiboldItalic.ttf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../src/Data/ggsans/stylesheet.css" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../src/Data/nothing.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../src/Data/zones.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../src/Features/Config/cog.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../src/Features/Responses/cog.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../src/Features/Responses/data.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../src/Features/Trains/anilist.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../src/Features/Trains/cog.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../src/Features/Trains/data.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../src/botdata.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../src/botutils.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../src/main.py" beforeDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/.." />
+  </component>
+  <component name="ProblemsViewState">
+    <option name="selectedTabId" value="CurrentFile" />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;customColor&quot;: &quot;&quot;,
+  &quot;associatedIndex&quot;: 7
+}</component>
+  <component name="ProjectId" id="2nXq6PZcxurFt1dU4WUe5aAYoIY" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Python.anilist.executor": "Run",
+    "Python.main.executor": "Run",
+    "Python.trains.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "git-widget-placeholder": "v5-beta",
+    "last_opened_file_path": "/home/ben/Python/kusogaki-bot",
+    "settings.editor.selected.configurable": "com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable"
+  }
+}]]></component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-python-sdk-0509580d9d50-746f403e7f0c-com.jetbrains.pycharm.community.sharedIndexes.bundled-PC-241.14494.241" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="eee0f583-7247-46f6-9074-3cbd9f1d4ddf" name="Changes" comment="" />
+      <created>1729129593192</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1729129593192</updated>
+    </task>
+    <servers />
+  </component>
+</project>
