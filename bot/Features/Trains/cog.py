@@ -1,10 +1,10 @@
 import interactions
 import Features.Trains.data as tr
-import Features.Trains.anilist as al
-import botdata as bd
+import Core.anilist as al
+import Core.botdata as bd
 import asyncio
 from os import path, listdir, mkdir
-import botutils as bu
+import Core.botutils as bu
 from shutil import copytree, ignore_patterns
 from datetime import datetime
 from io import BytesIO

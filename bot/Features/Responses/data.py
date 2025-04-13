@@ -1,8 +1,7 @@
 import interactions
-import interactions
 from emoji import emojize, demojize
 import json
-import botdata as bd
+import Core.botdata as bd
 from colorama import Fore
 
 

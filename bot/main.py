@@ -4,15 +4,15 @@ main.py
 """
 
 import json
-from os import path, makedirs
+from os import path
 from time import sleep
 from time import strftime
 
 import interactions
 from colorama import init, Fore
 
-import botdata as bd
-import botutils as bu
+import Core.botdata as bd
+import Core.botutils as bu
 
 bot = interactions.Client(
     token=bd.token,
@@ -55,7 +55,7 @@ async def on_ready():
     bot.load_extension("Features.Config.cog")
     sleep(.25)
 
-    await bu.init_guilds(guilds=guilds, bot=bot)
+    await bu.init_guilds(guilds=guilds)
     await bot.change_presence(status=interactions.Status.ONLINE, activity="/response")
     sleep(.25)
 

@@ -1,5 +1,5 @@
 import interactions
-import botdata as bd
+import Core.botdata as bd
 import json
 
 

@@ -16,7 +16,7 @@ import interactions
 import matplotlib.font_manager
 from colorama import Fore
 
-import botdata as bd
+import Core.botdata as bd
 from Features.Responses.data import gen_resp_list, load_responses
 from Features.Trains.data import gen_rules_embed, load_game, del_game_files
 
@@ -139,7 +139,7 @@ def autocomplete_filter(option: str) -> dict[str: str]:
     return {"name": option, "value": option}
 
 
-async def init_guilds(guilds: list[interactions.Guild], bot: interactions.Client):
+async def init_guilds(guilds: list[interactions.Guild]):
     for guild in guilds:
         # Make guild folder if it doesn't exist
         if not path.exists(f"{bd.parent}/Guilds/{guild.id}/Trains"):

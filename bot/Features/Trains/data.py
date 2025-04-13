@@ -16,8 +16,8 @@ from PIL import Image, ImageFont, ImageDraw
 from colorama import Fore
 from pilmoji import Pilmoji
 
-import Features.Trains.anilist as al
-import botdata as bd
+import Core.anilist as al
+import Core.botdata as bd
 
 
 @dataclass
@@ -1595,7 +1595,8 @@ def default_shop() -> dict[str, TrainItem]:
             TrainItem(
                 name="MagLev",
                 emoji=bd.emoji["maglev"],
-                description="Faster trains! Permanently decreases the anime requirement for rails from 3 hours to 2 hours.",
+                description="Faster trains! "
+                            "Permanently decreases the anime requirement for rails from 3 hours to 2 hours.",
                 cost=3,
                 amount=2
             )

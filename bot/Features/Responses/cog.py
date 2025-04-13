@@ -1,7 +1,7 @@
 import interactions
-import botdata as bd
+import Core.botdata as bd
 import asyncio
-import botutils as bu
+import Core.botutils as bu
 import Features.Responses.data as rsp
 
 
