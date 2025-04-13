@@ -16,7 +16,7 @@ import interactions
 import matplotlib.font_manager
 from colorama import Fore
 
-import botdata as bd
+import Core.botdata as bd
 from Features.Responses.data import gen_resp_list, load_responses
 from Features.Trains.data import gen_rules_embed, load_game, del_game_files
 
