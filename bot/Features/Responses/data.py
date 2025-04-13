@@ -72,10 +72,9 @@ def rmv_response(guild_id: int, delete_req: Response) -> bool:
 
     # Search for desired index of response to delete. Filter by trigger, then text,
     # then exact until there is only 1 option. Return an error if nothing matches the delete request
-    to_del: list = [i for i, rsp in enumerate(lines) if rsp["trig"].startswith(demojize(delete_req.trig))]
-
+    to_del: list = [i for i, rsp in enumerate(lines) if rsp["trig"] == demojize(delete_req.trig)]
     if len(to_del) > 1:
-        to_del: list = [i for i in to_del if lines[i]["text"].startswith(demojize(delete_req.text))]
+        to_del: list = [i for i in to_del if lines[i]["text"] == demojize(delete_req.text)]
     if len(to_del) > 1:
         to_del: list = [i for i in to_del if lines[i]["exact"] == delete_req.exact]
     if not to_del or len(to_del) > 1:
