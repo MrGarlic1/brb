@@ -1,6 +1,6 @@
 #!/bin/bash
 SOURCE_DIR="$(dirname "$0")"
-SOURCE_DIR="$(readlink -f $SOURCE_DIR/../../src)"
+SOURCE_DIR="$(readlink -f $SOURCE_DIR/../../bot)"
 cd "$SOURCE_DIR"
 
 if [ ! -f ./venv/bin/activate ]; then
