@@ -167,6 +167,12 @@ class Trains(interactions.Extension):
         shot = bi.BingoShot(
             show_id=show_id, tag=tag, time=datetime.now().strftime(bd.date_format)
         )
+
+        hit_tile = player.find_tag(tag)
+
+        if hit_tile:
+            shot.hit = True
+
         game.update_player_stats_after_shot(sender_idx=sender_idx, player=player, shot=shot)
 
         # Save/update games

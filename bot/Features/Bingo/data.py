@@ -72,10 +72,11 @@ bingo_tags = (
 
 @dataclass
 class BingoShot:
-    def __init__(self, show_id: int, tag: str, time: str):
+    def __init__(self, show_id: int, tag: str, time: str, hit: bool = False):
         self.show_id = show_id
         self.tag = tag
         self.time = time
+        self.hit = hit
 
 
 @dataclass
@@ -129,12 +130,19 @@ class BingoPlayer:
 
     def gen_board(self):
         selected_tags = sample(bingo_tags, 25)
+
         board = {}
         for col in range(1, 6):
             for row in range(1, 6):
                 board[col, row] = BingoTile(tag=selected_tags[0])
                 del selected_tags[0]
         self.board = board
+
+    def find_tag(self, tag):
+        for tile in self.board:
+            if self.board[tile].tag == tag:
+                return tile
+        return None
 
     def draw_board_img(
             self, filepath: str, board_name: str, player_board: bool = False, player_idx: int = 0,
@@ -276,7 +284,7 @@ class BingoGame:
                 break
         return done
 
-    def get_player(self, player_id: int) -> Union[tuple[None, None], tuple[int, BingoPlayer]]:
+    def get_player(self, player_id: int) -> tuple[None, None] | tuple[int, BingoPlayer]:
         player = None
         player_idx = None
         for idx, p in enumerate(self.players):
@@ -634,8 +642,8 @@ async def load_game(
         player_list.append(
             BingoPlayer(
                 member=member, done=player["done"],
-                dmchannel=dm, shots=shot_list, donetime=player["donetime"],
-                starting_anilist=player["starting_anilist"], anilist_id=player["anilist_id"], board=board
+                dmchannel=dm, shots=shot_list, donetime=player["donetime"], starting_anilist=player["starting_anilist"],
+                anilist_id=player["anilist_id"], board=board
             )
         )
 
@@ -645,7 +653,7 @@ async def load_game(
         players=player_list,
         gameid=game_dict["gameid"],
         active=game_dict["active"],
-        known_shows=game_dict["known_shows"]
+        known_shows=game_dict["known_shows"],
     )
     return game
 
