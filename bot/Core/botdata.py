@@ -45,4 +45,5 @@ emoji: dict = {
 responses, mentions, config = {}, {}, {}
 active_msgs: list = []
 active_trains: dict = {}
+active_bingos: dict = {}
 linked_profiles: dict = {}
