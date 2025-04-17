@@ -17,7 +17,6 @@ import Core.botdata as bd
 
 bingo_tags = (
     "Episodic",
-    "Fall",
     "Fantasy",
     "Female Protagonist",
     "Food",
@@ -28,15 +27,12 @@ bingo_tags = (
     "Horror",
     "Isekai",
     "Kuudere",
-    "Large Breasts*",
     "LGBTQ+ Themes",
-    "Loli (Form Purist + Form Neutral, Age Purist)",
     "Love Triangle",
     "Magic",
     "Mahou Shoujo",
     "Male Protagonist",
     "Mecha/Robots/Real Robot/Super Robot",
-    "Monster Girl*",
     "Music",
     "Mystery",
     "Not TV",
@@ -56,8 +52,6 @@ bingo_tags = (
     "Slice of Life",
     "Source Not Manga",
     "Sports",
-    "Spring",
-    "Summer",
     "Super Power",
     "Supernatural",
     "Thriller",
@@ -65,18 +59,41 @@ bingo_tags = (
     "Tragedy",
     "Tsundere",
     "Urban/Urban Fantasy",
-    "Winter",
     "Yandere"
+)
+character_tags = (
+    "Large Breasts",
+    "Loli",
+    "Monster Girl"
+)
+season_tags = (
+    "Spring",
+    "Summer",
+    "Fall",
+    "Winter"
 )
 
 
 @dataclass
 class BingoShot:
-    def __init__(self, show_id: int, tag: str, time: str, hit: bool = False):
-        self.show_id = show_id
+    def __init__(self, anilist_id: int, tag: str, time: str, hit: bool = False):
+        self.anilist_id = anilist_id
         self.tag = tag
         self.time = time
         self.hit = hit
+
+    def get_shot_type(self):
+        if self.tag in character_tags:
+            return "character"
+        elif self.tag == "Source Not Manga":
+            return "source"
+        elif self.tag in season_tags:
+            return "season"
+        elif self.tag in bingo_tags:
+            return "tag"
+        else:
+            return None
+
 
 
 @dataclass
@@ -323,48 +340,38 @@ class BingoGame:
     ) -> None:
 
         # Push updates to player boards, check if game is finished
-        tasks: list = []
-        for player_idx, player in enumerate(self.players):
-            if (row, column) in player.vis_tiles:
-                tasks.append(asyncio.create_task(self.push_player_update(ctx, player, player_idx)))
-        await asyncio.gather(*tasks)
+
         active: bool = not self.is_done()
         self.active = active
         if self.active:
-            bd.active_trains[ctx.guild_id] = self
+            bd.active_bingos[ctx.guild_id] = self
         else:
-            del bd.active_trains[ctx.guild_id]
+            del bd.active_bingos[ctx.guild_id]
 
-        self.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}")
+        self.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Bingo/{self.name}")
         return None
 
     async def update_boards_after_create(
             self, ctx: interactions.SlashContext
     ) -> None:
-
+        """
         tasks: list = []
 
         for player_idx, player in enumerate(self.players):
-            tasks.append(asyncio.create_task(self.push_player_update(ctx, player, player_idx)))
+            tasks.append(asyncio.create_task(self.update_player_board(ctx, player, player_idx)))
         await asyncio.gather(*tasks)
-
+        """
         # Update master board/game state
-        self.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}")
-        bd.active_trains[ctx.guild_id] = self
+        self.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Bingo/{self.name}")
+        bd.active_bingos[ctx.guild_id] = self
         return None
 
-    async def push_player_update(self, ctx: interactions.SlashContext, p: BingoPlayer, p_idx: int) -> None:
+    async def update_player_board(self, ctx: interactions.SlashContext, p: BingoPlayer, p_idx: int) -> None:
         try:
-            board_name: str = str(p.member.id)
             p.draw_board_img(
                 filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Bingo/{self.name}",
                 board_name=str(p.member.id),
                 player_idx=p_idx, player_board=True
-            )
-            board_img_path: str = f"{bd.parent}/Guilds/{ctx.guild_id}/Bingo/{self.name}/{board_name}.png"
-            await p.dmchannel.send(
-                file=interactions.File(board_img_path),
-                content=f"## Bingo board update for \"{self.name}\" in {ctx.guild.name}!"
             )
 
         except AttributeError:

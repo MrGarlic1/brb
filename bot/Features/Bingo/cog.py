@@ -10,7 +10,7 @@ from datetime import datetime
 from io import BytesIO
 
 
-class Trains(interactions.Extension):
+class Bingo(interactions.Extension):
     @interactions.slash_command(
         name="bingo",
         sub_cmd_name="newgame",
@@ -29,18 +29,18 @@ class Trains(interactions.Extension):
         required=True,
         opt_type=interactions.OptionType.STRING
     )
-    async def create_trains(
+    async def create_bingo(
             self, ctx: interactions.SlashContext, name: str, players: str
     ):
         await ctx.defer()
 
         # Return errors if game is active or invalid name
-        if ctx.guild_id in bd.active_trains:
+        if ctx.guild_id in bd.active_bingos:
             await ctx.send(
-                content=f"The game \"{bd.active_trains[ctx.guild_id].name}\" is already active in this server."
+                content=f"The game \"{bd.active_bingos[ctx.guild_id].name}\" is already active in this server."
             )
             return True
-        if path.exists(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{name}"):
+        if path.exists(f"{bd.parent}/Guilds/{ctx.guild_id}/Bingo/{name}"):
             await ctx.send(content="Name already exists!")
             return True
 
@@ -104,7 +104,7 @@ class Trains(interactions.Extension):
         sub_cmd_description="Command for testing. Shows score screen.",
         dm_permission=False,
     )
-    async def end_trains(self, ctx: interactions.SlashContext):
+    async def end_bingo(self, ctx: interactions.SlashContext):
         await ctx.defer()
         await ctx.send(content=bd.pass_str)
 
@@ -148,15 +148,19 @@ class Trains(interactions.Extension):
             ignore=ignore_patterns("*.png")
         )
         # Get player, validate shot
-        show_id = al.anime_id_from_url(url=link)
-        if show_id is None:
+        anilist_id = al.anime_id_from_url(url=link)
+        if anilist_id is None:
             await ctx.send(content="Could not find show, please check anilist URL!")
             return True
 
         sender_idx, player = game.get_player(int(ctx.author_id))
 
+        shot = bi.BingoShot(
+            anilist_id=anilist_id, tag=tag, time=datetime.now().strftime(bd.date_format)
+        )
+
         # Fetch anilist show information if it isn't already cached
-        if show_id not in game.known_shows:
+        if anilist_id not in game.known_entries:
             show_info = al.query_media(media_id=show_id)
             if show_info is None:
                 await ctx.send(content="Error connecting to anilist, please check URL and try again.")
@@ -164,9 +168,6 @@ class Trains(interactions.Extension):
             game.known_shows[show_id] = show_info
 
         # Update board, player rails
-        shot = bi.BingoShot(
-            show_id=show_id, tag=tag, time=datetime.now().strftime(bd.date_format)
-        )
 
         hit_tile = player.find_tag(tag)
 
@@ -188,7 +189,7 @@ class Trains(interactions.Extension):
                 components=[bu.nextpg_button(), bu.prevpg_button()]
             )
             sent = bu.ListMsg(
-                num=score_msg.id, page=0, guild=ctx.guild, channel=ctx.channel, msg_type="trainscores", payload=game
+                num=score_msg.id, page=0, guild=ctx.guild, channel=ctx.channel, msg_type="bingoscores", payload=game
             )
             bd.active_msgs.append(sent)
             _ = asyncio.create_task(
@@ -214,12 +215,12 @@ class Trains(interactions.Extension):
             if ctx.guild_id not in bd.active_bingos:
                 await ctx.send(content="No active game found, please specify a game name.")
                 return True
-            game = bd.active_trains[ctx.guild_id]
+            game = bd.active_bingos[ctx.guild_id]
 
         else:
             try:
                 game = await bi.load_game(
-                    filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{name}", guild=ctx.guild
+                    filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Bingo/{name}", guild=ctx.guild
                 )
             except FileNotFoundError:
                 await ctx.send(content="Game name does not exist.")
@@ -233,7 +234,7 @@ class Trains(interactions.Extension):
 
         stats_msg = await ctx.send(embed=embed, file=image, components=[bu.nextpg_button(), bu.prevpg_button()])
         sent = bu.ListMsg(
-            num=stats_msg.id, page=0, guild=ctx.guild, channel=ctx.channel, msg_type="trainstats", payload=game
+            num=stats_msg.id, page=0, guild=ctx.guild, channel=ctx.channel, msg_type="bingostats", payload=game
         )
         bd.active_msgs.append(sent)
         _ = asyncio.create_task(
@@ -268,7 +269,7 @@ class Trains(interactions.Extension):
             return True
 
         try:
-            with open(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{game.name}/{ctx.author_id}.png", "rb") as f:
+            with open(f"{bd.parent}/Guilds/{ctx.guild_id}/Bingo/{game.name}/{ctx.author_id}.png", "rb") as f:
                 file = BytesIO(f.read())
         except FileNotFoundError:
             await ctx.send(bd.fail_str, ephemeral=True)
@@ -296,7 +297,7 @@ class Trains(interactions.Extension):
             await ctx.send(content="There is no active game! To make one, use /bingo newgame", ephemeral=True)
             return True
 
-        game = bd.active_trains[ctx.guild_id]
+        game = bd.active_bingos[ctx.guild_id]
 
         if keep_files:
             game.active = False
