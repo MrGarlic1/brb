@@ -158,14 +158,23 @@ class Bingo(interactions.Extension):
         shot = bi.BingoShot(
             anilist_id=anilist_id, tag=tag, time=datetime.now().strftime(bd.date_format)
         )
-
-        # Fetch anilist show information if it isn't already cached
+        shot_type = shot.get_shot_type()
+        # Fetch anilist information if it isn't already cached
         if anilist_id not in game.known_entries:
-            show_info = al.query_media(media_id=show_id)
-            if show_info is None:
+            if not shot_type:
+                await ctx.send(content="Invalid tag specified. Please check the tag and try again.")
+                return True
+            if shot_type == "character":
+                anilist_info = al.query_character(character_id=anilist_id)
+            elif shot_type in ("tag", "season", "source", "free"):
+                anilist_info = al.query_media(media_id=anilist_id)
+            else:
+                anilist_info = None
+
+            if anilist_info is None:
                 await ctx.send(content="Error connecting to anilist, please check URL and try again.")
                 return True
-            game.known_shows[show_id] = show_info
+            game.known_shows[anilist_id] = anilist_info
 
         # Update board, player rails
 

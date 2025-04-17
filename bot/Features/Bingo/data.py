@@ -266,19 +266,19 @@ class BingoPlayer:
 class BingoGame:
     def __init__(
             self, name: str = None, date: str = None, players: list[BingoPlayer] = None, gameid: int = None,
-            active: bool = True, known_shows: dict[int, dict] = None
+            active: bool = True, known_entries: dict[int, dict] = None
     ):
         if players is None:
             players: list[BingoPlayer] = []
-        if known_shows is None:
-            known_shows = {}
+        if known_entries is None:
+            known_entries = {}
 
         self.name = name
         self.date = date
         self.players = players
         self.gameid = gameid
         self.active = active
-        self.known_shows = known_shows
+        self.known_entries = known_entries
 
     def asdict(self) -> dict:
         player_list = []
@@ -286,7 +286,7 @@ class BingoGame:
             player_list.append(player.asdict())
         return {
             "name": self.name, "date": self.date, "players": player_list, "gameid": self.gameid, "active": self.active,
-            "known_shows": self.known_shows
+            "known_entries": self.known_entries
         }
 
     def __repr__(self) -> str:
@@ -475,7 +475,7 @@ class BingoGame:
 
         # Get time deltas for all previous shots and current time, take weighted average
         for shot_idx, shot in enumerate(player.shots):
-            if self.board[shot.coords()].zone in self.known_shows[shot.show_id]["genres"]:
+            if self.board[shot.coords()].zone in self.known_entries[shot.show_id]["genres"]:
                 in_zone_shots += 1
             time_between_shots_list.append(
                 (datetime.strptime(shot.time, bd.date_format) - prev_shot_time).total_seconds()
@@ -524,7 +524,7 @@ class BingoGame:
 
         genre_counts: dict[str, int] = {}
         for shot in self.players[player_idx].shots:
-            for genre in self.known_shows[shot.show_id]["genres"]:
+            for genre in self.known_entries[shot.show_id]["genres"]:
                 if genre in genre_counts:
                     genre_counts[genre] += 1
                 else:
@@ -607,7 +607,7 @@ class BingoGame:
         else:
             rails = 1
 
-        if self.board[shot.coords()].zone in self.known_shows[shot.show_id]["genres"]:
+        if self.board[shot.coords()].zone in self.known_entries[shot.show_id]["genres"]:
             rails *= 0.5
         if undo:
             self.players[sender_idx].rails -= rails
@@ -633,7 +633,7 @@ async def load_game(
         for shot in player["shots"]:
             shot_list.append(
                 BingoShot(
-                    show_id=shot["show_id"], tag=shot["tag"], time=shot["time"]
+                    anilist_id=shot["anilist_id"], tag=shot["tag"], time=shot["time"]
                 )
             )
 
@@ -660,7 +660,7 @@ async def load_game(
         players=player_list,
         gameid=game_dict["gameid"],
         active=game_dict["active"],
-        known_shows=game_dict["known_shows"],
+        known_entries=game_dict["known_entries"],
     )
     return game
 
