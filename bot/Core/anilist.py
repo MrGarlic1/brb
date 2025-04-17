@@ -61,6 +61,33 @@ def query_media(*, media_id: int):
     return response.json()["data"]["Media"]
 
 
+def query_character(*, character_id: int):
+    query = """
+    query Character($characterId: Int) {
+      Character(id: $characterId) {
+        image {
+          medium
+        }
+        name {
+          full
+        }
+        siteUrl
+      }
+    }
+    """
+    variables = {
+        "characterId": character_id
+    }
+    response = httpx.post(
+        url="https://graphql.anilist.co",
+        json={"query": query, "variables": variables}
+    )
+    if response.status_code != 200:
+        return None
+
+    return response.json()["data"]["Character"]
+
+
 def query_user_id(username: str) -> int | None:
     query = """
     query
