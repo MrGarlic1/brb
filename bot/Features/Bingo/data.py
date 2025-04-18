@@ -13,6 +13,7 @@ from colorama import Fore
 
 import Core.anilist as al
 import Core.botdata as bd
+import Core.botutils as bu
 
 
 bingo_tags = (
@@ -73,14 +74,18 @@ season_tags = (
     "Winter"
 )
 
+col_emojis = ("🇧", "🇮", "🇳", "🇬", "🇴")
+row_emojis = ("1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣")
+
 
 @dataclass
 class BingoShot:
-    def __init__(self, anilist_id: int, tag: str, time: str, hit: bool = False):
+    def __init__(self, anilist_id: int, tag: str, time: str, info: str, hit: bool = False):
         self.anilist_id = anilist_id
         self.tag = tag
         self.time = time
         self.hit = hit
+        self.info = info
 
     def get_shot_type(self):
         if self.tag in character_tags:
@@ -89,11 +94,44 @@ class BingoShot:
             return "source"
         elif self.tag in season_tags:
             return "season"
+        elif self.tag == "Gloppy":
+            return "free"
         elif self.tag in bingo_tags:
             return "tag"
         else:
             return None
 
+    async def is_valid(self, anilist_info: dict, poll_msg: interactions.Message = None):
+        shot_type = self.get_shot_type()
+        if shot_type == "free":
+            return True
+        if shot_type == "source":
+            if anilist_info["source"] != "MANGA":
+                return True
+            else:
+                return False
+        if shot_type == "season":
+            if self.tag.upper() == anilist_info["season"]:
+                return True
+            else:
+                return False
+        if shot_type == "tag":
+            if (
+                    any(tag["name"].upper() == self.tag.upper() and tag["rank"] > 40 for tag in anilist_info["tags"]) or
+                    any(genre.upper() == self.tag.upper() for genre in anilist_info["genres"])
+            ):
+                return True
+            else:
+                return False
+        if shot_type == "character":
+            yes_votes = await poll_msg.fetch_reaction(emoji="🔺")
+            no_votes = await poll_msg.fetch_reaction(emoji="🔻")
+            if len(yes_votes) / (len(no_votes) + len(yes_votes)) > 0.5:
+                return True
+            else:
+                return False
+
+        return False
 
 
 @dataclass
@@ -137,8 +175,11 @@ class BingoPlayer:
         for shot in self.shots:
             shot_list.append(shot.__dict__)
         board_dict = {}
-        for tile in self.board:
-            board_dict[tile] = self.board[tile].asdict()
+        for coord, tile in self.board.items():
+            board_dict[str(coord)] = tile.__dict__
+        board_dict = {}
+        for pos, tile in self.board.items():
+            board_dict[str(pos)] = tile.asdict()
         return {
             "member_id": self.member.id, "done": self.done, "dmchannel": self.dmchannel.id,
             "shots": shot_list, "donetime": self.donetime, "anilist_id": self.anilist_id,
@@ -156,10 +197,35 @@ class BingoPlayer:
         self.board = board
 
     def find_tag(self, tag):
-        for tile in self.board:
-            if self.board[tile].tag == tag:
-                return tile
+        for pos in self.board:
+            if self.board[pos].tag == tag:
+                return pos
         return None
+
+    def has_bingo(self):
+        row_bingos = {1: [], 2: [], 3: [], 4: [], 5: []}
+        for col in range(1, 6):
+            col_bingo = []
+            for row in range(1, 6):
+                if self.board[(col, row)].hit:
+                    col_bingo.append((col, row))
+                    row_bingos[row].append((col, row))
+                    if len(row_bingos[row]) == 5 or len(col_bingo) == 5:
+                        return True
+                    if len(col_bingo) == 5:
+                        return True
+
+        # Check diagonal bingos
+        if all(tile.hit for tile in (
+                self.board[1, 1], self.board[2, 2], self.board[3, 3], self.board[4, 4], self.board[5, 5])
+               ):
+            return True
+        if all(tile.hit for tile in (
+                self.board[1, 5], self.board[2, 4], self.board[3, 3], self.board[4, 2], self.board[5, 1])
+               ):
+            return True
+        return False
+
 
     def draw_board_img(
             self, filepath: str, board_name: str, player_board: bool = False, player_idx: int = 0,
@@ -312,9 +378,23 @@ class BingoGame:
 
     def save_game(self, filepath: str) -> None:
         with open(f"{filepath}/gamedata.json", "w") as f:
-            json.dump(self.asdict(), f, separators=(",", ":"))
+            json.dump(self.asdict(), f, indent=4) #, separators=(",", ":"))
 
-    async def send_player_poll(self, ctx: interactions.SlashContext, p: BingoPlayer, p_idx: int) -> None:
+    async def send_player_poll(self, ctx: interactions.SlashContext, p_idx: int, shot: BingoShot) -> None:
+        await ctx.send(content="Sending poll.", ephemeral=True)
+        poll_msg = await ctx.channel.send(
+            content=f"Does this character fill the tag [{shot.tag}]?\n\n*(Poll open for 2 hours)*"
+        )
+        await poll_msg.add_reaction(emoji="🔺")
+        await poll_msg.add_reaction(emoji="🔻")
+        await asyncio.sleep(7200)
+        yes_votes = await poll_msg.fetch_reaction(emoji="🔺")
+        no_votes = await poll_msg.fetch_reaction(emoji="🔻")
+
+        if len(yes_votes)/(len(no_votes) + len(yes_votes)) > 0.5:
+            pass
+
+
         """
         try:
             board_name: str = str(p.member.id)
@@ -334,19 +414,20 @@ class BingoGame:
             del self.players[p_idx]
         """
 
-    async def update_boards_after_shot(
-            self, ctx: interactions.SlashContext,
-            row: int, column: int
+    def update_game_after_shot(
+            self, ctx: interactions.SlashContext, shot: BingoShot, player_idx: int, hit_tile: tuple[int, int] = None
     ) -> None:
 
         # Push updates to player boards, check if game is finished
 
-        active: bool = not self.is_done()
-        self.active = active
         if self.active:
             bd.active_bingos[ctx.guild_id] = self
         else:
             del bd.active_bingos[ctx.guild_id]
+
+        self.players[player_idx].shots.append(shot)
+        if hit_tile:
+            self.players[player_idx].board[hit_tile].hit = True
 
         self.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Bingo/{self.name}")
         return None
@@ -561,70 +642,14 @@ class BingoGame:
         return embed, image
         """
 
-    def update_player_stats_after_shot(
-            self, sender_idx: int, player: BingoPlayer, undo: bool = False, shot: BingoShot = None
-    ):
-        """
-        check_gem_time = False
-        if self.board[shot.coords()].resource == bd.emoji["gems"]:
-            shot_list = player.shots[:-1] if undo else player.shots
-            if not bd.emoji["gems"] in [self.board[shot.coords()].resource for shot in shot_list]:
-                check_gem_time = True
 
-        if undo:
-            shot = player.shots[-1]
-            self.board[shot.coords()].rails.remove(player.tag)
-            del self.players[sender_idx].shots[-1]
-            if self.players[sender_idx].done:
-                self.players[sender_idx].done = False
-                self.players[sender_idx].donetime = None
-            if check_gem_time:
-                self.players[sender_idx].score.pop("GemTime")
-        else:
-            self.board[shot.coords()].rails.append(player.tag)
-            self.players[sender_idx].shots.append(shot)
-            if shot.coords() == player.end:
-                self.players[sender_idx].done = True
-                self.players[sender_idx].donetime = datetime.now().strftime("%Y%m%d%H%M%S")
-            if check_gem_time:
-                self.players[sender_idx].score["GemTime"] = int(
-                    datetime.strptime(shot.time, bd.date_format).timestamp()
-                )
-
-        self.update_vis_tiles(player_idx=sender_idx, shot_row=shot.row, shot_col=shot.col, remove=undo)
-        if undo:
-            shot = player.shots[-1]
-            self.update_vis_tiles(player_idx=sender_idx, shot_row=shot.row, shot_col=shot.col)
-            self.update_vis_tiles(player_idx=sender_idx, shot_row=player.start[0], shot_col=player.start[1])
-            self.update_vis_tiles(player_idx=sender_idx, shot_row=player.end[0], shot_col=player.end[1], render_dist=0)
-
-        if self.board[shot.coords()].terrain == "river":
-            if "Pontoon Bridge" in player.inventory:
-                rails = 0
-                player.update_item_count("Pontoon Bridge")
-            else:
-                rails = 2
-        else:
-            rails = 1
-
-        if self.board[shot.coords()].zone in self.known_entries[shot.show_id]["genres"]:
-            rails *= 0.5
-        if undo:
-            self.players[sender_idx].rails -= rails
-        else:
-            self.players[sender_idx].rails += rails
-        """
-        pass
-
-
-async def load_game(
+async def load_bingo_game(
         filepath: str, guild: interactions.Guild, active_only: bool = False
 ) -> BingoGame | None:
     with open(f"{filepath}/gamedata.json", "r") as f:
         game_dict = json.load(f)
     if active_only and not game_dict["active"]:  # Skip loading inactive games if specified for faster loads
         return BingoGame(active=False)
-
     # Convert player dicts back into player classes
     player_list: list = []
     for player in game_dict["players"]:
@@ -633,18 +658,18 @@ async def load_game(
         for shot in player["shots"]:
             shot_list.append(
                 BingoShot(
-                    anilist_id=shot["anilist_id"], tag=shot["tag"], time=shot["time"]
+                    anilist_id=shot["anilist_id"], tag=shot["tag"], time=shot["time"], info=shot["info"]
                 )
             )
-
         member = await guild.fetch_member(player["member_id"])
         dm = await member.fetch_dm(force=False)
 
-        board = {}
+        board: dict = {}
         for pos, tile in player["board"].items():
-            col = int(pos[0])
-            row = int(pos[1])
-            board[col, row] = BingoTile(tag=tile["tag"], hit=tile["hit"])
+            coords = pos[1:-1].split(",")
+            coords[0] = int(coords[0])
+            coords[1] = int(coords[1])
+            board[tuple(coords)] = BingoTile(tag=tile["tag"], hit=tile["hit"])
 
         player_list.append(
             BingoPlayer(

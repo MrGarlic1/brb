@@ -1263,7 +1263,7 @@ class TrainGame:
         return embed, image
 
 
-async def load_game(
+async def load_trains_game(
         filepath: str, guild: interactions.Guild, active_only: bool = False
 ) -> TrainGame | None:
     with open(f"{filepath}/gamedata.json", "r") as f:
@@ -1341,13 +1341,6 @@ async def load_game(
         known_shows={int(show_id): show_info for show_id, show_info in game_dict["known_shows"].items()}
     )
     return game
-
-
-def del_game_files(guild_id: int, game_name: str):
-    try:
-        rmtree(f"{bd.parent}/Guilds/{guild_id}/Trains/{game_name}")
-    except PermissionError:
-        pass
 
 
 def train_game_embed(ctx: interactions.SlashContext, game: TrainGame) -> interactions.Embed:

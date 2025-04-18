@@ -8,6 +8,7 @@ import asyncio
 import json
 from dataclasses import dataclass
 from os import makedirs, listdir, path, remove
+from shutil import rmtree
 from random import choice
 from re import findall
 from time import strftime
@@ -18,7 +19,8 @@ from colorama import Fore
 
 import Core.botdata as bd
 from Features.Responses.data import gen_resp_list, load_responses
-from Features.Trains.data import gen_rules_embed, load_game, del_game_files
+from Features.Trains.data import gen_rules_embed, load_trains_game
+from Features.Bingo.data import load_bingo_game
 
 
 # Class Definitions
@@ -46,6 +48,13 @@ def dict_to_choices(dictionary: dict) -> list[interactions.SlashCommandChoice]:
 def load_fonts(filepath) -> None:
     for font in matplotlib.font_manager.findSystemFonts(filepath):
         matplotlib.font_manager.fontManager.addfont(font)
+
+
+def del_game_files(guild_id: int, game_name: str, game_type: str):
+    try:
+        rmtree(f"{bd.parent}/Guilds/{guild_id}/{game_type}/{game_name}")
+    except PermissionError:
+        pass
 
 
 def load_config(guild: interactions.Guild) -> None:
@@ -148,6 +157,12 @@ async def init_guilds(guilds: list[interactions.Guild]):
                 Fore.WHITE + f"{strftime(bd.date_format)}:  " +
                 Fore.YELLOW + f"Created guild folder for {guild.name}" + Fore.RESET
             )
+        if not path.exists(f"{bd.parent}/Guilds/{guild.id}/Bingo"):
+            makedirs(f"{bd.parent}/Guilds/{guild.id}/Bingo")
+            print(
+                Fore.WHITE + f"{strftime(bd.date_format)}:  " +
+                Fore.YELLOW + f"Created guild folder for {guild.name}" + Fore.RESET
+            )
 
         load_config(guild)
         bd.responses[guild.id] = load_responses(f"{bd.parent}/Guilds/{guild.id}/responses.json")
@@ -173,7 +188,7 @@ async def init_guilds(guilds: list[interactions.Guild]):
         for name in listdir(f"{bd.parent}/Guilds/{guild.id}/Trains"):
 
             try:
-                game = await load_game(
+                game = await load_trains_game(
                     filepath=f"{bd.parent}/Guilds/{guild.id}/Trains/{name}", guild=guild, active_only=True
                 )
                 if game.active:
@@ -181,7 +196,28 @@ async def init_guilds(guilds: list[interactions.Guild]):
                     break
             except (FileNotFoundError, TypeError, ValueError, KeyError) as e:
                 print(e)
-                del_game_files(guild_id=guild.id, game_name=name)
+                del_game_files(guild_id=guild.id, game_name=name, game_type="Trains")
+                print(
+                    Fore.WHITE + f'{strftime(bd.date_format)} :  ' +
+                    Fore.YELLOW + f"Invalid game \"{name}\" in guild {guild.id}, attempted delete." + Fore.RESET
+                )
+            except NotADirectoryError:
+                pass
+
+        # Load bingo games
+
+        for name in listdir(f"{bd.parent}/Guilds/{guild.id}/Bingo"):
+
+            try:
+                game = await load_bingo_game(
+                    filepath=f"{bd.parent}/Guilds/{guild.id}/Bingo/{name}", guild=guild, active_only=True
+                )
+                if game.active:
+                    bd.active_bingos[guild.id] = game
+                    break
+            except (FileNotFoundError, TypeError, ValueError, KeyError) as e:
+                # print(e)
+                del_game_files(guild_id=guild.id, game_name=name, game_type="Bingo")
                 print(
                     Fore.WHITE + f'{strftime(bd.date_format)} :  ' +
                     Fore.YELLOW + f"Invalid game \"{name}\" in guild {guild.id}, attempted delete." + Fore.RESET

@@ -17,8 +17,9 @@ import Core.botutils as bu
 bot = interactions.Client(
     token=bd.token,
     intents=interactions.Intents.DEFAULT | interactions.Intents.MESSAGE_CONTENT | interactions.Intents.GUILDS,
-    sync_interactions=True,
-    delete_unused_application_cmds=True
+    sync_interactions=False,
+    delete_unused_application_cmds=False,
+    debug_scope=895549687417958410
 )
 
 
@@ -53,6 +54,8 @@ async def on_ready():
     bot.load_extension("Features.Responses.cog")
     sleep(.25)
     bot.load_extension("Features.Config.cog")
+    sleep(.25)
+    bot.load_extension("Features.Bingo.cog")
     sleep(.25)
 
     await bu.init_guilds(guilds=guilds)

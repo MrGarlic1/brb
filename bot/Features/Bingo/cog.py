@@ -155,41 +155,68 @@ class Bingo(interactions.Extension):
 
         sender_idx, player = game.get_player(int(ctx.author_id))
 
+        if any(shot.tag == tag for shot in player.shots):
+            await ctx.send("You have already shot for this tag. Please select a different tag and try again.")
+            return True
+
         shot = bi.BingoShot(
-            anilist_id=anilist_id, tag=tag, time=datetime.now().strftime(bd.date_format)
+            anilist_id=anilist_id, tag=tag, time=datetime.now().strftime(bd.date_format), info=info
         )
         shot_type = shot.get_shot_type()
+
+        if not shot_type:
+            await ctx.send(content="Invalid tag specified. Please check the tag and try again.")
+            return True
+
         # Fetch anilist information if it isn't already cached
         if anilist_id not in game.known_entries:
-            if not shot_type:
-                await ctx.send(content="Invalid tag specified. Please check the tag and try again.")
-                return True
             if shot_type == "character":
                 anilist_info = al.query_character(character_id=anilist_id)
-            elif shot_type in ("tag", "season", "source", "free"):
-                anilist_info = al.query_media(media_id=anilist_id)
             else:
-                anilist_info = None
+                anilist_info = al.query_media(media_id=anilist_id)
 
             if anilist_info is None:
                 await ctx.send(content="Error connecting to anilist, please check URL and try again.")
                 return True
-            game.known_shows[anilist_id] = anilist_info
+            game.known_entries[anilist_id] = anilist_info
+
+        poll_msg = None
+
+        if shot_type == "character":
+            await ctx.send(content="Sending poll.", ephemeral=True)
+            poll_msg = await ctx.channel.send(
+                content=f"Does this character fill the tag [{shot.tag}]?\n\n*(Poll open for 2 hours)*"
+            )
+            await poll_msg.add_reaction(emoji="🔺")
+            await poll_msg.add_reaction(emoji="🔻")
+            await asyncio.sleep(7200)
+
+        valid = await shot.is_valid(anilist_info=game.known_entries[anilist_id], poll_msg=poll_msg)
+
+        if not valid:
+            await ctx.send(
+                "Show/Character does not meet requirements! Please choose a different tag.", ephemeral=True
+            )
+            return True
 
         # Update board, player rails
 
         hit_tile = player.find_tag(tag)
+        print(hit_tile)
+        print(tag)
 
         if hit_tile:
             shot.hit = True
+            player.board[hit_tile].hit = True
+            await ctx.send(content=f"🟩{bi.col_emojis[hit_tile[0] - 1]}{bi.row_emojis[hit_tile[1] - 1]}")
+            if player.has_bingo():
+                player.done = True
+                game.active = False
+        else:
+            await ctx.send(content="🟥")
 
-        game.update_player_stats_after_shot(sender_idx=sender_idx, player=player, shot=shot)
+        game.update_game_after_shot(ctx=ctx, shot=shot, player_idx=sender_idx, hit_tile=hit_tile)
 
-        # Save/update games
-        await ctx.send(content=bd.pass_str)
-        await game.update_boards_after_shot(
-            ctx=ctx
-        )
         if not game.active:
             embed, image = game.gen_score_embed(ctx=ctx, page=0, expired=False)
             score_msg = await ctx.send(
@@ -204,6 +231,15 @@ class Bingo(interactions.Extension):
             _ = asyncio.create_task(
                 bu.close_msg(sent, 300, ctx, score_msg)
             )
+
+    @record_shot.autocomplete("tag")
+    async def autocomplete(self, ctx: interactions.AutocompleteContext):
+        tags = bi.bingo_tags + bi.character_tags + bi.season_tags
+        tags = [tag for tag in tags if ctx.input_text in tag]
+        choices = list(map(bu.autocomplete_filter, tags))
+        if len(choices) > 25:
+            choices = choices[:24]
+        await ctx.send(choices=choices)
 
     @interactions.slash_command(
         name="bingo",
@@ -228,7 +264,7 @@ class Bingo(interactions.Extension):
 
         else:
             try:
-                game = await bi.load_game(
+                game = await bi.load_bingo_game(
                     filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Bingo/{name}", guild=ctx.guild
                 )
             except FileNotFoundError:
@@ -336,7 +372,7 @@ class Bingo(interactions.Extension):
             await ctx.send("There is already an active game in this server!")
             return True
         try:
-            test_game = await bi.load_game(
+            test_game = await bi.load_bingo_game(
                 filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Bingo/{name}", guild=ctx.guild
             )
         except FileNotFoundError:
@@ -365,6 +401,7 @@ class Bingo(interactions.Extension):
         name="bingo",
         sub_cmd_name="rules",
         sub_cmd_description="Display the rules for playing bingo",
+        dm_permission=False
     )
     @interactions.slash_option(
         name="page",

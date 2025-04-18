@@ -446,7 +446,7 @@ class Trains(interactions.Extension):
 
         else:
             try:
-                game = await tr.load_game(
+                game = await tr.load_trains_game(
                     filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{name}", guild=ctx.guild
                 )
             except FileNotFoundError:
@@ -554,7 +554,7 @@ class Trains(interactions.Extension):
             await ctx.send("There is already an active game in this server!")
             return True
         try:
-            test_game = await tr.load_game(
+            test_game = await tr.load_trains_game(
                 filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{name}", guild=ctx.guild
             )
         except FileNotFoundError:
