@@ -435,13 +435,6 @@ class BingoGame:
     async def update_boards_after_create(
             self, ctx: interactions.SlashContext
     ) -> None:
-        """
-        tasks: list = []
-
-        for player_idx, player in enumerate(self.players):
-            tasks.append(asyncio.create_task(self.update_player_board(ctx, player, player_idx)))
-        await asyncio.gather(*tasks)
-        """
         # Update master board/game state
         self.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Bingo/{self.name}")
         bd.active_bingos[ctx.guild_id] = self
