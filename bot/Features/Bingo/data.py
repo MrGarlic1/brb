@@ -2,18 +2,15 @@ import asyncio
 import io
 import json
 from dataclasses import dataclass
-from datetime import datetime, timedelta
 from random import sample
 from shutil import rmtree
 from typing import Union
 
 import interactions
 from PIL import Image, ImageFont, ImageDraw
-from colorama import Fore
 
 import Core.anilist as al
 import Core.botdata as bd
-import Core.botutils as bu
 
 
 bingo_tags = (
@@ -236,7 +233,7 @@ class BingoPlayer:
         # Adjustments
         label_offset: int = 1
         size = 5
-        label_font_size: int = 24
+        label_font_size: int = 48
         font = ImageFont.truetype(f"{bd.parent}/Data/ggsans/ggsans-Bold.ttf", label_font_size)
         tile_pixels: int = 150
         border_color: tuple[int, int, int] = (190, 190, 190)
@@ -260,7 +257,7 @@ class BingoPlayer:
                 fill=empty_color, outline=border_color, width=1
             )
             draw.text(
-                xy=(label_x * tile_pixels + tile_pixels / 2, tile_pixels / 2), text=str(label_x), font=font,
+                xy=(label_x * tile_pixels + tile_pixels / 2, tile_pixels / 2), text=col_emojis[label_x - 1], font=font,
                 anchor="mm",
                 fill=font_color
             )
