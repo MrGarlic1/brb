@@ -202,8 +202,6 @@ class Bingo(interactions.Extension):
         # Update board, player rails
 
         hit_tile = player.find_tag(tag)
-        print(hit_tile)
-        print(tag)
 
         if hit_tile:
             shot.hit = True
@@ -298,7 +296,7 @@ class Bingo(interactions.Extension):
     @interactions.slash_command(
         name="bingo",
         sub_cmd_name="board",
-        sub_cmd_description="View your bingo board for the active game.",
+        sub_cmd_description="View the bingo boards for the active game.",
         dm_permission=False,
     )
     async def show_bingo_board(self, ctx: interactions.SlashContext):
@@ -313,14 +311,29 @@ class Bingo(interactions.Extension):
             await ctx.send(content="You are not a player in this game.", ephemeral=True)
             return True
 
+        embed, image = game.gen_board_embed(page=0, sender_idx=player_idx, expired=False)
+
         try:
-            with open(f"{bd.parent}/Guilds/{ctx.guild_id}/Bingo/{game.name}/{ctx.author_id}.png", "rb") as f:
+            with open(f"{bd.parent}/Guilds/{ctx.guild_id}/Bingo/{game.name}/{player_idx}.png", "rb") as f:
                 file = BytesIO(f.read())
         except FileNotFoundError:
             await ctx.send(bd.fail_str, ephemeral=True)
             return True
 
-        await ctx.send(file=interactions.File(file, file_name="board_img.png"), ephemeral=True)
+        board_msg = await ctx.send(
+            embed=embed,
+            file=image,
+            components=[bu.nextpg_button(), bu.prevpg_button()],
+            ephemeral=True
+        )
+        sent = bu.ListMsg(
+            num=board_msg.id, page=0, guild=ctx.guild, channel=ctx.channel, msg_type="bingoboard",
+            payload=game
+        )
+        bd.active_msgs.append(sent)
+        _ = asyncio.create_task(
+            bu.close_msg(sent, 300, ctx, board_msg)
+        )
         return False
 
     @interactions.slash_command(

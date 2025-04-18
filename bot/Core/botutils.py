@@ -251,6 +251,11 @@ def handle_page_change(ctx: interactions.api.events.Component.ctx) -> tuple[
             embed, image = game.gen_score_embed(
                 ctx=ctx, page=bd.active_msgs[idx].page, expired=False
             )
+        elif msg.msg_type == "bingoboard":
+            sender_idx, _ = game.get_player(player_id=ctx.author_id)
+            embed, image = game.gen_board_embed(
+                page=bd.active_msgs[idx].page, sender_idx=sender_idx, expired=False
+            )
         elif msg.msg_type == "trainrules":
             embed = gen_rules_embed(bd.active_msgs[idx].page, False)
         elif msg.msg_type == "rsplist":

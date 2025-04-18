@@ -136,7 +136,7 @@ class BingoShot:
 
 @dataclass
 class BingoTile:
-    def __init__(self, tag: str = "", hit: bool = None):
+    def __init__(self, tag: str = "", hit: bool = False):
         self.tag = tag
         self.hit = hit
 
@@ -226,10 +226,8 @@ class BingoPlayer:
             return True
         return False
 
-
     def draw_board_img(
-            self, filepath: str, board_name: str, player_board: bool = False, player_idx: int = 0,
-
+            self, filepath: str, board_name: str, draw_tags: bool = False,
     ):
 
         # Generate board image. If player board: only generate tiles which are rendered.
@@ -284,15 +282,8 @@ class BingoPlayer:
 
         for coords in self.board.keys():
             (row, col) = coords
-
             # Fill tiles with correct color, if empty, skip to next
-            if self.board[coords].hit is None:
-                draw.rectangle(
-                    xy=((col * tile_pixels, row * tile_pixels), ((col + 1) * tile_pixels, (row + 1) * tile_pixels)),
-                    fill=empty_color, outline=border_color, width=1
-                )
-                continue
-            elif self.board[coords].hit:
+            if self.board[coords].hit:
                 draw.rectangle(
                     xy=((col * tile_pixels, row * tile_pixels), ((col + 1) * tile_pixels, (row + 1) * tile_pixels)),
                     fill=hit_color, outline=border_color, width=1
@@ -304,23 +295,24 @@ class BingoPlayer:
                 )
 
             text_pixels = draw.textlength(text=self.board[coords].tag, font=font)
+            if self.board[coords].hit or draw_tags:
+                while text_pixels > 0.8 * tile_pixels and font_size > 6:
+                    font_size -= 2
+                    font = ImageFont.truetype(f"{bd.parent}/Data/ggsans/ggsans-Bold.ttf", font_size)
+                    text_pixels = draw.textlength(text=self.board[coords].tag, font=font)
 
-            while text_pixels > 0.8 * tile_pixels and font_size > 6:
-                font_size -= 2
-                font = ImageFont.truetype(f"{bd.parent}/Data/ggsans/ggsans-Bold.ttf", font_size)
-                text_pixels = draw.textlength(text=self.board[coords].tag, font=font)
+                # Draw tile resource and rails
 
-            # Draw tile resource and rails
-            draw.text(
-                xy=(
-                    col * tile_pixels + round(tile_pixels / 2), row * tile_pixels + round(tile_pixels / 2)
-                ),
-                text=self.board[coords].tag, anchor="mm", fill=font_color, font=font,
-            )
+                draw.text(
+                    xy=(
+                        col * tile_pixels + round(tile_pixels / 2), row * tile_pixels + round(tile_pixels / 2)
+                    ),
+                    text=self.board[coords].tag, anchor="mm", fill=font_color, font=font,
+                )
 
-            if font_size != default_font_size:
-                font_size = default_font_size
-                font = ImageFont.truetype(f"{bd.parent}/Data/ggsans/ggsans-Bold.ttf", font_size)
+                if font_size != default_font_size:
+                    font_size = default_font_size
+                    font = ImageFont.truetype(f"{bd.parent}/Data/ggsans/ggsans-Bold.ttf", font_size)
 
         try:
             board_img.save(f"{filepath}/{board_name}.png")
@@ -394,7 +386,6 @@ class BingoGame:
         if len(yes_votes)/(len(no_votes) + len(yes_votes)) > 0.5:
             pass
 
-
         """
         try:
             board_name: str = str(p.member.id)
@@ -439,18 +430,6 @@ class BingoGame:
         self.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Bingo/{self.name}")
         bd.active_bingos[ctx.guild_id] = self
         return None
-
-    async def update_player_board(self, ctx: interactions.SlashContext, p: BingoPlayer, p_idx: int) -> None:
-        try:
-            p.draw_board_img(
-                filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Bingo/{self.name}",
-                board_name=str(p.member.id),
-                player_idx=p_idx, player_board=True
-            )
-
-        except AttributeError:
-            print(Fore.YELLOW + f"Could not find user with ID {p.member.id}" + Fore.RESET)
-            del self.players[p_idx]
 
     def gen_stats_embed(self, ctx: Union[interactions.SlashContext, interactions.ComponentContext],
                         expired: bool, page: int = 0) -> tuple[interactions.Embed, Union[None, interactions.File]]:
@@ -634,6 +613,42 @@ class BingoGame:
         )
         return embed, image
         """
+
+    def gen_board_embed(self, page: int, sender_idx: int, expired: bool):
+        embed: interactions.Embed = interactions.Embed()
+        embed.set_author(name=f"Anime Bingo", icon_url=bd.bot_avatar_url)
+        footer_end: str = ' | This message is inactive.' if expired else ' | This message deactivates after 5 minutes.'
+        max_pages: int = len(self.players)
+        page: int = 1 + (page % max_pages)  # Loop back through pages both ways
+        embed.set_footer(text=f'Page {page}/{max_pages} {footer_end}')
+
+        # Player stats page
+        player_idx: int = page - 1
+        player: BingoPlayer = self.players[player_idx]
+        if player_idx == sender_idx:
+            draw_tags = False
+        else:
+            draw_tags = True
+        player.draw_board_img(
+            filepath=f"{bd.parent}/Guilds/{player.member.guild.id}/Bingo/{self.name}",
+            board_name=f"{sender_idx}",
+            draw_tags=draw_tags
+        )
+
+        embed.set_thumbnail(url=player.member.avatar_url)
+        embed.description = f"### Board for {player.member.mention}"
+        embed.add_field(name="\u200b", value="\u200b", inline=False)
+
+        with open(
+                f"{bd.parent}/Guilds/{player.member.guild.id}/Bingo/{self.name}/{sender_idx}.png", "rb"
+        ) as f:
+            file = io.BytesIO(f.read())
+        image = interactions.File(file, file_name="bingo_board.png")
+
+        embed.set_image(
+            url="attachment://bingo_board.png"
+        )
+        return embed, image
 
 
 async def load_bingo_game(
