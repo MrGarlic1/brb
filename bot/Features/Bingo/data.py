@@ -246,7 +246,6 @@ class BingoPlayer:
         border_color: tuple[int, int, int] = (190, 190, 190)
         font_color: tuple[int, int, int] = (0, 0, 0)
         empty_color: tuple[int, int, int] = (255, 255, 255)
-        miss_color: tuple[int, int, int] = (255, 0, 0)
         hit_color: tuple[int, int, int] = (0, 255, 0)
 
         board_img = Image.new(
@@ -297,7 +296,7 @@ class BingoPlayer:
             else:
                 draw.rectangle(
                     xy=((col * tile_pixels, row * tile_pixels), ((col + 1) * tile_pixels, (row + 1) * tile_pixels)),
-                    fill=miss_color, outline=border_color, width=1
+                    fill=empty_color, outline=border_color, width=1
                 )
 
             text_pixels = draw.textlength(text=self.board[coords].tag, font=font)
@@ -376,7 +375,7 @@ class BingoGame:
 
     def save_game(self, filepath: str) -> None:
         with open(f"{filepath}/gamedata.json", "w") as f:
-            json.dump(self.asdict(), f, indent=4) #, separators=(",", ":"))
+            json.dump(self.asdict(), f, indent=4, separators=(",", ":"))
 
     def update_game_after_shot(
             self, ctx: interactions.SlashContext, shot: BingoShot, player_idx: int, hit_tile: tuple[int, int] = None
@@ -675,13 +674,6 @@ async def load_bingo_game(
         known_entries=game_dict["known_entries"],
     )
     return game
-
-
-def del_game_files(guild_id: int, game_name: str):
-    try:
-        rmtree(f"{bd.parent}/Guilds/{guild_id}/Bingo/{game_name}")
-    except PermissionError:
-        pass
 
 
 def bingo_game_embed(ctx: interactions.SlashContext, game: BingoGame) -> interactions.Embed:

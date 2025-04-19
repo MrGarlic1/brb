@@ -230,13 +230,13 @@ class Bingo(interactions.Extension):
             )
             bd.active_msgs.append(sent)
             _ = asyncio.create_task(
-                bu.close_msg(sent, 300, ctx, score_msg)
+                bu.close_msg(sent, 300, ctx)
             )
 
     @record_shot.autocomplete("tag")
     async def autocomplete(self, ctx: interactions.AutocompleteContext):
         tags = bi.bingo_tags + bi.character_tags + bi.season_tags
-        tags = [tag for tag in tags if ctx.input_text in tag]
+        tags = [tag for tag in tags if ctx.input_text.lower() in tag.lower()]
         choices = list(map(bu.autocomplete_filter, tags))
         if len(choices) > 25:
             choices = choices[:24]
@@ -284,7 +284,7 @@ class Bingo(interactions.Extension):
         )
         bd.active_msgs.append(sent)
         _ = asyncio.create_task(
-            bu.close_msg(sent, 300, ctx, stats_msg)
+            bu.close_msg(sent, 300, ctx)
         )
 
     @bingo_stats.autocomplete("name")
@@ -328,7 +328,7 @@ class Bingo(interactions.Extension):
         )
         bd.active_msgs.append(sent)
         _ = asyncio.create_task(
-            bu.close_msg(sent, 300, ctx, board_msg)
+            bu.close_msg(sent, 300, ctx)
         )
         return False
 
@@ -357,7 +357,7 @@ class Bingo(interactions.Extension):
             game.active = False
             game.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Bingo/{game.name}")
         else:
-            bi.del_game_files(guild_id=ctx.guild_id, game_name=game.name)
+            bu.del_game_files(guild_id=ctx.guild_id, game_name=game.name, game_type="Bingo")
         del bd.active_bingos[ctx.guild_id]
         await ctx.send(content=bd.pass_str)
         return False
@@ -427,6 +427,6 @@ class Bingo(interactions.Extension):
         sent = bu.ListMsg(rules_msg.id, page, ctx.guild, channel, "bingorules")
         bd.active_msgs.append(sent)
         _ = asyncio.create_task(
-            bu.close_msg(sent, 300, ctx, rules_msg)
+            bu.close_msg(sent, 300, ctx)
         )
         return False

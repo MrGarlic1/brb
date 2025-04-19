@@ -100,7 +100,7 @@ def load_config(guild: interactions.Guild) -> None:
         )
 
 
-async def close_msg(list_msg: ListMsg, delay: int, ctx: interactions.SlashContext, msg: interactions.Message) -> None:
+async def close_msg(list_msg: ListMsg, delay: int, ctx: interactions.SlashContext) -> None:
     await asyncio.sleep(delay)
 
     if list_msg.msg_type == "rsplist":
@@ -115,7 +115,6 @@ async def close_msg(list_msg: ListMsg, delay: int, ctx: interactions.SlashContex
     else:
         embed = None
     await ctx.edit(embeds=embed)
-    # await msg.edit(embeds=embed)
     bd.active_msgs.remove(list_msg)
 
 
@@ -222,7 +221,7 @@ async def init_guilds(guilds: list[interactions.Guild]):
                     bd.active_bingos[guild.id] = game
                     break
             except (FileNotFoundError, TypeError, ValueError, KeyError) as e:
-                # print(e)
+                print(e)
                 del_game_files(guild_id=guild.id, game_name=name, game_type="Bingo")
                 print(
                     Fore.WHITE + f'{strftime(bd.date_format)} :  ' +

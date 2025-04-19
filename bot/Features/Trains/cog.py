@@ -285,7 +285,7 @@ class Trains(interactions.Extension):
         )
         bd.active_msgs.append(sent)
         _ = asyncio.create_task(
-            bu.close_msg(sent, 300, ctx, score_msg)
+            bu.close_msg(sent, 300, ctx)
         )
 
     @interactions.slash_command(
@@ -376,7 +376,7 @@ class Trains(interactions.Extension):
             )
             bd.active_msgs.append(sent)
             _ = asyncio.create_task(
-                bu.close_msg(sent, 300, ctx, score_msg)
+                bu.close_msg(sent, 300, ctx)
             )
 
     @interactions.slash_command(
@@ -465,7 +465,7 @@ class Trains(interactions.Extension):
         )
         bd.active_msgs.append(sent)
         _ = asyncio.create_task(
-            bu.close_msg(sent, 300, ctx, stats_msg)
+            bu.close_msg(sent, 300, ctx)
         )
 
     @trains_stats.autocomplete("name")
@@ -530,7 +530,7 @@ class Trains(interactions.Extension):
             game.active = False
             game.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{game.name}")
         else:
-            tr.del_game_files(guild_id=ctx.guild_id, game_name=game.name)
+            bu.del_game_files(guild_id=ctx.guild_id, game_name=game.name, game_type="Trains")
         del bd.active_trains[ctx.guild_id]
         await ctx.send(content=bd.pass_str)
         return False
@@ -599,6 +599,6 @@ class Trains(interactions.Extension):
         sent = bu.ListMsg(rules_msg.id, page, ctx.guild, channel, "trainrules")
         bd.active_msgs.append(sent)
         _ = asyncio.create_task(
-            bu.close_msg(sent, 300, ctx, rules_msg)
+            bu.close_msg(sent, 300, ctx)
         )
         return False

@@ -155,7 +155,7 @@ class Responses(interactions.Extension):
         sent = bu.ListMsg(resp_msg.id, page, ctx.guild, channel, "rsplist")
         bd.active_msgs.append(sent)
         _ = asyncio.create_task(
-            bu.close_msg(sent, 300, ctx, resp_msg)
+            bu.close_msg(sent, 300, ctx)
         )
         return False
 
