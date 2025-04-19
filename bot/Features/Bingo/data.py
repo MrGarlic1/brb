@@ -240,7 +240,7 @@ class BingoPlayer:
         # Adjustments
         label_offset: int = 1
         size = 5
-        label_font_size: int = 48
+        label_font_size: int = 72
         font = ImageFont.truetype(f"{bd.parent}/Data/ggsans/ggsans-Bold.ttf", label_font_size)
         tile_pixels: int = 150
         border_color: tuple[int, int, int] = (190, 190, 190)
@@ -259,12 +259,14 @@ class BingoPlayer:
         # Draw column labels/tile borders
 
         for label_x in range(1, size + 1):
+            col_labels = \
+                ("B", "E", "N", "G", "O") if self.member.id == 302266697488924672 else ("B", "I", "N", "G", "O")
             draw.rectangle(
                 xy=((label_x * tile_pixels, 1), ((label_x + 1) * tile_pixels, tile_pixels)),
                 fill=empty_color, outline=border_color, width=1
             )
             draw.text(
-                xy=(label_x * tile_pixels + tile_pixels / 2, tile_pixels / 2), text=col_emojis[label_x - 1], font=font,
+                xy=(label_x * tile_pixels + tile_pixels / 2, tile_pixels / 2), text=col_labels[label_x - 1], font=font,
                 anchor="mm",
                 fill=font_color
             )
@@ -608,7 +610,13 @@ class BingoGame:
 
         embed.set_thumbnail(url=player.member.avatar_url)
         embed.description = f"### Board for {player.member.mention}"
-        embed.add_field(name="\u200b", value="\u200b", inline=False)
+
+        total_hits = len([shot.hit for shot in player.shots if shot.hit])
+        if len(player.shots) > 0:
+            embed.add_field(name="\u200b", value=f"**Total Shots:** {len(player.shots)}", inline=True)
+            embed.add_field(name="\u200b", value=f"**Accuracy:** {100*total_hits/len(player.shots)}%", inline=True)
+        else:
+            embed.add_field(name="\u200b", value=f"\u200b", inline=False)
 
         with open(
                 f"{bd.parent}/Guilds/{player.member.guild.id}/Bingo/{self.name}/{sender_idx}.png", "rb"

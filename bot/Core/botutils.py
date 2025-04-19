@@ -107,9 +107,15 @@ async def close_msg(list_msg: ListMsg, delay: int, ctx: interactions.SlashContex
         embed = gen_resp_list(ctx.guild, list_msg.page, True)
     elif list_msg.msg_type == "trainrules":
         embed = gen_rules_embed(list_msg.page, True)
+    elif list_msg.msg_type == "bingoboard":
+        sender_idx, _ = list_msg.payload.get_player(player_id=ctx.author_id)
+        embed, image = list_msg.payload.gen_board_embed(
+            page=list_msg.page, sender_idx=sender_idx, expired=True
+        )
     else:
         embed = None
-    await msg.edit(embeds=embed)
+    await ctx.edit(embeds=embed)
+    # await msg.edit(embeds=embed)
     bd.active_msgs.remove(list_msg)
 
 
@@ -229,13 +235,14 @@ async def init_guilds(guilds: list[interactions.Guild]):
 def handle_page_change(ctx: interactions.api.events.Component.ctx) -> tuple[
     None | interactions.Embed, list[interactions.Button], None | interactions.File
 ]:
+    image = None
+    embed = None
+    components = [nextpg_button(), prevpg_button()]
     for idx, msg in enumerate(bd.active_msgs):  # Search active messages for correct one
         if msg.num != int(ctx.message.id):
             continue
 
         game = msg.payload
-        image = None
-        embed = None
 
         # Update page num
         if ctx.custom_id == "prevpg":
@@ -260,10 +267,9 @@ def handle_page_change(ctx: interactions.api.events.Component.ctx) -> tuple[
             embed = gen_rules_embed(bd.active_msgs[idx].page, False)
         elif msg.msg_type == "rsplist":
             embed = gen_resp_list(ctx.guild, bd.active_msgs[idx].page, False)
+        break
 
-        components = [nextpg_button(), prevpg_button()]
-
-        return embed, components, image
+    return embed, components, image
 
 
 def generate_response(message: interactions.api.events.MessageCreate.message) -> str | None:
