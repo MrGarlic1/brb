@@ -1,4 +1,3 @@
-import asyncio
 import io
 import json
 from dataclasses import dataclass
@@ -9,7 +8,6 @@ from typing import Union
 import interactions
 from PIL import Image, ImageFont, ImageDraw
 
-import Core.anilist as al
 import Core.botdata as bd
 
 
@@ -93,12 +91,14 @@ class BingoShot:
             return "season"
         elif self.tag == "Gloppy":
             return "free"
+        elif self.tag == "Rewatch an Anime":
+            return "rewatch"
         elif self.tag in bingo_tags:
             return "tag"
         else:
             return None
 
-    async def is_valid(self, anilist_info: dict, poll_msg: interactions.Message = None):
+    async def is_valid(self, starting_anilist: dict, anilist_info: dict, poll_msg: interactions.Message = None):
         shot_type = self.get_shot_type()
         if shot_type == "free":
             return True
@@ -127,6 +127,13 @@ class BingoShot:
                 return True
             else:
                 return False
+        if shot_type == "rewatch":
+            for show in starting_anilist:
+                if show["mediaId"] != self.anilist_id:
+                    continue
+                if show["status"] in ("REWATCHING", "COMPLETED"):
+                    return True
+            return False
 
         return False
 
@@ -369,39 +376,6 @@ class BingoGame:
         with open(f"{filepath}/gamedata.json", "w") as f:
             json.dump(self.asdict(), f, indent=4) #, separators=(",", ":"))
 
-    async def send_player_poll(self, ctx: interactions.SlashContext, p_idx: int, shot: BingoShot) -> None:
-        await ctx.send(content="Sending poll.", ephemeral=True)
-        poll_msg = await ctx.channel.send(
-            content=f"Does this character fill the tag [{shot.tag}]?\n\n*(Poll open for 2 hours)*"
-        )
-        await poll_msg.add_reaction(emoji="🔺")
-        await poll_msg.add_reaction(emoji="🔻")
-        await asyncio.sleep(7200)
-        yes_votes = await poll_msg.fetch_reaction(emoji="🔺")
-        no_votes = await poll_msg.fetch_reaction(emoji="🔻")
-
-        if len(yes_votes)/(len(no_votes) + len(yes_votes)) > 0.5:
-            pass
-
-        """
-        try:
-            board_name: str = str(p.member.id)
-            self.draw_board_img(
-                filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}",
-                board_name=str(p.member.id),
-                player_idx=p_idx, player_board=True
-            )
-            board_img_path: str = f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}/{board_name}.png"
-            await p.dmchannel.send(
-                file=interactions.File(board_img_path),
-                content=f"## Train board update for \"{self.name}\" in {ctx.guild.name}!"
-            )
-
-        except AttributeError:
-            print(Fore.YELLOW + f"Could not find user with ID {p.member.id}" + Fore.RESET)
-            del self.players[p_idx]
-        """
-
     def update_game_after_shot(
             self, ctx: interactions.SlashContext, shot: BingoShot, player_idx: int, hit_tile: tuple[int, int] = None
     ) -> None:
@@ -420,7 +394,7 @@ class BingoGame:
         self.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Bingo/{self.name}")
         return None
 
-    async def update_boards_after_create(
+    def update_boards_after_create(
             self, ctx: interactions.SlashContext
     ) -> None:
         # Update master board/game state

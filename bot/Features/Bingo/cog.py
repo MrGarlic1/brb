@@ -7,7 +7,6 @@ from os import path, listdir, mkdir
 import Core.botutils as bu
 from shutil import copytree, ignore_patterns
 from datetime import datetime
-from io import BytesIO
 
 
 class Bingo(interactions.Extension):
@@ -95,7 +94,7 @@ class Bingo(interactions.Extension):
 
         # Push updates to player boards
         await ctx.send(embed=bi.bingo_game_embed(ctx=ctx, game=game))
-        await game.update_boards_after_create(ctx=ctx)
+        game.update_boards_after_create(ctx=ctx)
         return False
 
     @interactions.slash_command(
@@ -191,7 +190,11 @@ class Bingo(interactions.Extension):
             await poll_msg.add_reaction(emoji="🔻")
             await asyncio.sleep(7200)
 
-        valid = await shot.is_valid(anilist_info=game.known_entries[anilist_id], poll_msg=poll_msg)
+        valid = await shot.is_valid(
+            anilist_info=game.known_entries[anilist_id],
+            starting_anilist=player.starting_anilist,
+            poll_msg=poll_msg
+        )
 
         if not valid:
             await ctx.send(
@@ -312,13 +315,6 @@ class Bingo(interactions.Extension):
             return True
 
         embed, image = game.gen_board_embed(page=0, sender_idx=player_idx, expired=False)
-
-        try:
-            with open(f"{bd.parent}/Guilds/{ctx.guild_id}/Bingo/{game.name}/{player_idx}.png", "rb") as f:
-                file = BytesIO(f.read())
-        except FileNotFoundError:
-            await ctx.send(bd.fail_str, ephemeral=True)
-            return True
 
         board_msg = await ctx.send(
             embed=embed,
