@@ -6,7 +6,6 @@ from datetime import datetime, timedelta
 from math import log
 from os import path
 from random import randint, shuffle, choice
-from shutil import rmtree
 from typing import Union
 
 import interactions
