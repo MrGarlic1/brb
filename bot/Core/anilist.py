@@ -1,10 +1,12 @@
 import httpx
 
 
-def anime_id_from_url(url: str) -> int | None:
+def anilist_id_from_url(url: str, is_character: bool = False) -> int | None:
     url = url.lower().split("/")
     url = tuple(filter(None, url))
-    if "anime" not in url:
+    if is_character and "character" not in url:
+        return None
+    if not is_character and "anime" not in url:
         return None
     if url[-1].isdigit():
         return int(url[-1])

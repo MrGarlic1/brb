@@ -147,24 +147,31 @@ class Bingo(interactions.Extension):
             ignore=ignore_patterns("*.png")
         )
         # Get player, validate shot
-        anilist_id = al.anime_id_from_url(url=link)
-        if anilist_id is None:
-            await ctx.send(content="Could not find show, please check anilist URL!")
-            return True
 
         sender_idx, player = game.get_player(int(ctx.author_id))
+
+        if player is None:
+            await ctx.send("You are not in this bingo game!")
+            return True
 
         if any(shot.tag == tag for shot in player.shots):
             await ctx.send("You have already shot for this tag. Please select a different tag and try again.")
             return True
 
         shot = bi.BingoShot(
-            anilist_id=anilist_id, tag=tag, time=datetime.now().strftime(bd.date_format), info=info
+            anilist_id=0, tag=tag, time=datetime.now().strftime(bd.date_format), info=info
         )
         shot_type = shot.get_shot_type()
-
         if not shot_type:
             await ctx.send(content="Invalid tag specified. Please check the tag and try again.")
+            return True
+
+        if shot_type == "character":
+            anilist_id = al.anilist_id_from_url(url=link, is_character=True)
+        else:
+            anilist_id = al.anilist_id_from_url(url=link)
+        if anilist_id is None:
+            await ctx.send(content="Could not find show, please check anilist URL!")
             return True
 
         # Fetch anilist information if it isn't already cached
@@ -235,7 +242,7 @@ class Bingo(interactions.Extension):
 
     @record_shot.autocomplete("tag")
     async def autocomplete(self, ctx: interactions.AutocompleteContext):
-        tags = bi.bingo_tags + bi.character_tags + bi.season_tags
+        tags = bi.bingo_tags + bi.character_tags + bi.season_tags + bi.episode_tags
         tags = [tag for tag in tags if ctx.input_text.lower() in tag.lower()]
         choices = list(map(bu.autocomplete_filter, tags))
         if len(choices) > 25:

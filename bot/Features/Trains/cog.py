@@ -334,7 +334,7 @@ class Trains(interactions.Extension):
             ignore=ignore_patterns("*.png")
         )
         # Get player, validate shot
-        show_id = al.anime_id_from_url(url=link)
+        show_id = al.anilist_id_from_url(url=link)
         if show_id is None:
             await ctx.send(content="Could not find show, please check anilist URL!")
             return True

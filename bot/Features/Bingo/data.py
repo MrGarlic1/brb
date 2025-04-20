@@ -2,8 +2,9 @@ import io
 import json
 from dataclasses import dataclass
 from random import sample
-from shutil import rmtree
 from typing import Union
+import matplotlib.pyplot as plt
+import matplotlib.font_manager
 
 import interactions
 from PIL import Image, ImageFont, ImageDraw
@@ -12,11 +13,14 @@ import Core.botdata as bd
 
 
 bingo_tags = (
+    "Action",
+    "Adventure"
+    "Ensemble Cast",
     "Episodic",
     "Fantasy",
     "Female Protagonist",
     "Food",
-    "Gloppy**",
+    "Gloppy",
     "Gods/Mythology",
     "Guns",
     "Heterosexual",
@@ -68,6 +72,13 @@ season_tags = (
     "Fall",
     "Winter"
 )
+episode_tags = {
+    "<7 Episodes": (0, 6),
+    "11-13 Episodes": (11, 13),
+    "22-26 Episodes": (22, 26),
+    "50-99 Episodes": (50, 99),
+    "100+ Episodes": (100, 99999)
+}
 
 col_emojis = ("🇧", "🇮", "🇳", "🇬", "🇴")
 row_emojis = ("1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣")
@@ -82,9 +93,11 @@ class BingoShot:
         self.hit = hit
         self.info = info
 
-    def get_shot_type(self):
+    def get_shot_type(self) -> str:
         if self.tag in character_tags:
             return "character"
+        elif self.tag in episode_tags:
+            return "episode"
         elif self.tag == "Source Not Manga":
             return "source"
         elif self.tag in season_tags:
@@ -98,35 +111,23 @@ class BingoShot:
         else:
             return None
 
-    async def is_valid(self, starting_anilist: dict, anilist_info: dict, poll_msg: interactions.Message = None):
+    async def is_valid(self, starting_anilist: dict, anilist_info: dict, poll_msg: interactions.Message = None) -> bool:
         shot_type = self.get_shot_type()
         if shot_type == "free":
             return True
         if shot_type == "source":
-            if anilist_info["source"] != "MANGA":
-                return True
-            else:
-                return False
+            return anilist_info["source"] != "MANGA"
         if shot_type == "season":
-            if self.tag.upper() == anilist_info["season"]:
-                return True
-            else:
-                return False
+            return self.tag.upper() == anilist_info["season"]
         if shot_type == "tag":
-            if (
+            return (
                     any(tag["name"].upper() == self.tag.upper() and tag["rank"] > 40 for tag in anilist_info["tags"]) or
                     any(genre.upper() == self.tag.upper() for genre in anilist_info["genres"])
-            ):
-                return True
-            else:
-                return False
+            )
         if shot_type == "character":
             yes_votes = await poll_msg.fetch_reaction(emoji="🔺")
             no_votes = await poll_msg.fetch_reaction(emoji="🔻")
-            if len(yes_votes) / (len(no_votes) + len(yes_votes)) > 0.5:
-                return True
-            else:
-                return False
+            return len(yes_votes) / (len(no_votes) + len(yes_votes)) > 0.5
         if shot_type == "rewatch":
             for show in starting_anilist:
                 if show["mediaId"] != self.anilist_id:
@@ -134,7 +135,8 @@ class BingoShot:
                 if show["status"] in ("REWATCHING", "COMPLETED"):
                     return True
             return False
-
+        if shot_type == "episode":
+            return episode_tags[self.tag][0] <= anilist_info["episodes"] <= episode_tags[self.tag][1]
         return False
 
 
@@ -190,7 +192,7 @@ class BingoPlayer:
             "starting_anilist": self.starting_anilist, "board": board_dict
         }
 
-    def gen_board(self):
+    def gen_board(self) -> None:
         selected_tags = sample(bingo_tags, 25)
 
         board = {}
@@ -200,13 +202,13 @@ class BingoPlayer:
                 del selected_tags[0]
         self.board = board
 
-    def find_tag(self, tag):
+    def find_tag(self, tag) -> tuple[int, int] | None:
         for pos in self.board:
             if self.board[pos].tag == tag:
                 return pos
         return None
 
-    def has_bingo(self):
+    def has_bingo(self) -> bool:
         row_bingos = {1: [], 2: [], 3: [], 4: [], 5: []}
         for col in range(1, 6):
             col_bingo = []
@@ -232,7 +234,7 @@ class BingoPlayer:
 
     def draw_board_img(
             self, filepath: str, board_name: str, draw_tags: bool = False,
-    ):
+    ) -> None:
 
         # Generate board image. If player board: only generate tiles which are rendered.
         # Grey out other tiles.
@@ -414,86 +416,14 @@ class BingoGame:
         embed.set_footer(text=f'Page {page}/{max_pages} {footer_end}')
 
         # Game stats page
-        if page == 1:
-            resource_count: dict = {}
-            claimed_resource_count: dict = {}
-            rail_count: int = 0
-            intersection_count: int = 0
-            for coord, tile in self.board.items():
-                if tile.resource:
-                    try:
-                        resource_count[tile.resource] += 1
-                    except KeyError:
-                        resource_count[tile.resource] = 1
-                if tile.rails:
-                    rail_count += 1
-                    if tile.resource:
-                        try:
-                            claimed_resource_count[tile.resource] += 1
-                        except KeyError:
-                            claimed_resource_count[tile.resource] = 1
-                    if len(tile.rails) > 1:
-                        intersection_count += 1
-
-            embed.title = "Game Stats"
-            embed.description = f"*{self.name}*\n\u200b"
-            embed.set_thumbnail(url=ctx.guild.icon.url)
-            embed.add_field(name="🚂 Active?", value="✅" if self.active else "❌", inline=True)
-            embed.add_field(name="🚂 Complete?", value="✅" if self.is_done() else "❌", inline=True)
-            embed.add_field(name="\u200b", value="\u200b", inline=False)
-
-            for resource, count in resource_count.items():
-                if resource not in claimed_resource_count.keys():
-                    claimed_resource_count[resource]: int = 0
-
-                embed.add_field(
-                    name=f"# of {resource} Claimed/Total",
-                    value=f"{claimed_resource_count[resource]}/{count}", inline=True
-                )
-
-            embed.add_field(name="🛤️ Total Rails", value=rail_count, inline=True)
-            embed.add_field(name="🔀 # of Crossings", value=intersection_count, inline=True)
-
-            if self.is_done():
-                self.draw_board_img(
-                    filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}",
-                    board_name="MASTER", player_board=False
-                )
-                board_img_path = f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}/MASTER.png"
-                image = interactions.File(board_img_path, file_name="MASTER.png")
-                embed.set_image(
-                    url="attachment://MASTER.png"
-                )
-            else:
-                with open(f"{bd.parent}/Data/nothing.png", "rb") as f:
-                    file = io.BytesIO(f.read())
-                image: interactions.File = interactions.File(file, file_name="nothing.png")
-                embed.set_image(
-                    url="attachment://nothing.png"
-                )
-            return embed, image
-
-        # Player stats page
-        player_idx: int = page - 2
-        player: TrainPlayer = self.players[player_idx]
-
-        if len(player.shots) == 0:
-            embed.description = f"### {player.member.mention} has not placed any rails yet!"
-            with open(f"{bd.parent}/Data/nothing.png", "rb") as f:
-                file = io.BytesIO(f.read())
-            image: interactions.File = interactions.File(file, file_name="nothing.png")
-            embed.set_image(
-                url="attachment://nothing.png"
-            )
-            return embed, image
-
-        embed.set_thumbnail(url=player.member.avatar_url)
-        embed.description = f"### Stats for {player.member.mention}"
+        embed.set_thumbnail(url=ctx.guild.icon.url)
+        embed.description = f"### Stats for {self.name}"
         embed.add_field(name="\u200b", value="\u200b", inline=False)
+        for player in self.players:
 
         # Total shots/in-zone shots
-        total_shots: int = len(player.shots)
-        in_zone_shots: int = 0
+            total_shots: int = len(player.shots)
+            hit_shots: int = 0
         prev_shot_time = datetime.strptime(self.date, bd.date_format)
         time_between_shots_list = []
         weights = []
@@ -548,12 +478,14 @@ class BingoGame:
         # Shot genre pie chart
 
         genre_counts: dict[str, int] = {}
-        for shot in self.players[player_idx].shots:
-            for genre in self.known_entries[shot.show_id]["genres"]:
-                if genre in genre_counts:
-                    genre_counts[genre] += 1
-                else:
-                    genre_counts[genre] = 1
+        for shot in player.shots:
+            shot_type = shot.get_shot_type()
+            if shot_type != "character":
+                for genre in self.known_entries[shot.anilist_id]["genres"]:
+                    if genre in genre_counts:
+                        genre_counts[genre] += 1
+                    else:
+                        genre_counts[genre] = 1
 
         plt.style.use("dark_background")
         fig, ax = plt.subplots()
@@ -586,7 +518,10 @@ class BingoGame:
         return embed, image
         """
 
-    def gen_board_embed(self, page: int, sender_idx: int, expired: bool):
+    def gen_board_embed(
+            self, page: int, sender_idx: int, expired: bool
+    ) -> tuple[interactions.Embed, interactions.File]:
+
         embed: interactions.Embed = interactions.Embed()
         embed.set_author(name=f"Anime Bingo", icon_url=bd.bot_avatar_url)
         footer_end: str = ' | This message is inactive.' if expired else ' | This message deactivates after 5 minutes.'
@@ -613,7 +548,7 @@ class BingoGame:
         total_hits = len([shot.hit for shot in player.shots if shot.hit])
         if len(player.shots) > 0:
             embed.add_field(name="\u200b", value=f"**Total Shots:** {len(player.shots)}", inline=True)
-            embed.add_field(name="\u200b", value=f"**Accuracy:** {100*total_hits/len(player.shots)}%", inline=True)
+            embed.add_field(name="\u200b", value=f"**Accuracy:** {round(100*total_hits/len(player.shots), 2)}%", inline=True)
         else:
             embed.add_field(name="\u200b", value=f"\u200b", inline=False)
 
