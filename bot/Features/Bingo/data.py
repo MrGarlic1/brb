@@ -93,7 +93,7 @@ class BingoShot:
         self.hit = hit
         self.info = info
 
-    def get_shot_type(self) -> str:
+    def get_shot_type(self) -> str | None:
         if self.tag in character_tags:
             return "character"
         elif self.tag in episode_tags:
@@ -234,7 +234,7 @@ class BingoPlayer:
 
     def draw_board_img(
             self, filepath: str, board_name: str, draw_tags: bool = False,
-    ) -> None:
+    ) -> None | str:
 
         # Generate board image. If player board: only generate tiles which are rendered.
         # Grey out other tiles.
@@ -548,7 +548,9 @@ class BingoGame:
         total_hits = len([shot.hit for shot in player.shots if shot.hit])
         if len(player.shots) > 0:
             embed.add_field(name="\u200b", value=f"**Total Shots:** {len(player.shots)}", inline=True)
-            embed.add_field(name="\u200b", value=f"**Accuracy:** {round(100*total_hits/len(player.shots), 2)}%", inline=True)
+            embed.add_field(
+                name="\u200b", value=f"**Accuracy:** {round(100*total_hits/len(player.shots), 2)}%", inline=True
+            )
         else:
             embed.add_field(name="\u200b", value=f"\u200b", inline=False)
 
@@ -637,23 +639,25 @@ def bingo_game_embed(ctx: interactions.SlashContext, game: BingoGame) -> interac
 
 
 def gen_rules_embed(page: int, expired: bool) -> interactions.Embed:
-    """
     max_pages: int = 6
     page: int = 1 + (page % max_pages)  # Loop back through pages both ways
     footer_end: str = " | This message is inactive." if expired else " | This message deactivates after 5 minutes."
+    embed = interactions.Embed()
+    embed.set_author(name="Anime Trains", icon_url=bd.bot_avatar_url)
+    embed.color = 0xff9c2c
+    embed.set_footer(text=f'Page {page}/{max_pages} {footer_end}')
     if page == 1:
-        embed = train_rules_embed()
+        embed.title = "Rules"
+        embed.description = \
+            "**1.** To win, you must obtain bingo by hitting the randomly generated tags on your bingo board.\n\n" \
+            "**2.** Each shot corresponds to 3 hours of TV airing time. and can select one tag to shoot for. \n\n" \
+            "**3.** Once a certain tag has been shot, that tag will not appear again on your board. " \
+            "**4.** Certain shots require players to agree that the show/character matches the tag. In that case," \
+            "a poll will be created. After 2 hours, if the majority agree, the shot will be marked as valid.\n\n" \
+            "**5.** There are 75 possible tags, which are listed on the next page. Only 25 will appear on each board."
     elif page == 2:
-        embed = train_zones_embed()
-    elif page == 3:
-        embed = train_symbols_embed()
-    elif page == 4:
-        embed = train_quests_embed()
-    elif page == 5:
-        embed = train_items_embed()
-    else:
-        embed = train_scoring_embed()
+        embed.title = "Possible Tags"
+        embed.description = \
+            "tbd"
     embed.set_footer(text=f'Page {page}/{max_pages} {footer_end}')
     return embed
-    """
-    pass
