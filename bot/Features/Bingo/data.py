@@ -14,7 +14,17 @@ import Core.botdata as bd
 
 bingo_tags = (
     "Action",
-    "Adventure"
+    "Adventure",
+    "Aliens",
+    "Comedy",
+    "Coming of Age",
+    "Crime",
+    "Cute Girls Doing Cute Things",
+    "Death Game",
+    "Youkai",
+    "Drama",
+    "Dystopian",
+    "Ecchi",
     "Ensemble Cast",
     "Episodic",
     "Fantasy",
@@ -32,11 +42,11 @@ bingo_tags = (
     "Magic",
     "Mahou Shoujo",
     "Male Protagonist",
-    "Mecha/Robots/Real Robot/Super Robot",
+    "Mecha",
     "Music",
     "Mystery",
     "Not TV",
-    "Parody/Satire",
+    "Parody",
     "Philosophy",
     "Primarily Female Cast",
     "Primarily Male Cast",
@@ -44,7 +54,7 @@ bingo_tags = (
     "Revenge",
     "Rewatch an Anime",
     "Romance",
-    "School/College",
+    "School",
     "Sci-Fi",
     "Seinen",
     "Shoujo",
@@ -64,7 +74,9 @@ bingo_tags = (
 character_tags = (
     "Large Breasts",
     "Loli",
-    "Monster Girl"
+    "Monster Girl",
+    "Black Guy",
+    "Cat"
 )
 season_tags = (
     "Spring",
@@ -106,6 +118,8 @@ class BingoShot:
             return "free"
         elif self.tag == "Rewatch an Anime":
             return "rewatch"
+        elif self.tag == "Not TV":
+            return "not_tv"
         elif self.tag in bingo_tags:
             return "tag"
         else:
@@ -113,6 +127,8 @@ class BingoShot:
 
     async def is_valid(self, starting_anilist: dict, anilist_info: dict, poll_msg: interactions.Message = None) -> bool:
         shot_type = self.get_shot_type()
+        if shot_type == "not_tv":
+            return anilist_info["format"] != "TV"
         if shot_type == "free":
             return True
         if shot_type == "source":

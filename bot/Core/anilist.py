@@ -33,6 +33,7 @@ def query_media(*, media_id: int):
       Media(id: $mediaId) {
         episodes
         genres
+        format
         meanScore
         popularity
         season
