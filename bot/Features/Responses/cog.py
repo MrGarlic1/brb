@@ -253,7 +253,7 @@ class Responses(interactions.Extension):
         trigs: list = []
         # Add autocomplete options if they match input text, remove duplicates. 25 maximum values (discord limit)
         for response in bd.responses[ctx.guild_id]:
-            if response.trig not in trigs and ctx.input_text in response.trig:
+            if response.trig not in trigs and ctx.input_text.lower() in response.trig:
                 trigs.append(response.trig)
         choices = list(map(bu.autocomplete_filter, trigs))
         if len(choices) > 25:
