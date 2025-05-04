@@ -13,6 +13,7 @@ import Core.botdata as bd
 
 
 bingo_tags = (
+    "95%",
     "Action",
     "Adventure",
     "Aliens",
@@ -120,6 +121,8 @@ class BingoShot:
             return "rewatch"
         elif self.tag == "Not TV":
             return "not_tv"
+        elif self.tag == "95%":
+            return "95%"
         elif self.tag in bingo_tags:
             return "tag"
         else:
@@ -135,6 +138,8 @@ class BingoShot:
             return anilist_info["source"] != "MANGA"
         if shot_type == "season":
             return self.tag.upper() == anilist_info["season"]
+        if shot_type == "95%":
+            return any(tag["rank"] > 95 for tag in anilist_info["tags"])
         if shot_type == "tag":
             return (
                     any(tag["name"].upper() == self.tag.upper() and tag["rank"] > 40 for tag in anilist_info["tags"]) or
