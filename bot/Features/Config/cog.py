@@ -8,7 +8,6 @@ config_keys = {
     "Limit # of User Responses": "LIMIT_USER_RESPONSES",
     "Maximum # of User Responses": "MAX_USER_RESPONSES",
     "Restrict Response Deletion": "USER_ONLY_DELETE",
-    "Enable Anime Games": "ANIME_ENABLED"
 }
 
 
