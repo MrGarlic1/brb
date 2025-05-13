@@ -11,6 +11,7 @@ default_config: dict = {
     "LIMIT_USER_RESPONSES": False,
     "MAX_USER_RESPONSES": 10,
     "USER_ONLY_DELETE": False,
+    "ANIME_ENABLED": True
 }
 token: str = environ["TOKEN"]
 parent: str = f"{path.dirname(path.realpath(__file__))}/.."
