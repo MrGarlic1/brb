@@ -17,9 +17,8 @@ import Core.botutils as bu
 bot = interactions.Client(
     token=bd.token,
     intents=interactions.Intents.DEFAULT | interactions.Intents.MESSAGE_CONTENT | interactions.Intents.GUILDS,
-    sync_interactions=False,
-    delete_unused_application_cmds=False,
-    debug_scope=895549687417958410
+    sync_interactions=True,
+    delete_unused_application_cmds=True,
 )
 
 
