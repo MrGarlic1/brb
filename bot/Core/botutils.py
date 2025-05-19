@@ -21,6 +21,7 @@ import Core.botdata as bd
 from Features.Responses.data import gen_resp_list, load_responses
 from Features.Trains.data import gen_rules_embed, load_trains_game
 from Features.Bingo.data import load_bingo_game
+from Features.Help.data import base_help_embed
 
 
 # Class Definitions
@@ -242,6 +243,13 @@ def handle_page_change(ctx: interactions.api.events.Component.ctx) -> tuple[
             continue
 
         game = msg.payload
+
+        if ctx.custom_id == "help_category":
+            if not ctx.values:
+                bd.active_msgs[idx].page = ""
+            bd.active_msgs[idx].page = ctx.values[0]
+            embed = base_help_embed()
+            components = None
 
         # Update page num
         if ctx.custom_id == "prevpg":
