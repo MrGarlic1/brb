@@ -57,6 +57,8 @@ async def on_ready():
     sleep(.25)
     bot.load_extension("Features.Bingo.cog")
     sleep(.25)
+    bot.load_extension("Features.Help.cog")
+    sleep(.25)
 
     await bu.init_guilds(guilds=guilds)
     await bot.change_presence(status=interactions.Status.ONLINE, activity="/response")
