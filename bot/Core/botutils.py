@@ -60,6 +60,7 @@ def del_game_files(guild_id: int, game_name: str, game_type: str):
 
 def load_anilist_caches() -> None:
     if not path.exists(f"{bd.parent}/Data/linked_profiles.json"):
+        makedirs(f"{bd.parent}/Data", exist_ok=True)
         with open(f"{bd.parent}/Data/linked_profiles.json", "w") as f:
             json.dump({}, f, separators=(",", ":"))
     with open(f"{bd.parent}/Data/linked_profiles.json", "r") as f:
