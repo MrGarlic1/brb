@@ -3,8 +3,6 @@ Ben Samans
 main.py
 """
 
-import json
-from os import path
 from time import sleep
 from time import strftime
 
@@ -35,11 +33,8 @@ async def on_guild_join(event: interactions.api.events.GuildJoin):
 async def on_ready():
     guilds = bot.guilds
     assert guilds, "Error connecting to Discord, no guilds listed."
-    if not path.exists(f"{bd.parent}/Data/linked_profiles.json"):
-        with open(f"{bd.parent}/Data/linked_profiles.json", "w") as f:
-            json.dump({}, f, separators=(",", ":"))
-    with open(f"{bd.parent}/Data/linked_profiles.json", "r") as f:
-        bd.linked_profiles = {int(key): int(val) for key, val in json.load(f).items()}
+
+    bu.load_anilist_caches()
 
     bu.load_fonts(f"{bd.parent}/Data")
     print(
@@ -57,6 +52,8 @@ async def on_ready():
     bot.load_extension("Features.Bingo.cog")
     sleep(.25)
     bot.load_extension("Features.Help.cog")
+    sleep(.25)
+    bot.load_extension("Features.Anime.cog")
     sleep(.25)
 
     await bu.init_guilds(guilds=guilds)

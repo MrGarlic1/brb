@@ -58,6 +58,20 @@ def del_game_files(guild_id: int, game_name: str, game_type: str):
         pass
 
 
+def load_anilist_caches() -> None:
+    if not path.exists(f"{bd.parent}/Data/linked_profiles.json"):
+        with open(f"{bd.parent}/Data/linked_profiles.json", "w") as f:
+            json.dump({}, f, separators=(",", ":"))
+    with open(f"{bd.parent}/Data/linked_profiles.json", "r") as f:
+        bd.linked_profiles = {int(key): int(val) for key, val in json.load(f).items()}
+
+    if not path.exists(f"{bd.parent}/Data/recommendation_cache.json"):
+        with open(f"{bd.parent}/Data/recommendation_cache.json", "w") as f:
+            json.dump({}, f, separators=(",", ":"))
+    with open(f"{bd.parent}/Data/recommendation_cache.json", "r") as f:
+        bd.known_recommendations = {int(key): val for key, val in json.load(f).items()}
+
+
 def load_config(guild: interactions.Guild) -> None:
     # Load and validate guild bd.configs
     try:

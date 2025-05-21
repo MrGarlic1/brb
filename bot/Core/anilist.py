@@ -91,6 +91,52 @@ def query_character(*, character_id: int):
     return response.json()["data"]["Character"]
 
 
+def query_media_list_recs(*, user_id: int):
+    query = """
+    query MediaListCollection($userId: Int, $type: MediaType, $sort: [RecommendationSort], $statusNotIn: [MediaListStatus]) {
+      MediaListCollection(userId: $userId, type: $type, status_not_in: $statusNotIn) {
+        lists {
+          entries {
+            score
+            media {
+              id
+              recommendations(sort: $sort) {
+                nodes {
+                  rating
+                  mediaRecommendation {
+                    id
+                    meanScore
+                    popularity
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    """
+    variables = {
+        "userId": user_id,
+        "type": "ANIME",
+        "statusNotIn": "PLANNING",
+        "sort": "RATING_DESC"
+    }
+    response = httpx.post(
+        url="https://graphql.anilist.co",
+        json={"query": query, "variables": variables}
+    )
+    if response.status_code != 200:
+        return None
+
+    full_rec_list: list = []
+    for anime_list in response.json()["data"]["MediaListCollection"]["lists"]:
+        anime_list = anime_list["entries"]
+        full_rec_list += anime_list
+
+    return full_rec_list
+
+
 def query_user_id(username: str) -> int | None:
     query = """
     query

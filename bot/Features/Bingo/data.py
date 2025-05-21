@@ -264,7 +264,7 @@ class BingoPlayer:
         label_offset: int = 1
         size = 5
         label_font_size: int = 72
-        font = ImageFont.truetype(f"{bd.parent}/Data/ggsans/ggsans-Bold.ttf", label_font_size)
+        font = ImageFont.truetype(f"{bd.parent}/Static/ggsans/ggsans-Bold.ttf", label_font_size)
         tile_pixels: int = 150
         border_color: tuple[int, int, int] = (190, 190, 190)
         font_color: tuple[int, int, int] = (0, 0, 0)
@@ -306,7 +306,7 @@ class BingoPlayer:
 
         default_font_size: int = 24
         font_size = default_font_size
-        font = ImageFont.truetype(f"{bd.parent}/Data/ggsans/ggsans-Bold.ttf", font_size)
+        font = ImageFont.truetype(f"{bd.parent}/Static/ggsans/ggsans-Bold.ttf", font_size)
 
         for coords in self.board.keys():
             (row, col) = coords
@@ -326,7 +326,7 @@ class BingoPlayer:
             if self.board[coords].hit or draw_tags:
                 while text_pixels > 0.8 * tile_pixels and font_size > 6:
                     font_size -= 2
-                    font = ImageFont.truetype(f"{bd.parent}/Data/ggsans/ggsans-Bold.ttf", font_size)
+                    font = ImageFont.truetype(f"{bd.parent}/Static/ggsans/ggsans-Bold.ttf", font_size)
                     text_pixels = draw.textlength(text=self.board[coords].tag, font=font)
 
                 # Draw tile resource and rails
@@ -340,7 +340,7 @@ class BingoPlayer:
 
                 if font_size != default_font_size:
                     font_size = default_font_size
-                    font = ImageFont.truetype(f"{bd.parent}/Data/ggsans/ggsans-Bold.ttf", font_size)
+                    font = ImageFont.truetype(f"{bd.parent}/Static/ggsans/ggsans-Bold.ttf", font_size)
 
         try:
             board_img.save(f"{filepath}/{board_name}.png")
