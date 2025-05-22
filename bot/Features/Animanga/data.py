@@ -44,6 +44,9 @@ def fetch_recommendations(anilist_id: int, manga: bool = False) -> None:
                 continue
             if show_rec["mediaRecommendation"]["id"] in already_seen_show_ids:
                 continue
+            if not show_rec["mediaRecommendation"]["meanScore"]:
+                show_rec["mediaRecommendation"]["meanScore"] = 65
+
             # Scoring
             user_score_weight = 0 if entry["score"] == 0 else 1
 
