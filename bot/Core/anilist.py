@@ -91,7 +91,7 @@ def query_character(*, character_id: int):
     return response.json()["data"]["Character"]
 
 
-def query_media_list_recs(*, user_id: int):
+def query_media_list_recs(*, user_id: int, manga: bool = False):
     query = """
     query MediaListCollection($userId: Int, $type: MediaType, $sort: [RecommendationSort], $statusNotIn: [MediaListStatus]) {
       MediaListCollection(userId: $userId, type: $type, status_not_in: $statusNotIn) {
@@ -116,9 +116,10 @@ def query_media_list_recs(*, user_id: int):
       }
     }
     """
+    media_type = "MANGA" if manga else "ANIME"
     variables = {
         "userId": user_id,
-        "type": "ANIME",
+        "type": media_type,
         "statusNotIn": "PLANNING",
         "sort": "RATING_DESC"
     }
