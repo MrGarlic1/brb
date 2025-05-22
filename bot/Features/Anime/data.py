@@ -57,7 +57,7 @@ def fetch_recommendations(anilist_id: int, force_update: bool = False) -> str:
             user_score_weight = 0 if entry["score"] == 0 else 1
             if show_rec["mediaRecommendation"]["id"] not in recommendation_scores:
                 recommendation_scores[show_rec["mediaRecommendation"]["id"]] = (
-                    user_score_weight*(entry["score"] - user_mean_score) +
+                    user_score_weight*(entry["score"]/max_score - user_mean_score) +
                     0.8*(show_rec["mediaRecommendation"]["meanScore"] - 70)/100
                 )*show_rec["rating"]/max_rec_rating
             else:
