@@ -61,7 +61,7 @@ def fetch_recommendations(anilist_id: int, force_update: bool = False) -> str:
             else:
                 recommendation_scores[show_rec["mediaRecommendation"]["id"]] += (
                     user_score_weight*(entry["score"]/max_score - user_mean_score) +
-                    0.8*(show_rec["mediaRecommendation"]["meanScore"] - 70)/100
+                    0.8*(show_rec["mediaRecommendation"]["meanScore"] - 65)/100
                 )*show_rec["rating"]/max_rec_rating
 
     # Sort recommendations by score then take the top 20
