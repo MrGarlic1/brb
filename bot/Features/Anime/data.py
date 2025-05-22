@@ -1,5 +1,3 @@
-import interactions
-from emoji import emojize, demojize
 import Core.botdata as bd
 from datetime import datetime
 from random import choice
