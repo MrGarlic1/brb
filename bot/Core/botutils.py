@@ -59,6 +59,7 @@ def del_game_files(guild_id: int, game_name: str, game_type: str):
 
 
 def load_anilist_caches() -> None:
+
     if not path.exists(f"{bd.parent}/Data/linked_profiles.json"):
         makedirs(f"{bd.parent}/Data", exist_ok=True)
         with open(f"{bd.parent}/Data/linked_profiles.json", "w") as f:
@@ -66,10 +67,16 @@ def load_anilist_caches() -> None:
     with open(f"{bd.parent}/Data/linked_profiles.json", "r") as f:
         bd.linked_profiles = {int(key): int(val) for key, val in json.load(f).items()}
 
-    if not path.exists(f"{bd.parent}/Data/recommendation_cache.json"):
-        with open(f"{bd.parent}/Data/recommendation_cache.json", "w") as f:
+    if not path.exists(f"{bd.parent}/Data/manga_rec_cache.json"):
+        with open(f"{bd.parent}/Data/manga_rec_cache.json", "w") as f:
             json.dump({}, f, separators=(",", ":"))
-    with open(f"{bd.parent}/Data/recommendation_cache.json", "r") as f:
+    with open(f"{bd.parent}/Data/manga_rec_cache.json", "r") as f:
+        bd.known_recommendations = {int(key): val for key, val in json.load(f).items()}
+
+    if not path.exists(f"{bd.parent}/Data/anime_rec_cache.json"):
+        with open(f"{bd.parent}/Data/anime_rec_cache.json", "w") as f:
+            json.dump({}, f, separators=(",", ":"))
+    with open(f"{bd.parent}/Data/anime_rec_cache.json", "r") as f:
         bd.known_recommendations = {int(key): val for key, val in json.load(f).items()}
 
 
