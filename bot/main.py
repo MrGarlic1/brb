@@ -16,7 +16,7 @@ bot = interactions.Client(
     token=bd.token,
     intents=interactions.Intents.DEFAULT | interactions.Intents.MESSAGE_CONTENT | interactions.Intents.GUILDS,
     sync_interactions=True,
-    delete_unused_application_cmds=True,
+    delete_unused_application_cmds=False
 )
 
 
@@ -43,6 +43,8 @@ async def on_ready():
     )
 
     # Load command modules; sleep to avoid rate limit
+    bot.load_extension("Features.Anime.cog")
+    sleep(.25)
     bot.load_extension("Features.Trains.cog")
     sleep(.25)
     bot.load_extension("Features.Responses.cog")
@@ -52,8 +54,6 @@ async def on_ready():
     bot.load_extension("Features.Bingo.cog")
     sleep(.25)
     bot.load_extension("Features.Help.cog")
-    sleep(.25)
-    bot.load_extension("Features.Anime.cog")
     sleep(.25)
 
     await bu.init_guilds(guilds=guilds)
