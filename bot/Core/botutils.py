@@ -71,13 +71,13 @@ def load_anilist_caches() -> None:
         with open(f"{bd.parent}/Data/manga_rec_cache.json", "w") as f:
             json.dump({}, f, separators=(",", ":"))
     with open(f"{bd.parent}/Data/manga_rec_cache.json", "r") as f:
-        bd.known_recommendations = {int(key): val for key, val in json.load(f).items()}
+        bd.known_manga_recs = {int(key): val for key, val in json.load(f).items()}
 
     if not path.exists(f"{bd.parent}/Data/anime_rec_cache.json"):
         with open(f"{bd.parent}/Data/anime_rec_cache.json", "w") as f:
             json.dump({}, f, separators=(",", ":"))
     with open(f"{bd.parent}/Data/anime_rec_cache.json", "r") as f:
-        bd.known_recommendations = {int(key): val for key, val in json.load(f).items()}
+        bd.known_anime_recs = {int(key): val for key, val in json.load(f).items()}
 
 
 def load_config(guild: interactions.Guild) -> None:
