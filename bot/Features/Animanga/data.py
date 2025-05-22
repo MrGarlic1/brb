@@ -104,7 +104,7 @@ def get_recommendation(anilist_id: int, listall: int, force_update: bool = False
     if listall:
         final_rec = ""
         for rec_id, score in recs.items():
-            final_rec += f"Recommendation Score: {score:.1f}% - https://anilist.co/{link_type}/{rec_id}/\n"
+            final_rec += f"Recommendation Score: {score:.1f}% - <https://anilist.co/{link_type}/{rec_id}/>\n"
     else:
         rec_id = choice(tuple(recs.keys()))
         final_rec = f"https://anilist.co/{link_type}/{rec_id}/\nRecommendation Score: {recs[rec_id]:.1f}%"
