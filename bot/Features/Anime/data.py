@@ -15,7 +15,7 @@ def fetch_recommendations(anilist_id: int, force_update: bool = False) -> str:
         if time_delta < 345600:
             recs = bd.known_recommendations[anilist_id]["recs"]
             final_rec = choice(tuple(recs.keys()))
-            return f"https://anilist.co/anime/{final_rec}/\nRecommendation Score: {recs[final_rec]:.3f}"
+            return f"https://anilist.co/anime/{final_rec}/\nRecommendation Score: {recs[final_rec]:.1f}%"
 
     list_data = query_media_list_recs(user_id=anilist_id)
     if not list_data:
