@@ -6,11 +6,6 @@ from random import choice
 from Core.anilist import query_media_list_recs
 from json import dump
 
-class UserRecommendations:
-    def __init__(self, date: datetime, recommendations: tuple[int, int]):
-        self.date = date.strftime(bd.date_format)
-        self.recommendations = recommendations
-
 
 def fetch_recommendations(anilist_id: int, force_update: bool = False) -> str:
 
@@ -31,14 +26,18 @@ def fetch_recommendations(anilist_id: int, force_update: bool = False) -> str:
 
     total_user_score = 0
     no_score_entries = 0
+    max_score = 0
     already_seen_show_ids = []
     for entry in list_data:
         already_seen_show_ids.append(entry["media"]["id"])
-        total_user_score += entry["score"]
         if entry["score"] == 0:
             no_score_entries += 1
+            continue
+        if entry["score"] > max_score:
+            max_score = entry["score"]
+        total_user_score += entry["score"]
 
-    user_mean_score = total_user_score/100/(len(list_data) - no_score_entries)
+    user_mean_score = total_user_score/max_score/(len(list_data) - no_score_entries)
 
     recommendation_scores = {}
     for entry in list_data:
