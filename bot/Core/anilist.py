@@ -122,10 +122,15 @@ def query_media_list_recs(*, user_id: int):
         "statusNotIn": "PLANNING",
         "sort": "RATING_DESC"
     }
-    response = httpx.post(
-        url="https://graphql.anilist.co",
-        json={"query": query, "variables": variables}
-    )
+    try:
+        response = httpx.post(
+            url="https://graphql.anilist.co",
+            json={"query": query, "variables": variables},
+            timeout=20.0
+        )
+    except httpx.ReadTimeout:
+        return None
+
     if response.status_code != 200:
         return None
 
