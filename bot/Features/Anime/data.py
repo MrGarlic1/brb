@@ -37,6 +37,7 @@ def fetch_recommendations(anilist_id: int, force_update: bool = False) -> str:
             max_score = entry["score"]
         total_user_score += entry["score"]
 
+    # Normalize by max score for alternate scoring schemes
     user_mean_score = total_user_score/max_score/(len(list_data) - no_score_entries)
 
     recommendation_scores = {}
@@ -53,8 +54,10 @@ def fetch_recommendations(anilist_id: int, force_update: bool = False) -> str:
                 continue
             if show_rec["mediaRecommendation"]["id"] in already_seen_show_ids:
                 continue
+
             # Scoring
             user_score_weight = 0 if entry["score"] == 0 else 1
+
             if show_rec["mediaRecommendation"]["id"] not in recommendation_scores:
                 recommendation_scores[show_rec["mediaRecommendation"]["id"]] = (
                     user_score_weight*(entry["score"]/max_score - user_mean_score) +
