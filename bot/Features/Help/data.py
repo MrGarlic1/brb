@@ -3,16 +3,37 @@ from emoji import emojize, demojize
 import Core.botdata as bd
 
 
-def gen_help_embed() -> (interactions.Embed, interactions.StringSelectMenu):
-    return base_general_embed, help_category_menu
+help_pages = {
+    "general": 0,
+    "response": 1,
+    "trains": 2,
+    "bingo": 3,
+    "config": 4,
+    "animanga": 5
+}
+
+help_msgs = [
+    "General Commands here",
+    "**/response add [trigger] [response] <exact>**\n"
+    "/response remove [trigger] <response> <exact>\n"
+    "/listresponses",
+    "placeholder",
+    "placeholder",
+    "placeholder",
+    "placeholder"
+]
 
 
-def base_general_embed(expired: bool = False) -> interactions.Embed:
+def gen_help_embed(page: int, expired: bool = False) -> (interactions.Embed, interactions.StringSelectMenu):
     embed: interactions.Embed = interactions.Embed()
-    embed.set_author(name=f"Bootleg Response Bot Help", icon_url=bd.bot_avatar_url)
+    embed.set_author(name=f"Response Bot Help", icon_url=bd.bot_avatar_url)
     footer_end: str = ' | This message is inactive.' if expired else ' | This message deactivates after 5 minutes.'
     embed.set_footer(text=footer_end)
-    return embed
+    embed.add_field(
+        name=f"{[category for category, pagenum in help_pages.items() if pagenum == category][0].title()} Commands",
+        value=help_msgs[page]
+    )
+    return embed, help_category_menu
 
 
 help_category_menu = interactions.StringSelectMenu(

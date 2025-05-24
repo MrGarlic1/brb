@@ -21,14 +21,14 @@ import Core.botdata as bd
 from Features.Responses.data import gen_resp_list, load_responses
 from Features.Trains.data import gen_rules_embed, load_trains_game
 from Features.Bingo.data import load_bingo_game
-from Features.Help.data import gen_help_embed
+from Features.Help.data import gen_help_embed, help_pages
 
 
 # Class Definitions
 @dataclass
 class ListMsg:
     def __init__(
-            self, num: int, page: int | str, guild: interactions.Guild, channel: interactions.BaseChannel,
+            self, num: int, page: int, guild: interactions.Guild, channel: interactions.BaseChannel,
             msg_type: str, payload=None
     ):
         self.num = num
@@ -264,13 +264,13 @@ def handle_page_change(ctx: interactions.api.events.Component.ctx) -> tuple[
         if msg.num != int(ctx.message.id):
             continue
 
-        game = msg.payload
-
         if ctx.custom_id == "help_category":
             if not ctx.values:
-                bd.active_msgs[idx].page = "general"
-            bd.active_msgs[idx].page = ctx.values[0]
-            embed, components = gen_help_embed()
+                bd.active_msgs[idx].page = help_pages["general"]
+            bd.active_msgs[idx].page = help_pages[ctx.values[0]]
+            embed, components = gen_help_embed(bd.active_msgs[idx].page, expired=False)
+
+        game = msg.payload
 
         # Update page num
         if ctx.custom_id == "prevpg":
