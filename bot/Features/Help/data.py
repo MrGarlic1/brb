@@ -29,8 +29,9 @@ def gen_help_embed(page: int, expired: bool = False) -> (interactions.Embed, int
     embed.set_author(name=f"Response Bot Help", icon_url=bd.bot_avatar_url)
     footer_end: str = ' | This message is inactive.' if expired else ' | This message deactivates after 5 minutes.'
     embed.set_footer(text=footer_end)
+    category = [category for category, pagenum in help_pages.items() if pagenum == page][0].title()
     embed.add_field(
-        name=f"{[category for category, pagenum in help_pages.items() if pagenum == category][0].title()} Commands",
+        name=f"{category} Commands",
         value=help_msgs[page]
     )
     return embed, help_category_menu
