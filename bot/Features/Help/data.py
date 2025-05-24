@@ -34,11 +34,12 @@ def gen_help_embed(page: int, expired: bool = False) -> (interactions.Embed, int
         name=f"{category} Commands",
         value=help_msgs[page]
     )
-    return embed, help_category_menu
+    components = help_category_menu if not expired else None
+    return embed, components
 
 
 help_category_menu = interactions.StringSelectMenu(
-    interactions.StringSelectOption(value="general", label="General", default=True, emoji="🌎"),
+    interactions.StringSelectOption(value="general", label="General", emoji="🌎"),
     interactions.StringSelectOption(value="response", label="Response", emoji="📣"),
     interactions.StringSelectOption(value="trains", label="Trains", emoji="🚅"),
     interactions.StringSelectOption(value="bingo", label="Bingo", emoji="🎱"),

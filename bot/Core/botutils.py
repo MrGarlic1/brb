@@ -128,6 +128,8 @@ async def close_msg(list_msg: ListMsg, delay: int, ctx: interactions.SlashContex
 
     if list_msg.msg_type == "rsplist":
         embed = gen_resp_list(ctx.guild, list_msg.page, True)
+    elif list_msg.msg_type == "help":
+        embed = gen_help_embed(page=list_msg.page, expired=True)
     elif list_msg.msg_type == "trainrules":
         embed = gen_rules_embed(list_msg.page, True)
     elif list_msg.msg_type == "bingoboard":
@@ -259,7 +261,7 @@ def handle_page_change(ctx: interactions.api.events.Component.ctx) -> tuple[
 ]:
     image = None
     embed = None
-    components = [nextpg_button(), prevpg_button()]
+    components = None
     for idx, msg in enumerate(bd.active_msgs):  # Search active messages for correct one
         if msg.num != int(ctx.message.id):
             continue
@@ -269,6 +271,7 @@ def handle_page_change(ctx: interactions.api.events.Component.ctx) -> tuple[
                 bd.active_msgs[idx].page = help_pages["general"]
             bd.active_msgs[idx].page = help_pages[ctx.values[0]]
             embed, components = gen_help_embed(bd.active_msgs[idx].page, expired=False)
+            continue
 
         game = msg.payload
 
@@ -295,6 +298,8 @@ def handle_page_change(ctx: interactions.api.events.Component.ctx) -> tuple[
             embed = gen_rules_embed(bd.active_msgs[idx].page, False)
         elif msg.msg_type == "rsplist":
             embed = gen_resp_list(ctx.guild, bd.active_msgs[idx].page, False)
+
+        components = [nextpg_button(), prevpg_button()]
         break
 
     return embed, components, image
