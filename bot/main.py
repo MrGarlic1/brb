@@ -32,6 +32,7 @@ async def on_guild_join(event: interactions.api.events.GuildJoin):
 @interactions.listen()
 async def on_ready():
     guilds = bot.guilds
+    bd.bot_avatar_url = bot.user.avatar_url
     assert guilds, "Error connecting to Discord, no guilds listed."
 
     bu.load_anilist_caches()
