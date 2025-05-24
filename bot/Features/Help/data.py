@@ -39,7 +39,7 @@ def gen_help_embed(page: int, expired: bool = False) -> (interactions.Embed, int
 
 help_category_menu = interactions.StringSelectMenu(
     interactions.StringSelectOption(value="general", label="General", default=True, emoji="🌎"),
-    interactions.StringSelectOption(value="responses", label="Responses", emoji="📣"),
+    interactions.StringSelectOption(value="response", label="Response", emoji="📣"),
     interactions.StringSelectOption(value="trains", label="Trains", emoji="🚅"),
     interactions.StringSelectOption(value="bingo", label="Bingo", emoji="🎱"),
     interactions.StringSelectOption(value="config", label="Config", emoji="⚙"),
