@@ -129,12 +129,12 @@ async def close_msg(list_msg: ListMsg, delay: int, ctx: interactions.SlashContex
     if list_msg.msg_type == "rsplist":
         embed = gen_resp_list(ctx.guild, list_msg.page, True)
     elif list_msg.msg_type == "help":
-        embed = gen_help_embed(page=list_msg.page, expired=True)
+        embed, _ = gen_help_embed(page=list_msg.page, expired=True)
     elif list_msg.msg_type == "trainrules":
         embed = gen_rules_embed(list_msg.page, True)
     elif list_msg.msg_type == "bingoboard":
         sender_idx, _ = list_msg.payload.get_player(player_id=ctx.author_id)
-        embed, image = list_msg.payload.gen_board_embed(
+        embed, _ = list_msg.payload.gen_board_embed(
             page=list_msg.page, sender_idx=sender_idx, expired=True
         )
     else:
