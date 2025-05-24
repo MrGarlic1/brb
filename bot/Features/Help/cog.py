@@ -12,7 +12,8 @@ class Help(interactions.Extension):
         dm_permission=True,
     )
     async def display_help(self, ctx: interactions.SlashContext):
-        help_msg = await ctx.send(embed=hp.gen_help_embed(page=0, expired=False), components=hp.help_category_menu)
+        embed, components = hp.gen_help_embed(page=0, expired=False)
+        help_msg = await ctx.send(embed=embed, components=hp.help_category_menu)
         sent = bu.ListMsg(
             num=help_msg.id, page=0, guild=ctx.guild, channel=ctx.channel, msg_type="help", payload=None
         )
