@@ -1,6 +1,5 @@
 import httpx
 import asyncio
-from time import perf_counter
 
 
 def anilist_id_from_url(url: str, is_character: bool = False) -> int | None:
@@ -94,16 +93,24 @@ def query_character(*, character_id: int):
 
 
 async def query_media_list_recs(*, user_id: int, manga: bool = False):
-    query = """
-    query User($userId: Int) {
-      User(id: $userId) {
-        statistics {
-          anime {
+    media_type = "manga" if manga else "anime"
+    query = f"""
+    query User($userId: Int) {{
+      User(id: $userId) {{
+        statistics {{
+          {media_type} {{
             count
-          }
-        }
-      }
-    }
+            meanScore
+            standardDeviation
+            genres {{
+              count
+              genre
+              meanScore
+            }}
+          }}
+        }}
+      }}
+    }}
     """
     variables = {
         "userId": user_id,
@@ -119,8 +126,9 @@ async def query_media_list_recs(*, user_id: int, manga: bool = False):
 
     if response.status_code != 200:
         return None
+    watched_count = response.json()["data"]["User"]["statistics"][media_type]["count"]
+    user_statistics = response.json()["data"]["User"]["statistics"][media_type]
 
-    watched_count = response.json()["data"]["User"]["statistics"]["anime"]["count"]
     if not watched_count:
         return None
 
@@ -132,11 +140,13 @@ async def query_media_list_recs(*, user_id: int, manga: bool = False):
             score
             media {
               id
+              popularity
               recommendations(sort: $sort, perPage: $perPage) {
                 nodes {
                   rating
                   mediaRecommendation {
                     id
+                    genres
                     meanScore
                     popularity
                     relations {
@@ -163,7 +173,7 @@ async def query_media_list_recs(*, user_id: int, manga: bool = False):
             "userId": user_id,
             "type": "MANGA" if manga else "ANIME",
             "statusNotIn": "PLANNING",
-            "perPage": 10,
+            "perPage": 8,
             "sort": "RATING_DESC",
             "perChunk": chunk_size,
             "chunk": chunk
@@ -192,7 +202,7 @@ async def query_media_list_recs(*, user_id: int, manga: bool = False):
             anime_list = anime_list["entries"]
             full_rec_list += anime_list
 
-    return full_rec_list
+    return user_statistics, full_rec_list
 
 
 def query_user_id(username: str) -> int | None:
