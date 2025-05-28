@@ -7,11 +7,11 @@ from Core.anilist import query_media_list_recs
 from json import dump
 
 
-def fetch_recommendations(anilist_id: int, manga: bool = False) -> None:
+async def fetch_recommendations(anilist_id: int, manga: bool = False) -> None:
 
-    list_data = query_media_list_recs(user_id=anilist_id, manga=manga)
+    list_data = await query_media_list_recs(user_id=anilist_id, manga=manga)
     if not list_data:
-        raise RequestError
+        raise RequestError("An error occurred completing the request.")
 
     # Obtain average user score for user score weighing
 
@@ -84,18 +84,18 @@ def fetch_recommendations(anilist_id: int, manga: bool = False) -> None:
     return None
 
 
-def get_recommendation(anilist_id: int, listall: int, force_update: bool = False, manga: bool = False) -> str:
+async def get_recommendation(anilist_id: int, listall: int, force_update: bool = False, manga: bool = False) -> str:
     known_recs = bd.known_manga_recs if manga else bd.known_anime_recs
 
     if anilist_id not in known_recs or force_update:
         try:
-            fetch_recommendations(anilist_id, manga=manga)
+            await fetch_recommendations(anilist_id, manga=manga)
         except RequestError:
             return "Error fetching recommendations. Please try again later."
     time_delta = ((datetime.now() - datetime.strptime(known_recs[anilist_id]["date"], bd.date_format))
                   .total_seconds())
     if time_delta > 345600:
-        fetch_recommendations(anilist_id)
+        await fetch_recommendations(anilist_id)
 
     recs = known_recs[anilist_id]["recs"]
 

@@ -1,4 +1,6 @@
 import httpx
+import asyncio
+from time import perf_counter
 
 
 def anilist_id_from_url(url: str, is_character: bool = False) -> int | None:
@@ -91,22 +93,60 @@ def query_character(*, character_id: int):
     return response.json()["data"]["Character"]
 
 
-def query_media_list_recs(*, user_id: int, manga: bool = False):
+async def query_media_list_recs(*, user_id: int, manga: bool = False):
     query = """
-    query MediaListCollection($userId: Int, $type: MediaType, $sort: [RecommendationSort], $statusNotIn: [MediaListStatus]) {
-      MediaListCollection(userId: $userId, type: $type, status_not_in: $statusNotIn) {
+    query User($userId: Int) {
+      User(id: $userId) {
+        statistics {
+          anime {
+            count
+          }
+        }
+      }
+    }
+    """
+    variables = {
+        "userId": user_id,
+    }
+
+    try:
+        response = httpx.post(
+            url="https://graphql.anilist.co",
+            json={"query": query, "variables": variables},
+        )
+    except httpx.ReadTimeout:
+        return None
+
+    if response.status_code != 200:
+        return None
+
+    watched_count = response.json()["data"]["User"]["statistics"]["anime"]["count"]
+    if not watched_count:
+        return None
+
+    query = """
+    query MediaListCollection($userId: Int, $type: MediaType, $statusNotIn: [MediaListStatus], $sort: [RecommendationSort], $perPage: Int, $perChunk: Int, $chunk: Int) {
+      MediaListCollection(userId: $userId, type: $type, status_not_in: $statusNotIn, perChunk: $perChunk, chunk: $chunk) {
         lists {
           entries {
             score
             media {
               id
-              recommendations(sort: $sort) {
+              recommendations(sort: $sort, perPage: $perPage) {
                 nodes {
                   rating
                   mediaRecommendation {
                     id
                     meanScore
                     popularity
+                    relations {
+                      edges {
+                        relationType
+                      }
+                      nodes {
+                        id
+                      }
+                    }
                   }
                 }
               }
@@ -116,29 +156,41 @@ def query_media_list_recs(*, user_id: int, manga: bool = False):
       }
     }
     """
-    media_type = "MANGA" if manga else "ANIME"
-    variables = {
-        "userId": user_id,
-        "type": media_type,
-        "statusNotIn": "PLANNING",
-        "sort": "RATING_DESC"
-    }
-    try:
-        response = httpx.post(
-            url="https://graphql.anilist.co",
-            json={"query": query, "variables": variables},
-            timeout=20.0
-        )
-    except httpx.ReadTimeout:
-        return None
+    chunk_size = 100
 
-    if response.status_code != 200:
-        return None
+    async def query_list_recommendations(session: httpx.AsyncClient, chunk):
+        req_vars = {
+            "userId": user_id,
+            "type": "MANGA" if manga else "ANIME",
+            "statusNotIn": "PLANNING",
+            "perPage": 10,
+            "sort": "RATING_DESC",
+            "perChunk": chunk_size,
+            "chunk": chunk
+        }
+        data = await session.post(
+            url="https://graphql.anilist.co",
+            json={"query": query, "variables": req_vars},
+            timeout=10
+        )
+        return data
+
+    tasks: list = []
+
+    async with httpx.AsyncClient() as client:
+        for i in range(1, watched_count // chunk_size + 2):
+            tasks.append(query_list_recommendations(client, i))
+
+        raw_list_data = await asyncio.gather(*tasks)
 
     full_rec_list: list = []
-    for anime_list in response.json()["data"]["MediaListCollection"]["lists"]:
-        anime_list = anime_list["entries"]
-        full_rec_list += anime_list
+    for data_chunk in raw_list_data:
+        if data_chunk.status_code != 200:
+            continue
+        data_chunk = data_chunk.json()["data"]["MediaListCollection"]["lists"]
+        for anime_list in data_chunk:
+            anime_list = anime_list["entries"]
+            full_rec_list += anime_list
 
     return full_rec_list
 

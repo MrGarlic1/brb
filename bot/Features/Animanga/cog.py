@@ -30,7 +30,7 @@ class Anime(interactions.Extension):
             return True
         await ctx.defer()
         await ctx.send(
-            content=am.get_recommendation(
+            content=await am.get_recommendation(
                 anilist_id=bd.linked_profiles[ctx.author_id], listall=listall, force_update=force
             )
         )
@@ -61,7 +61,7 @@ class Anime(interactions.Extension):
             return True
         await ctx.defer()
         await ctx.send(
-            content=am.get_recommendation(
+            content=await am.get_recommendation(
                 anilist_id=bd.linked_profiles[ctx.author_id], listall=listall, force_update=force, manga=True
             )
         )
