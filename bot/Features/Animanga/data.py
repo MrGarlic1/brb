@@ -102,9 +102,12 @@ async def fetch_recommendations(anilist_id: int = None, manga: bool = False, req
                 )
 
     # Sort recommendations by score then take the top 20, add random variation of +-20%
+    recommendation_scores = {
+        k: v*uniform(0.8, 1.2) for k, v in recommendation_scores.items()
+    }
     recommendation_scores = dict(sorted(recommendation_scores.items(), key=lambda item: item[1], reverse=True))
     recommendation_scores = {
-        k: v*uniform(0.8, 1.2) for i, (k, v) in enumerate(recommendation_scores.items()) if i < 20 and v >= 0
+        k: v for i, (k, v) in enumerate(recommendation_scores.items()) if i < 20 and v >= 0
     }
 
     # Normalize scores and apply filter for logical percentages
