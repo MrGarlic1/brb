@@ -88,7 +88,7 @@ class Anime(interactions.Extension):
             ctx.guild,
             channel,
             "rec",
-            {"anilist_id": bd.linked_profiles[ctx.author_id], "genre": genre, "animanga": animanga}
+            {"anilist_id": bd.linked_profiles[ctx.author_id], "genre": genre, "animanga": medium}
         )
 
         bd.active_msgs.append(sent)
