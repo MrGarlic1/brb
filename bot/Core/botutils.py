@@ -22,6 +22,7 @@ from Features.Responses.data import gen_resp_list, load_responses
 from Features.Trains.data import gen_rules_embed, load_trains_game
 from Features.Bingo.data import load_bingo_game
 from Features.Help.data import gen_help_embed, help_pages
+from Features.Animanga.data import get_rec_embed, next_rec_button, prev_rec_button
 
 
 # Class Definitions
@@ -66,18 +67,6 @@ def load_anilist_caches() -> None:
             json.dump({}, f, separators=(",", ":"))
     with open(f"{bd.parent}/Data/linked_profiles.json", "r") as f:
         bd.linked_profiles = {int(key): int(val) for key, val in json.load(f).items()}
-
-    if not path.exists(f"{bd.parent}/Data/manga_rec_cache.json"):
-        with open(f"{bd.parent}/Data/manga_rec_cache.json", "w") as f:
-            json.dump({}, f, separators=(",", ":"))
-    with open(f"{bd.parent}/Data/manga_rec_cache.json", "r") as f:
-        bd.known_manga_recs = {int(key): val for key, val in json.load(f).items()}
-
-    if not path.exists(f"{bd.parent}/Data/anime_rec_cache.json"):
-        with open(f"{bd.parent}/Data/anime_rec_cache.json", "w") as f:
-            json.dump({}, f, separators=(",", ":"))
-    with open(f"{bd.parent}/Data/anime_rec_cache.json", "r") as f:
-        bd.known_anime_recs = {int(key): val for key, val in json.load(f).items()}
 
 
 def load_config(guild: interactions.Guild) -> None:
@@ -271,6 +260,20 @@ def handle_page_change(ctx: interactions.api.events.Component.ctx) -> tuple[
                 bd.active_msgs[idx].page = help_pages["general"]
             bd.active_msgs[idx].page = help_pages[ctx.values[0]]
             embed, components = gen_help_embed(bd.active_msgs[idx].page, expired=False)
+            continue
+
+        if msg.msg_type == "rec":
+            if ctx.custom_id == "next_rec":
+                msg.page += 1
+            else:
+                msg.page -= 1
+            embed = get_rec_embed(
+                anilist_id=msg.payload["anilist_id"],
+                genre=msg.payload["genre"],
+                media_type=msg.payload["animanga"],
+                page=msg.page
+            )
+            components = [prev_rec_button(), next_rec_button()]
             continue
 
         game = msg.payload
