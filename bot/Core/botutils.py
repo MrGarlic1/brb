@@ -268,6 +268,7 @@ def handle_page_change(ctx: interactions.api.events.Component.ctx) -> tuple[
             else:
                 msg.page -= 1
             embed = get_rec_embed(
+                username=msg.payload["username"],
                 anilist_id=msg.payload["anilist_id"],
                 genre=msg.payload["genre"],
                 media_type=msg.payload["animanga"],

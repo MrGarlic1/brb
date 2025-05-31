@@ -75,6 +75,7 @@ class Anime(interactions.Extension):
             return True
 
         embed = am.get_rec_embed(
+            username=ctx.user.username,
             anilist_id=bd.linked_profiles[ctx.author_id],
             media_type=medium,
             genre=genre,
@@ -88,7 +89,12 @@ class Anime(interactions.Extension):
             ctx.guild,
             channel,
             "rec",
-            {"anilist_id": bd.linked_profiles[ctx.author_id], "genre": genre, "animanga": medium}
+            {
+                "username": ctx.user.username,
+                "anilist_id": bd.linked_profiles[ctx.author_id],
+                "genre": genre,
+                "animanga": medium
+            }
         )
 
         bd.active_msgs.append(sent)

@@ -413,12 +413,13 @@ async def check_recommendation(
 
 
 def get_rec_embed(
-    anilist_id: int, media_type: str, genre: str, page: int
+    username: str, anilist_id: int, media_type: str, genre: str, page: int
 ) -> Embed:
     """
     Generate an embed with the recommended media.
 
     Args:
+        username (str): Discord display name
         anilist_id (str): Anilist username to recommend for
         media_type (str): Specify to recommend manga/anime
         genre (str): Limit recommendations to specified genre
@@ -437,7 +438,7 @@ def get_rec_embed(
     if genre:
         recs = [rec for rec in recs if genre in rec.genres]
 
-    embed = Embed(color=color, title=f'Recommendation for {anilist_id}')
+    embed = Embed(color=color, title=f'Recommendation for {username}')
     if not recs:
         embed.description = "I couldn't find any recommendations!"
         return embed
