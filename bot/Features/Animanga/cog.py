@@ -9,7 +9,7 @@ from httpx import RequestError
 class Anime(interactions.Extension):
     @interactions.slash_command(
         name="recommend",
-        sub_cmd_description="Have the bot recommend animanga for you.",
+        description="Have the bot recommend anime/manga for you.",
         dm_permission=True,
     )
     @interactions.slash_option(
