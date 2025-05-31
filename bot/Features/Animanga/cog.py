@@ -1,20 +1,16 @@
 import interactions
 import Core.botdata as bd
 import Features.Animanga.data as am
+import Core.botutils as bu
+from asyncio import create_task
+from httpx import RequestError
 
 
 class Anime(interactions.Extension):
     @interactions.slash_command(
-        name="anime",
-        sub_cmd_name="recommend",
-        sub_cmd_description="Have the bot recommend a show for you.",
+        name="recommend",
+        sub_cmd_description="Have the bot recommend animanga for you.",
         dm_permission=True,
-    )
-    @interactions.slash_option(
-        name="listall",
-        description="Show a list of all recommendations.",
-        required=False,
-        opt_type=interactions.OptionType.BOOLEAN
     )
     @interactions.slash_option(
         name="genre",
@@ -43,53 +39,60 @@ class Anime(interactions.Extension):
         ]
     )
     @interactions.slash_option(
+        name="medium",
+        description="Choose to recommend anime/manga",
+        required=False,
+        opt_type=interactions.OptionType.STRING,
+        choices=[
+            interactions.SlashCommandChoice(name="Anime", value="anime"),
+            interactions.SlashCommandChoice(name="Manga", value="manga")
+        ]
+    )
+    @interactions.slash_option(
         name="force",
         description="Force updates anilist stats. WILL BE SLOW.",
         required=False,
         opt_type=interactions.OptionType.BOOLEAN,
     )
-    async def show_anime_rec(
-            self, ctx: interactions.SlashContext, listall: bool = False, genre: str = "", force: bool = False
+    async def show_animanga_rec(
+            self, ctx: interactions.SlashContext, genre: str = "", medium: str = "anime", force: bool = False
     ):
         if ctx.author_id not in bd.linked_profiles:
             await ctx.send(
                 content=f"Your anilist profile isn't linked! (/anilist link)"
             )
             return True
+
         await ctx.defer()
-        await ctx.send(
-            content=await am.get_recommendation(
-                anilist_id=bd.linked_profiles[ctx.author_id], listall=listall, requested_genre=genre, force_update=force
+        try:
+            await am.check_recommendation(
+                anilist_id=bd.linked_profiles[ctx.author_id],
+                media_type=medium,
+                force_update=force,
             )
+        except RequestError:
+            await ctx.send("An error occurred connecting to Anilist. Please try again later.")
+            return True
+
+        embed = am.get_rec_embed(
+            anilist_id=bd.linked_profiles[ctx.author_id],
+            media_type=medium,
+            genre=genre,
+            page=0,
+        )
+        rec_msg = await ctx.send(embed=embed, components=[am.prev_rec_button(), am.next_rec_button()])
+        channel = ctx.channel
+        sent = bu.ListMsg(
+            rec_msg.id,
+            0,
+            ctx.guild,
+            channel,
+            "rec",
+            {"anilist_id": bd.linked_profiles[ctx.author_id], "genre": genre, "animanga": animanga}
         )
 
-    @interactions.slash_command(
-        name="manga",
-        sub_cmd_name="recommend",
-        sub_cmd_description="Have the bot recommend a manga for you.",
-        dm_permission=True,
-    )
-    @interactions.slash_option(
-        name="listall",
-        description="Show a list of all recommendations.",
-        required=False,
-        opt_type=interactions.OptionType.BOOLEAN
-    )
-    @interactions.slash_option(
-        name="force",
-        description="Force updates anilist stats. WILL BE SLOW.",
-        required=False,
-        opt_type=interactions.OptionType.BOOLEAN,
-    )
-    async def show_manga_rec(self, ctx: interactions.SlashContext, listall: bool = False, force: bool = False):
-        if ctx.author_id not in bd.linked_profiles:
-            await ctx.send(
-                content=f"Your anilist profile isn't linked! (/anilist link)"
-            )
-            return True
-        await ctx.defer()
-        await ctx.send(
-            content=await am.get_recommendation(
-                anilist_id=bd.linked_profiles[ctx.author_id], listall=listall, force_update=force, manga=True
-            )
+        bd.active_msgs.append(sent)
+        _ = create_task(
+            bu.close_msg(sent, 300, ctx)
         )
+        return False
