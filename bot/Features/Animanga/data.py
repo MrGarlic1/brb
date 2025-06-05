@@ -17,12 +17,14 @@ class MediaRec:
         score: float = 0,
         genres: list[str] = (),
         cover_url: str = None,
+        mean_score: float = None
     ):
         self.media_id = media_id
         self.title = title
         self.score = score
         self.genres = genres
         self.cover_url = cover_url
+        self.mean_score = mean_score
 
     def __lt__(self, other):
         return self.score < other.score
@@ -242,7 +244,7 @@ def calculate_rec_scores(
         list[MediaRec]: List of user's recommendations
     """
     # Obtain max user score, collect watched show info
-    max_score = 0
+    max_score = 1
     max_popularity = 0
     seen_show_ids = []
     for entry in list_data:
@@ -259,11 +261,12 @@ def calculate_rec_scores(
         if not genre['meanScore']:
             user_genre_scores[genre_name] = 0
         user_genre_scores[genre_name] = (
-            genre['meanScore'] - user_stats['meanScore']
-        ) / 100
+                                                genre['meanScore'] - user_stats['meanScore']
+                                        ) / 100 + (genre['count'] - 0.5 * len(seen_show_ids)) / len(
+            seen_show_ids
+        ) * 0.16
 
     recommendation_scores: dict[int:MediaRec] = {}
-
     for entry in list_data:
         if not entry['media']['recommendations']['nodes']:
             continue
@@ -275,6 +278,8 @@ def calculate_rec_scores(
         max_rec_rating = entry['media']['recommendations']['nodes'][0]['rating']
         if max_rec_rating == 0:
             continue
+
+        favorite_weight = 3 if entry['media']['id'] in user_favorites else 1
 
         for show_rec in entry['media']['recommendations']['nodes'][0:max_recs]:
             # Filter out bad data from anilist
@@ -288,56 +293,63 @@ def calculate_rec_scores(
             # Filter out shows with prequels that have not been seen yet
             try:
                 if any(
-                    related_show[0]['relationType'] == 'PREQUEL'
-                    and related_show[1]['id'] not in seen_show_ids
-                    for related_show in zip(
-                        show_rec['mediaRecommendation']['relations']['edges'],
-                        show_rec['mediaRecommendation']['relations']['nodes'],
-                    )
+                        related_show[0]['relationType'] == 'PREQUEL'
+                        and related_show[1]['id'] not in seen_show_ids
+                        for related_show in zip(
+                            show_rec['mediaRecommendation']['relations']['edges'],
+                            show_rec['mediaRecommendation']['relations']['nodes'],
+                        )
                 ):
                     continue
             except KeyError:
                 pass
 
             # Scoring
-            node_score_weight = 0 if entry['score'] == 0 else 1
+            node_score_weight = 0 if entry['score'] == 0 else 0.8
             node_score = node_score_weight * (
-                entry['score'] / max_score - user_stats['meanScore'] / 100
+                    entry['score'] / max_score - user_stats['meanScore'] / 100
             )
             rec_show_score_weight = 1
             rec_show_score = (
-                rec_show_score_weight
-                * (show_rec['mediaRecommendation']['meanScore'] - 65)
-                / 100
+                    rec_show_score_weight
+                    * (show_rec['mediaRecommendation']['meanScore'] - 65)
+                    / 100
             )
             rec_pop_factor = (
-                1 - show_rec['mediaRecommendation']['popularity'] / max_popularity
+                    1 - show_rec['mediaRecommendation']['popularity'] / max_popularity
             )
-            rec_pop_factor = rec_pop_factor**1.5 if rec_pop_factor > 0 else 0.1
-            rec_genre_score_weight = 0.75
+            rec_pop_factor = rec_pop_factor ** 1.5 if rec_pop_factor > 0 else 0.1
+            rec_genre_score_weight = 1.5
             rec_genre_score = 0
             for genre in show_rec['mediaRecommendation']['genres']:
                 try:
-                    rec_genre_score += user_genre_scores[genre]
-                except KeyError:
+                    rec_genre_score += user_genre_scores[genre] / len(
+                        show_rec['mediaRecommendation']['genres']
+                    ) ** (1 / 2)
+                except KeyError or ZeroDivisionError:
                     continue
                 rec_genre_score *= rec_genre_score_weight
 
             rec_total_weight = show_rec['rating'] / max_rec_rating
             total_rec_score = (
-                (node_score + rec_show_score + rec_genre_score)
-                * rec_total_weight
-                * rec_pop_factor
+                    (node_score + rec_show_score + rec_genre_score)
+                    * rec_total_weight
+                    * rec_pop_factor
+                    * favorite_weight
             )
             if show_rec['mediaRecommendation']['id'] not in recommendation_scores:
                 recommendation_scores[show_rec['mediaRecommendation']['id']] = (
                     MediaRec(
                         media_id=show_rec['mediaRecommendation']['id'],
                         title=show_rec['mediaRecommendation']['title']['romaji'],
-                        genres=show_rec['mediaRecommendation']['genres'],
+                        genres=[
+                            genre.lower()
+                            for genre in show_rec['mediaRecommendation']['genres']
+                        ],
                         cover_url=show_rec['mediaRecommendation']['coverImage'][
                             'large'
                         ],
+                        mean_score=show_rec['mediaRecommendation']['meanScore'],
                     )
                 )
             recommendation_scores[
@@ -448,7 +460,7 @@ def get_rec_embed(
 
     embed.description = f"""
 **{rec.title}** - https://anilist.co/{media_type}/{rec.media_id}/
-*Genres - {', '.join(rec.genres)}*
+{rec.mean_score}% | *{', '.join(rec.genres)}*
 *Recommendation strength - {rec.score:.2f}%*
 """
     embed.set_thumbnail(url=rec.cover_url)
