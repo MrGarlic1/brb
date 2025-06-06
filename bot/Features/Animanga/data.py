@@ -406,11 +406,11 @@ async def check_recommendation(
         time_delta = 0
     if anilist_id not in known_recs or force_update or time_delta > 345600:
 
-        list_data, user_stats, user_favorites = await self.fetch_recommendations(
+        list_data, user_stats, user_favorites = await fetch_recommendations(
             anilist_id=anilist_id,
             media_type=media_type,
         )
-        recommendation_scores = self.calculate_rec_scores(
+        recommendation_scores = calculate_rec_scores(
             list_data=list_data,
             user_stats=user_stats,
             user_favorites=user_favorites,
