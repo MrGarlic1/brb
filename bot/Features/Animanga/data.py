@@ -200,7 +200,7 @@ async def query_media_recs(
 
 async def fetch_recommendations(
     anilist_id: int, media_type: str
-) -> tuple[list, dict]:
+) -> tuple[list, dict, list]:
     """
     Wrapper function for fetching anilist data for animanga recs
 
@@ -214,24 +214,27 @@ async def fetch_recommendations(
     Raises:
         RequestError if either user statistics or list data is empty
     """
-    user_stats = await query_user_statistics(
-        anilist_id=anilist_id, media_type=media_type
+    user_data = await self.query_user_statistics(
+        anilist_username=anilist_username, media_type=media_type
     )
-    if not user_stats:
+    if not user_data:
         raise RequestError('Error obtaining data from anilist.')
-    list_data = await query_media_recs(
-        anilist_id=anilist_id,
+    user_stats = user_data['statistics'][media_type]
+    user_favorites = user_data['favourites'][media_type]
+
+    list_data = await self.query_media_recs(
+        anilist_username=anilist_username,
         media_type=media_type,
         watched_count=user_stats['count'],
     )
     if not list_data:
         raise RequestError('Error obtaining data from anilist.')
 
-    return list_data, user_stats
+    return list_data, user_stats, user_favorites
 
 
 def calculate_rec_scores(
-    list_data: list[dict], user_stats: dict
+    list_data: list[dict], user_stats: dict, user_favorites: list
 ) -> list[MediaRec]:
     """
     Scoring algorithm for animanga recs
@@ -239,6 +242,7 @@ def calculate_rec_scores(
     Args:
         list_data (list[dict]): Anilist media list collection data
         user_stats (dict): Anilist user statistics
+        user_favorites (list): List of anilist user favorited media IDs
 
     Returns:
         list[MediaRec]: List of user's recommendations
@@ -402,13 +406,14 @@ async def check_recommendation(
         time_delta = 0
     if anilist_id not in known_recs or force_update or time_delta > 345600:
 
-        list_data, user_stats = await fetch_recommendations(
+        list_data, user_stats, user_favorites = await self.fetch_recommendations(
             anilist_id=anilist_id,
             media_type=media_type,
         )
-        recommendation_scores = calculate_rec_scores(
+        recommendation_scores = self.calculate_rec_scores(
             list_data=list_data,
             user_stats=user_stats,
+            user_favorites=user_favorites,
         )
 
         if media_type.lower() == 'manga':
