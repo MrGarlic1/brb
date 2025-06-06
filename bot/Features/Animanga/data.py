@@ -66,7 +66,7 @@ async def query_user_statistics(
     query User($userId: Int) {{
       User(id: $userId) {{
         statistics {{
-          {media_type.lower()} {{
+          {media_type} {{
             count
             meanScore
             standardDeviation
@@ -74,6 +74,13 @@ async def query_user_statistics(
               count
               genre
               meanScore
+            }}
+          }}
+        }}
+        favourites {{
+          {media_type} {{
+            nodes {{
+              id
             }}
           }}
         }}
@@ -93,9 +100,11 @@ async def query_user_statistics(
         return None
     if not response.json()['data']['User']['statistics'][media_type]['count']:
         return None
-    user_statistics = response.json()['data']['User']['statistics'][media_type]
+    user_data = response.json()['data']['User']
+    favorites = [fav['id'] for fav in user_data['favourites'][media_type]['nodes']]
+    user_data['favourites'][media_type] = favorites
 
-    return user_statistics
+    return user_data
 
 
 async def query_media_recs(
