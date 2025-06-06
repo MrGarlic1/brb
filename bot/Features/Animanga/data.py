@@ -214,16 +214,16 @@ async def fetch_recommendations(
     Raises:
         RequestError if either user statistics or list data is empty
     """
-    user_data = await self.query_user_statistics(
-        anilist_username=anilist_username, media_type=media_type
+    user_data = await query_user_statistics(
+        anilist_id=anilist_id, media_type=media_type
     )
     if not user_data:
         raise RequestError('Error obtaining data from anilist.')
     user_stats = user_data['statistics'][media_type]
     user_favorites = user_data['favourites'][media_type]
 
-    list_data = await self.query_media_recs(
-        anilist_username=anilist_username,
+    list_data = await query_media_recs(
+        anilist_id=anilist_id,
         media_type=media_type,
         watched_count=user_stats['count'],
     )
