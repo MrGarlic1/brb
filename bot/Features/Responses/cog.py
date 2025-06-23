@@ -155,7 +155,7 @@ class Responses(interactions.Extension):
         sent = bu.ListMsg(resp_msg.id, page, ctx.guild, channel, "rsplist")
         bd.active_msgs.append(sent)
         _ = asyncio.create_task(
-            bu.close_msg(sent, 300, ctx, resp_msg)
+            bu.close_msg(sent, 300, ctx)
         )
         return False
 
@@ -253,7 +253,7 @@ class Responses(interactions.Extension):
         trigs: list = []
         # Add autocomplete options if they match input text, remove duplicates. 25 maximum values (discord limit)
         for response in bd.responses[ctx.guild_id]:
-            if response.trig not in trigs and ctx.input_text in response.trig:
+            if response.trig not in trigs and ctx.input_text.lower() in response.trig:
                 trigs.append(response.trig)
         choices = list(map(bu.autocomplete_filter, trigs))
         if len(choices) > 25:

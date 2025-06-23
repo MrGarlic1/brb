@@ -17,7 +17,7 @@ parent: str = f"{path.dirname(path.realpath(__file__))}/.."
 assert "main.py" in listdir(parent), f"Invalid parent directory {parent}, ensure parent is set to where main.py is."
 
 bot_id: int = 887530423826145310
-bot_avatar_url: str = "https://cdn.discordapp.com/attachments/895549688026124321/1103188621193924708/ursa_cm.png"
+bot_avatar_url: str = ""
 train_zones_url: str = "https://i.imgur.com/CRgbw7R.png"
 date_format: str = "%Y/%m/%d %H:%M:%S"
 
@@ -45,4 +45,7 @@ emoji: dict = {
 responses, mentions, config = {}, {}, {}
 active_msgs: list = []
 active_trains: dict = {}
+active_bingos: dict = {}
 linked_profiles: dict = {}
+known_anime_recs: dict = {}
+known_manga_recs: dict = {}

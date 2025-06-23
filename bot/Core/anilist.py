@@ -1,10 +1,13 @@
 import httpx
+import asyncio
 
 
-def anime_id_from_url(url: str) -> int | None:
+def anilist_id_from_url(url: str, is_character: bool = False) -> int | None:
     url = url.lower().split("/")
     url = tuple(filter(None, url))
-    if "anime" not in url:
+    if is_character and "character" not in url:
+        return None
+    if not is_character and "anime" not in url:
         return None
     if url[-1].isdigit():
         return int(url[-1])
@@ -31,6 +34,7 @@ def query_media(*, media_id: int):
       Media(id: $mediaId) {
         episodes
         genres
+        format
         meanScore
         popularity
         season
@@ -59,6 +63,146 @@ def query_media(*, media_id: int):
         return None
 
     return response.json()["data"]["Media"]
+
+
+def query_character(*, character_id: int):
+    query = """
+    query Character($characterId: Int) {
+      Character(id: $characterId) {
+        image {
+          medium
+        }
+        name {
+          full
+        }
+        siteUrl
+      }
+    }
+    """
+    variables = {
+        "characterId": character_id
+    }
+    response = httpx.post(
+        url="https://graphql.anilist.co",
+        json={"query": query, "variables": variables}
+    )
+    if response.status_code != 200:
+        return None
+
+    return response.json()["data"]["Character"]
+
+
+async def query_media_list_recs(*, user_id: int, manga: bool = False):
+    media_type = "manga" if manga else "anime"
+    query = f"""
+    query User($userId: Int) {{
+      User(id: $userId) {{
+        statistics {{
+          {media_type} {{
+            count
+            meanScore
+            standardDeviation
+            genres {{
+              count
+              genre
+              meanScore
+            }}
+          }}
+        }}
+      }}
+    }}
+    """
+    variables = {
+        "userId": user_id,
+    }
+
+    try:
+        response = httpx.post(
+            url="https://graphql.anilist.co",
+            json={"query": query, "variables": variables},
+        )
+    except httpx.ReadTimeout:
+        return None
+
+    if response.status_code != 200:
+        return None
+    watched_count = response.json()["data"]["User"]["statistics"][media_type]["count"]
+    user_statistics = response.json()["data"]["User"]["statistics"][media_type]
+
+    if not watched_count:
+        return None
+
+    query = """
+    query MediaListCollection($userId: Int, $type: MediaType, $statusNotIn: [MediaListStatus], $sort: [RecommendationSort], $perPage: Int, $perChunk: Int, $chunk: Int) {
+      MediaListCollection(userId: $userId, type: $type, status_not_in: $statusNotIn, perChunk: $perChunk, chunk: $chunk) {
+        lists {
+          entries {
+            score
+            media {
+              id
+              popularity
+              recommendations(sort: $sort, perPage: $perPage) {
+                nodes {
+                  rating
+                  mediaRecommendation {
+                    id
+                    genres
+                    meanScore
+                    popularity
+                    relations {
+                      edges {
+                        relationType
+                      }
+                      nodes {
+                        id
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    """
+    chunk_size = 100
+
+    async def query_list_recommendations(session: httpx.AsyncClient, chunk):
+        req_vars = {
+            "userId": user_id,
+            "type": "MANGA" if manga else "ANIME",
+            "statusNotIn": "PLANNING",
+            "perPage": 8,
+            "sort": "RATING_DESC",
+            "perChunk": chunk_size,
+            "chunk": chunk
+        }
+        data = await session.post(
+            url="https://graphql.anilist.co",
+            json={"query": query, "variables": req_vars},
+            timeout=10
+        )
+        return data
+
+    tasks: list = []
+
+    async with httpx.AsyncClient() as client:
+        for i in range(1, watched_count // chunk_size + 2):
+            tasks.append(query_list_recommendations(client, i))
+
+        raw_list_data = await asyncio.gather(*tasks)
+
+    full_rec_list: list = []
+    for data_chunk in raw_list_data:
+        if data_chunk.status_code != 200:
+            continue
+        data_chunk = data_chunk.json()["data"]["MediaListCollection"]["lists"]
+        for anime_list in data_chunk:
+            anime_list = anime_list["entries"]
+            full_rec_list += anime_list
+
+    return user_statistics, full_rec_list
 
 
 def query_user_id(username: str) -> int | None:

@@ -6,18 +6,19 @@ from datetime import datetime, timedelta
 from math import log
 from os import path
 from random import randint, shuffle, choice
-from shutil import rmtree
 from typing import Union
 
 import interactions
+import logging
 import matplotlib.font_manager
 import matplotlib.pyplot as plt
 from PIL import Image, ImageFont, ImageDraw
-from colorama import Fore
 from pilmoji import Pilmoji
 
 import Core.anilist as al
 import Core.botdata as bd
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -604,7 +605,7 @@ class TrainGame:
             )
 
         except AttributeError:
-            print(Fore.YELLOW + f"Could not find user with ID {p.member.id}" + Fore.RESET)
+            logger.warning(f"Could not find user with ID {p.member.id}, removing.")
             del self.players[p_idx]
 
     async def update_boards_after_shot(
@@ -835,7 +836,7 @@ class TrainGame:
         # Adjustments
         label_offset: int = 1
         label_font_size: int = 24
-        font = ImageFont.truetype(f"{bd.parent}/Data/ggsans/ggsans-Bold.ttf", label_font_size)
+        font = ImageFont.truetype(f"{bd.parent}/Static/ggsans/ggsans-Bold.ttf", label_font_size)
         tile_pixels: int = 50
         hidden_tile_color: tuple[int, int, int] = (255, 255, 255)
         border_color: tuple[int, int, int] = (190, 190, 190)
@@ -900,7 +901,7 @@ class TrainGame:
         default_font_size: int = 24
         font_size = default_font_size
         emoji_pixels: int = font_size - 4
-        font = ImageFont.truetype(f"{bd.parent}/Data/ggsans/ggsans-Bold.ttf", font_size)
+        font = ImageFont.truetype(f"{bd.parent}/Static/ggsans/ggsans-Bold.ttf", font_size)
 
         for coords in self.board.keys():
             (row, col) = coords
@@ -950,7 +951,7 @@ class TrainGame:
             while text_pixels > 0.8 * tile_pixels and font_size > 6:
                 font_size -= 2
                 emoji_pixels -= 2
-                font = ImageFont.truetype(f"{bd.parent}/Data/ggsans/ggsans-Bold.ttf", font_size)
+                font = ImageFont.truetype(f"{bd.parent}/Static/ggsans/ggsans-Bold.ttf", font_size)
                 text_pixels = draw.textlength(text=resource_text + rail_text, font=font)
                 if resource_text:
                     text_pixels += emoji_pixels
@@ -966,7 +967,7 @@ class TrainGame:
             if font_size != default_font_size:
                 font_size = default_font_size
                 emoji_pixels = font_size - 4
-                font = ImageFont.truetype(f"{bd.parent}/Data/ggsans/ggsans-Bold.ttf", font_size)
+                font = ImageFont.truetype(f"{bd.parent}/Static/ggsans/ggsans-Bold.ttf", font_size)
 
         try:
             board_img.save(f"{filepath}/{board_name}.png")
@@ -1263,7 +1264,7 @@ class TrainGame:
         return embed, image
 
 
-async def load_game(
+async def load_trains_game(
         filepath: str, guild: interactions.Guild, active_only: bool = False
 ) -> TrainGame | None:
     with open(f"{filepath}/gamedata.json", "r") as f:
@@ -1341,13 +1342,6 @@ async def load_game(
         known_shows={int(show_id): show_info for show_id, show_info in game_dict["known_shows"].items()}
     )
     return game
-
-
-def del_game_files(guild_id: int, game_name: str):
-    try:
-        rmtree(f"{bd.parent}/Guilds/{guild_id}/Trains/{game_name}")
-    except PermissionError:
-        pass
 
 
 def train_game_embed(ctx: interactions.SlashContext, game: TrainGame) -> interactions.Embed:

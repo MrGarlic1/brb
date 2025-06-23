@@ -3,13 +3,11 @@ Ben Samans
 main.py
 """
 
-import json
-from os import path
 from time import sleep
 from time import strftime
 
 import interactions
-from colorama import init, Fore
+import logging
 
 import Core.botdata as bd
 import Core.botutils as bu
@@ -18,7 +16,14 @@ bot = interactions.Client(
     token=bd.token,
     intents=interactions.Intents.DEFAULT | interactions.Intents.MESSAGE_CONTENT | interactions.Intents.GUILDS,
     sync_interactions=True,
-    delete_unused_application_cmds=True
+    delete_unused_application_cmds=True,
+)
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    format='%(asctime)s %(levelname)s:%(name)s: %(message)8s',
+    level=logging.INFO,
+    datefmt='%Y-%m-%d %H:%M:%S'
 )
 
 
@@ -26,33 +31,36 @@ bot = interactions.Client(
 async def on_guild_join(event: interactions.api.events.GuildJoin):
     guild = event.guild
     bu.setup_guild(guild)
-    print(
-        Fore.WHITE + f"{strftime(bd.date_format)}:  " + Fore.RESET + f"Added to guild {guild.id}."
+    logger.info(
+        f"Added to guild {guild.id}"
     )
 
 
 @interactions.listen()
 async def on_ready():
     guilds = bot.guilds
+    bd.bot_avatar_url = bot.user.avatar_url
     assert guilds, "Error connecting to Discord, no guilds listed."
-    if not path.exists(f"{bd.parent}/Data/linked_profiles.json"):
-        with open(f"{bd.parent}/Data/linked_profiles.json", "w") as f:
-            json.dump({}, f, separators=(",", ":"))
-    with open(f"{bd.parent}/Data/linked_profiles.json", "r") as f:
-        bd.linked_profiles = {int(key): int(val) for key, val in json.load(f).items()}
+
+    bu.load_anilist_caches()
 
     bu.load_fonts(f"{bd.parent}/Data")
-    print(
-        Fore.WHITE + f'{strftime(bd.date_format)} :  Connected to the following guilds: ' +
-        Fore.CYAN + ", ".join(guild.name for guild in guilds) + Fore.RESET
+    logger.info(
+        f'Connected to the following guilds: {", ".join(guild.name for guild in guilds)}'
     )
 
     # Load command modules; sleep to avoid rate limit
+    bot.load_extension("Features.Animanga.cog")
+    sleep(.25)
     bot.load_extension("Features.Trains.cog")
     sleep(.25)
     bot.load_extension("Features.Responses.cog")
     sleep(.25)
     bot.load_extension("Features.Config.cog")
+    sleep(.25)
+    bot.load_extension("Features.Bingo.cog")
+    sleep(.25)
+    bot.load_extension("Features.Help.cog")
     sleep(.25)
 
     await bu.init_guilds(guilds=guilds)
@@ -87,8 +95,10 @@ async def on_component(event: interactions.api.events.Component):
 
 
 def main():
-    init()
-    bot.start()
+    try:
+        bot.start()
+    except exception as e:
+        logger.critical(f'Failed to start bot: {e}')
 
 
 if __name__ == "__main__":

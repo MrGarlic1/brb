@@ -13,34 +13,6 @@ import json
 
 class Trains(interactions.Extension):
     @interactions.slash_command(
-        name="anilist",
-        sub_cmd_name="link",
-        sub_cmd_description="Link your discord profile to an anilist profile",
-        dm_permission=True
-    )
-    @interactions.slash_option(
-        name="url",
-        description="Anilist profile link (e.g. https://anilist.co/User/[name]",
-        required=True,
-        opt_type=interactions.OptionType.STRING
-    )
-    async def link_anilist(self, ctx: interactions.SlashContext, url: str):
-        username = al.username_from_url(url)
-        if username is None:
-            await ctx.send(content="Could not find anilist profile, please check URL!")
-            return True
-        anilist_user_id = al.query_user_id(username)
-        if anilist_user_id is None:
-            await ctx.send(content="Could not find anilist profile, please check URL!")
-            return True
-
-        bd.linked_profiles[ctx.author_id] = anilist_user_id
-        with open(f"{bd.parent}/Data/linked_profiles.json", "w") as f:
-            json.dump(bd.linked_profiles, f, separators=(",", ":"))
-        await ctx.send(content=bd.pass_str)
-        return False
-
-    @interactions.slash_command(
         name="trains",
         sub_cmd_name="newgame",
         sub_cmd_description="Create a new trains game",
@@ -285,7 +257,7 @@ class Trains(interactions.Extension):
         )
         bd.active_msgs.append(sent)
         _ = asyncio.create_task(
-            bu.close_msg(sent, 300, ctx, score_msg)
+            bu.close_msg(sent, 300, ctx)
         )
 
     @interactions.slash_command(
@@ -334,7 +306,7 @@ class Trains(interactions.Extension):
             ignore=ignore_patterns("*.png")
         )
         # Get player, validate shot
-        show_id = al.anime_id_from_url(url=link)
+        show_id = al.anilist_id_from_url(url=link)
         if show_id is None:
             await ctx.send(content="Could not find show, please check anilist URL!")
             return True
@@ -376,7 +348,7 @@ class Trains(interactions.Extension):
             )
             bd.active_msgs.append(sent)
             _ = asyncio.create_task(
-                bu.close_msg(sent, 300, ctx, score_msg)
+                bu.close_msg(sent, 300, ctx)
             )
 
     @interactions.slash_command(
@@ -446,7 +418,7 @@ class Trains(interactions.Extension):
 
         else:
             try:
-                game = await tr.load_game(
+                game = await tr.load_trains_game(
                     filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{name}", guild=ctx.guild
                 )
             except FileNotFoundError:
@@ -465,7 +437,7 @@ class Trains(interactions.Extension):
         )
         bd.active_msgs.append(sent)
         _ = asyncio.create_task(
-            bu.close_msg(sent, 300, ctx, stats_msg)
+            bu.close_msg(sent, 300, ctx)
         )
 
     @trains_stats.autocomplete("name")
@@ -530,7 +502,7 @@ class Trains(interactions.Extension):
             game.active = False
             game.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{game.name}")
         else:
-            tr.del_game_files(guild_id=ctx.guild_id, game_name=game.name)
+            bu.del_game_files(guild_id=ctx.guild_id, game_name=game.name, game_type="Trains")
         del bd.active_trains[ctx.guild_id]
         await ctx.send(content=bd.pass_str)
         return False
@@ -554,7 +526,7 @@ class Trains(interactions.Extension):
             await ctx.send("There is already an active game in this server!")
             return True
         try:
-            test_game = await tr.load_game(
+            test_game = await tr.load_trains_game(
                 filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{name}", guild=ctx.guild
             )
         except FileNotFoundError:
@@ -599,6 +571,6 @@ class Trains(interactions.Extension):
         sent = bu.ListMsg(rules_msg.id, page, ctx.guild, channel, "trainrules")
         bd.active_msgs.append(sent)
         _ = asyncio.create_task(
-            bu.close_msg(sent, 300, ctx, rules_msg)
+            bu.close_msg(sent, 300, ctx)
         )
         return False
