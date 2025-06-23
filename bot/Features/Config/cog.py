@@ -11,14 +11,14 @@ config_keys = {
 }
 
 
-class Config(commands.GroupCog, name='config'):
+class ConfigCog(commands.GroupCog, name='config'):
     @app_commands.command(
         name='set',
         description='Configure the bot\'s server settings (admin only)'
     )
     @app_commands.choices(
         setting=[
-            app_commands.Choice(name=config_key, value=config_key) for config_key in config_keys.values()
+            app_commands.Choice(name=config_key, value=config_key) for config_key in config_keys.keys()
         ]
     )
     async def set(self, ctx: Interaction, setting: str, value: str):
@@ -53,9 +53,9 @@ class Config(commands.GroupCog, name='config'):
         if setting not in config_keys:
             choices = []
         elif config_keys[setting] == "MAX_USER_RESPONSES":
-            choices = ["Please enter a positive integer."]
+            choices = [app_commands.Choice(name="Please enter a positive integer", value="None")]
         else:
-            choices = ["True", "False"]
+            choices = [app_commands.Choice(name="True", value="True"), app_commands.Choice(name="False", value="False")]
         return choices
 
     @app_commands.command(
@@ -83,3 +83,7 @@ class Config(commands.GroupCog, name='config'):
                     f"{bd.config[ctx.guild_id]['MAX_USER_RESPONSES']}\n"
                     f"Restrict User Response Deleting: {bd.config[ctx.guild_id]['USER_ONLY_DELETE']}\n"
         )
+
+
+async def setup(bot: commands.Bot):
+    await bot.add_cog(ConfigCog(bot))

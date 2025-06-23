@@ -1,10 +1,10 @@
 import logging
 from pathlib import Path
 
-from discord import Intents, CustomActivity, Status
+from discord import Intents, CustomActivity, Status, Object
 from discord.ext import commands
-from botutils import init_guilds, load_fonts, load_anilist_caches
-import botdata as bd
+from bot.Core.botutils import init_guilds, load_fonts, load_anilist_caches
+import bot.Core.botdata as bd
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ class BrBot(commands.AutoShardedBot):
                 continue
 
             try:
-                cog_path = f'kusogaki_bot.features.{feature_dir.name}.cog'
+                cog_path = f'bot.Features.{feature_dir.name}.cog'
                 await self.load_extension(cog_path)
                 logger.info(f'Loaded feature: {feature_dir.name} ({cog_path})')
             except Exception as e:
@@ -63,11 +63,15 @@ class BrBot(commands.AutoShardedBot):
         """
         logger.info(f'Logged in as {self.user.name}')
         logger.info(f'Bot is in {len(self.guilds)} guilds')
-        bd.bot_avatar_url = self.user.avatar.url
+        if bd.bot_avatar_url:
+            bd.bot_avatar_url = self.user.avatar.url
+        else:
+            bd.bot_avatar_url = 'https://i.imgur.com/4CW85RL.png'
         bd.bot_id = self.user.id
+        # await self.tree.sync()
 
         load_anilist_caches()
-        load_fonts(f"{bd.parent}/Data")
+        load_fonts(f"{bd.parent}/Shared")
 
         await init_guilds(guilds=self.guilds)
         await self.change_presence(status=Status.online, activity=CustomActivity(name='Responding since 2020'))

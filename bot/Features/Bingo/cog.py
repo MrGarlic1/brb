@@ -10,7 +10,7 @@ from discord import app_commands, Interaction, Member
 from discord.ext import commands
 
 
-class Bingo(commands.GroupCog, name='bingo'):
+class BingoCog(commands.GroupCog, name='bingo'):
     @app_commands.command(
         name='newgame',
         description='Create a new bingo game'
@@ -26,19 +26,19 @@ class Bingo(commands.GroupCog, name='bingo'):
 
         # Return errors if game is active or invalid name
         if ctx.guild_id in bd.active_bingos:
-            await ctx.response.send_message(
+            await ctx.followup.send(
                 content=f"The game \"{bd.active_bingos[ctx.guild_id].name}\" is already active in this server."
             )
             return True
         if path.exists(f"{bd.parent}/Guilds/{ctx.guild_id}/Bingo/{name}"):
-            await ctx.response.send_message(content="Name already exists!")
+            await ctx.followup.send(content="Name already exists!")
             return True
 
         async def add_bingo_player(m: Member):
             starting_anilist = await al.query_user_animelist(bd.linked_profiles[m.id])
-
+            dm_channel = await m.create_dm() if m.dm_channel is None else m.dm_channel
             players.append(bi.BingoPlayer(
-                member=m, dmchannel=m.dm_channel, starting_anilist=starting_anilist,
+                member=m, dmchannel=dm_channel, starting_anilist=starting_anilist,
                 )
             )
 
@@ -49,7 +49,7 @@ class Bingo(commands.GroupCog, name='bingo'):
         tasks: list = []
         for member in members:
             if member.id not in bd.linked_profiles:
-                await ctx.response.send_message(
+                await ctx.followup.send(
                     content=f"Could not create game, <@{member.id}> must link their anilist profile! (/anilist link)"
                 )
                 return True
@@ -61,7 +61,7 @@ class Bingo(commands.GroupCog, name='bingo'):
 
         # Return error if player list is empty
         if not players:
-            await ctx.response.send_message(content="No valid players specified.")
+            await ctx.followup.send(content="No valid players specified.")
             return True
 
         # Create game object and set parameters
@@ -79,23 +79,15 @@ class Bingo(commands.GroupCog, name='bingo'):
         try:
             mkdir(f"{bd.parent}/Guilds/{ctx.guild_id}/Bingo/{name}")
         except OSError:
-            await ctx.response.send_message(
+            await ctx.followup.send(
                 content="Invalid name! Game must not contain the following characters: / \\ : * ? < > |"
             )
             return True
 
         # Push updates to player boards
-        await ctx.response.send_message(embed=bi.bingo_game_embed(ctx=ctx, game=game))
+        await ctx.followup.send(embed=bi.bingo_game_embed(ctx=ctx, game=game))
         game.update_boards_after_create(ctx=ctx)
         return False
-
-    @app_commands.command(
-        name='end',
-        description='Command for testing. Shows score screen.'
-    )
-    async def end(self, ctx: Interaction):
-        await ctx.response.defer()
-        await ctx.response.send_message(content=bd.pass_str)
 
     @app_commands.command(
         name='shot',
@@ -109,7 +101,7 @@ class Bingo(commands.GroupCog, name='bingo'):
     async def shot(self, ctx: Interaction, link: str, info: str, tag: str):
         await ctx.response.defer(ephemeral=False)
         if ctx.guild_id not in bd.active_bingos:
-            await ctx.response.send_message(
+            await ctx.followup.send(
                 content="There is no active game! To make one, use /bingo newgame", ephemeral=True
             )
             return True
@@ -128,11 +120,11 @@ class Bingo(commands.GroupCog, name='bingo'):
         sender_idx, player = game.get_player(int(ctx.user.id))
 
         if player is None:
-            await ctx.response.send_message("You are not in this bingo game!")
+            await ctx.followup.send("You are not in this bingo game!")
             return True
 
         if any(shot.tag == tag for shot in player.shots):
-            await ctx.response.send_message(
+            await ctx.followup.send(
                 "You have already shot for this tag. Please select a different tag and try again."
             )
             return True
@@ -142,7 +134,7 @@ class Bingo(commands.GroupCog, name='bingo'):
         )
         shot_type = shot.get_shot_type()
         if not shot_type:
-            await ctx.response.send_message(content="Invalid tag specified. Please check the tag and try again.")
+            await ctx.followup.send(content="Invalid tag specified. Please check the tag and try again.")
             return True
 
         if shot_type == "character":
@@ -150,7 +142,7 @@ class Bingo(commands.GroupCog, name='bingo'):
         else:
             anilist_id = al.anilist_id_from_url(url=link)
         if anilist_id is None:
-            await ctx.response.send_message(content="Could not find show, please check anilist URL!")
+            await ctx.followup.send(content="Could not find show, please check anilist URL!")
             return True
 
         # Fetch anilist information if it isn't already cached
@@ -161,14 +153,14 @@ class Bingo(commands.GroupCog, name='bingo'):
                 anilist_info = al.query_media(media_id=anilist_id)
 
             if anilist_info is None:
-                await ctx.response.send_message(content="Error connecting to anilist, please check URL and try again.")
+                await ctx.followup.send(content="Error connecting to anilist, please check URL and try again.")
                 return True
             game.known_entries[anilist_id] = anilist_info
 
         poll_msg = None
 
         if shot_type == "character":
-            await ctx.response.send_message(content="Sending poll.", ephemeral=True)
+            await ctx.followup.send(content="Sending poll.", ephemeral=True)
             poll_msg = await ctx.channel.send(
                 content=f"Does this character fill the tag [{shot.tag}]?\n\n*(Poll open for 2 hours)*"
             )
@@ -183,7 +175,7 @@ class Bingo(commands.GroupCog, name='bingo'):
         )
 
         if not valid:
-            await ctx.response.send_message(
+            await ctx.followup.send(
                 "Show/Character does not meet requirements! Please choose a different tag.", ephemeral=True
             )
             return True
@@ -195,14 +187,14 @@ class Bingo(commands.GroupCog, name='bingo'):
         if hit_tile:
             shot.hit = True
             player.board[hit_tile].hit = True
-            await ctx.response.send_message(
+            await ctx.followup.send(
                 content=f"🟩{bi.col_emojis[hit_tile[0] - 1]}{bi.row_emojis[hit_tile[1] - 1]}"
             )
             if player.has_bingo():
                 player.done = True
                 game.active = False
         else:
-            await ctx.response.send_message(content="🟥")
+            await ctx.followup.send(content="🟥")
 
         game.update_game_after_shot(ctx=ctx, shot=shot, player_idx=sender_idx, hit_tile=hit_tile)
 
@@ -231,7 +223,7 @@ class Bingo(commands.GroupCog, name='bingo'):
             await ctx.response.send_message(content="You are not a player in this game.", ephemeral=True)
             return True
 
-        embed, image = game.gen_board_embed(page=0, sender_idx=player_idx, expired=False)
+        embed, image = game.gen_board_embed(page=0, sender_idx=player_idx)
         view = bi.GameBoardView(game=game, sender_idx=player_idx)
         await ctx.response.send_message(
             embed=embed, file=image, view=view, ephemeral=True
@@ -251,7 +243,7 @@ class Bingo(commands.GroupCog, name='bingo'):
             return True
         await ctx.response.defer()
         if ctx.guild_id not in bd.active_bingos:
-            await ctx.response.send_message(
+            ctx.followup.send(
                 content="There is no active game! To make one, use /bingo newgame", ephemeral=True
             )
             return True
@@ -264,7 +256,7 @@ class Bingo(commands.GroupCog, name='bingo'):
         else:
             bu.del_game_files(guild_id=ctx.guild_id, game_name=game.name, game_type="Bingo")
         del bd.active_bingos[ctx.guild_id]
-        await ctx.response.send_message(content=bd.pass_str)
+        await ctx.followup.send(content=bd.pass_str)
         return False
 
     @app_commands.command(
@@ -316,7 +308,11 @@ class Bingo(commands.GroupCog, name='bingo'):
     )
     async def send_rules(self, ctx: Interaction, page: int = 0):
         await ctx.response.send_message(
-            embeds=bi.gen_rules_embed(page=page, expired=False),
+            embeds=bi.gen_rules_embed(page=page),
             view=bi.GameRulesView()
         )
         return False
+
+
+async def setup(bot: commands.Bot):
+    await bot.add_cog(BingoCog(bot))

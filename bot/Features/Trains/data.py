@@ -840,7 +840,7 @@ class TrainGame:
         # Adjustments
         label_offset: int = 1
         label_font_size: int = 24
-        font = ImageFont.truetype(f"{bd.parent}/Static/ggsans/ggsans-Bold.ttf", label_font_size)
+        font = ImageFont.truetype(f"{bd.parent}/Shared/ggsans/ggsans-Bold.ttf", label_font_size)
         tile_pixels: int = 50
         hidden_tile_color: tuple[int, int, int] = (255, 255, 255)
         border_color: tuple[int, int, int] = (190, 190, 190)
@@ -905,7 +905,7 @@ class TrainGame:
         default_font_size: int = 24
         font_size = default_font_size
         emoji_pixels: int = font_size - 4
-        font = ImageFont.truetype(f"{bd.parent}/Static/ggsans/ggsans-Bold.ttf", font_size)
+        font = ImageFont.truetype(f"{bd.parent}/Shared/ggsans/ggsans-Bold.ttf", font_size)
 
         for coords in self.board.keys():
             (row, col) = coords
@@ -955,7 +955,7 @@ class TrainGame:
             while text_pixels > 0.8 * tile_pixels and font_size > 6:
                 font_size -= 2
                 emoji_pixels -= 2
-                font = ImageFont.truetype(f"{bd.parent}/Static/ggsans/ggsans-Bold.ttf", font_size)
+                font = ImageFont.truetype(f"{bd.parent}/Shared/ggsans/ggsans-Bold.ttf", font_size)
                 text_pixels = draw.textlength(text=resource_text + rail_text, font=font)
                 if resource_text:
                     text_pixels += emoji_pixels
@@ -971,7 +971,7 @@ class TrainGame:
             if font_size != default_font_size:
                 font_size = default_font_size
                 emoji_pixels = font_size - 4
-                font = ImageFont.truetype(f"{bd.parent}/Static/ggsans/ggsans-Bold.ttf", font_size)
+                font = ImageFont.truetype(f"{bd.parent}/Shared/ggsans/ggsans-Bold.ttf", font_size)
 
         try:
             board_img.save(f"{filepath}/{board_name}.png")
@@ -1615,10 +1615,10 @@ class GameStatsView(View):
         self.game = game
 
     async def interaction_check(self, interaction: Interaction) -> bool:
-        if interaction.data['custom_id'] == 'prev_pg':
+        if interaction.data['custom_id'] == 'prev_page':
             self.page -= 1
 
-        elif interaction.data['custom_id'] == 'next_pg':
+        elif interaction.data['custom_id'] == 'next_page':
             self.page += 1
 
         embed = self.game.gen_stats_embed(interaction, self.page)
@@ -1643,10 +1643,10 @@ class GameRulesView(View):
         self.page = 1
 
     async def interaction_check(self, interaction: Interaction) -> bool:
-        if interaction.data['custom_id'] == 'prev_pg':
+        if interaction.data['custom_id'] == 'prev_page':
             self.page -= 1
 
-        elif interaction.data['custom_id'] == 'next_pg':
+        elif interaction.data['custom_id'] == 'next_page':
             self.page += 1
 
         embed = gen_rules_embed(page=self.page)

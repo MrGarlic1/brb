@@ -5,7 +5,7 @@ from discord import app_commands, Interaction, Message
 from discord.ext import commands
 
 
-class Responses(commands.GroupCog, name='response'):
+class ResponsesCog(commands.GroupCog, name='response'):
 
     @app_commands.command(
         name="add",
@@ -111,7 +111,7 @@ class Responses(commands.GroupCog, name='response'):
     async def list(self, ctx: Interaction, page: int = 1):
         view = rsp.RspView()
         await ctx.response.send_message(
-            embeds=rsp.gen_resp_list(ctx.guild, page),
+            embed=rsp.gen_resp_list(ctx.guild, page),
             view=view
         )
         return False
@@ -139,3 +139,7 @@ class Responses(commands.GroupCog, name='response'):
 
         await message.reply(content=response)
         return False
+
+
+async def setup(bot: commands.Bot):
+    await bot.add_cog(ResponsesCog(bot))

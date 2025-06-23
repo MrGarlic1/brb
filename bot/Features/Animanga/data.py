@@ -35,12 +35,12 @@ class RecView(View):
         self.page = 0
 
     async def interaction_check(self, interaction: Interaction) -> bool:
-        if interaction.data['custom_id'] == 'prev_rec':
+        if interaction.data['custom_id'] == 'prev_page':
             self.page -= 1
-        elif interaction.data['custom_id'] == 'next_rec':
+        elif interaction.data['custom_id'] == 'next_page':
             self.page += 1
 
-        embed, file = get_rec_embed(
+        embed = get_rec_embed(
             username=self.username,
             media_type=self.media_type,
             genre=self.genre,
@@ -49,7 +49,7 @@ class RecView(View):
         )
 
         await interaction.response.edit_message(
-            embed=embed, attachments=[file], view=self
+            embed=embed, view=self
         )
         return True
 

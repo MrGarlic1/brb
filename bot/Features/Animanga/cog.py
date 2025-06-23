@@ -9,7 +9,7 @@ from discord import app_commands, Interaction
 from discord.ext import commands
 
 
-class Animanga(commands.GroupCog, name='animanga'):
+class AnimangaCog(commands.GroupCog, name='animanga'):
     @app_commands.command(
         name='link',
         description='Link your discord profile to an anilist profile'
@@ -84,7 +84,7 @@ class Animanga(commands.GroupCog, name='animanga'):
                 force_update=force,
             )
         except RequestError:
-            await ctx.response.send_message("An error occurred connecting to Anilist. Please try again later.")
+            await ctx.followup.send("An error occurred connecting to Anilist. Please try again later.")
             return True
 
         embed = am.get_rec_embed(
@@ -94,24 +94,15 @@ class Animanga(commands.GroupCog, name='animanga'):
             genre=genre,
             page=0,
         )
-        rec_msg = await ctx.response.send_message(embed=embed, components=[am.prev_rec_button(), am.next_rec_button()])
-        channel = ctx.channel
-        sent = bu.ListMsg(
-            rec_msg.id,
-            0,
-            ctx.guild,
-            channel,
-            "rec",
-            {
-                "username": ctx.user.name,
-                "anilist_id": bd.linked_profiles[ctx.user.id],
-                "genre": genre,
-                "animanga": medium
-            }
+        view = am.RecView(
+            anilist_id=bd.linked_profiles[ctx.user.id],
+            media_type=medium,
+            genre=genre,
+            username=ctx.user.name
         )
-
-        bd.active_msgs.append(sent)
-        _ = create_task(
-            bu.close_msg(sent, 300, ctx)
-        )
+        await ctx.followup.send(embed=embed, view=view)
         return False
+
+
+async def setup(bot: commands.Bot):
+    await bot.add_cog(AnimangaCog(bot))

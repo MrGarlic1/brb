@@ -4,24 +4,22 @@ botutils.py
 Bot functions
 """
 
-import asyncio
 import json
 from dataclasses import dataclass
 from os import makedirs, listdir, path
 from shutil import rmtree
 from re import findall
 from typing import Sequence
-from discord import Guild, TextChannel, Interaction, Member
+from discord import Guild, TextChannel, Member
 from discord.app_commands import Choice
 
 import logging
 import matplotlib.font_manager
 
-import botdata as bd
+import bot.Core.botdata as bd
 from bot.Features.Responses.data import load_responses
-from bot.Features.Trains.data import gen_rules_embed, load_trains_game
+from bot.Features.Trains.data import load_trains_game
 from bot.Features.Bingo.data import load_bingo_game
-from bot.Features.Help.data import gen_help_embed
 
 logger = logging.getLogger(__name__)
 
@@ -101,24 +99,6 @@ def load_config(guild: Guild) -> None:
         logger.warning(
             f"No config file found for {guild.name}, created default config file."
         )
-
-
-async def close_msg(list_msg: ListMsg, delay: int, ctx: Interaction) -> None:
-    await asyncio.sleep(delay)
-
-    if list_msg.msg_type == "help":
-        embed, _ = gen_help_embed(page=list_msg.page, expired=True)
-    elif list_msg.msg_type == "trainrules":
-        embed = gen_rules_embed(list_msg.page, True)
-    elif list_msg.msg_type == "bingoboard":
-        sender_idx, _ = list_msg.payload.get_player(player_id=ctx.user.id)
-        embed, _ = list_msg.payload.gen_board_embed(
-            page=list_msg.page, sender_idx=sender_idx, expired=True
-        )
-    else:
-        embed = None
-    await ctx.message.edit(embed=embed)
-    bd.active_msgs.remove(list_msg)
 
 
 async def get_members_from_str(guild, txt: str) -> list[Member]:
