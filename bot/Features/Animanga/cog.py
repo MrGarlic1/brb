@@ -1,116 +1,100 @@
-import interactions
-import Core.botdata as bd
-import Features.Animanga.data as am
-import Core.botutils as bu
-from Core.anilist import query_user_id
+import bot.Core.botdata as bd
+import bot.Features.Animanga.data as am
+import bot.Core.botutils as bu
+from bot.Core.anilist import query_user_id
 from asyncio import create_task
 from httpx import RequestError
 from json import dump
+from discord import app_commands, Interaction
+from discord.ext import commands
 
 
-class Anime(interactions.Extension):
-    @interactions.slash_command(
-        name="anilist",
-        sub_cmd_name="link",
-        sub_cmd_description="Link your discord profile to an anilist profile",
-        dm_permission=True
+class Animanga(commands.GroupCog, name='animanga'):
+    @app_commands.command(
+        name='link',
+        description='Link your discord profile to an anilist profile'
     )
-    @interactions.slash_option(
-        name="username",
-        description="Anilist username",
-        required=True,
-        opt_type=interactions.OptionType.STRING
+    @app_commands.describe(
+        username='Anilist username'
     )
-    async def link_anilist(self, ctx: interactions.SlashContext, username: str):
+    async def link(self, ctx: Interaction, username: str):
         if username is None:
-            await ctx.send(content="Could not find anilist profile, please check username!")
+            await ctx.response.send_message(content="Could not find anilist profile, please check username!")
             return True
         anilist_user_id = query_user_id(username)
         if anilist_user_id is None:
-            await ctx.send(content="Could not find anilist profile, please check username!")
+            await ctx.response.send_message(content="Could not find anilist profile, please check username!")
             return True
 
-        bd.linked_profiles[ctx.author_id] = anilist_user_id
+        bd.linked_profiles[ctx.user.id] = anilist_user_id
         with open(f"{bd.parent}/Data/linked_profiles.json", "w") as f:
             dump(bd.linked_profiles, f, separators=(",", ":"))
-        await ctx.send(content=bd.pass_str)
+        await ctx.response.send_message(content=bd.pass_str)
         return False
 
-    @interactions.slash_command(
-        name="recommend",
-        description="Have the bot recommend anime/manga for you.",
-        dm_permission=True,
+    @app_commands.command(
+        name='recommend',
+        description='Have the bot recommend anime/manga for you.'
     )
-    @interactions.slash_option(
-        name="genre",
-        description="Request recommendation(s) of a specific genre.",
-        required=False,
-        opt_type=interactions.OptionType.STRING,
-        choices=[
-            interactions.SlashCommandChoice(name="Action", value="Action"),
-            interactions.SlashCommandChoice(name="Adventure", value="Adventure"),
-            interactions.SlashCommandChoice(name="Comedy", value="Comedy"),
-            interactions.SlashCommandChoice(name="Drama", value="Drama"),
-            interactions.SlashCommandChoice(name="Ecchi", value="Ecchi"),
-            interactions.SlashCommandChoice(name="Fantasy", value="Fantasy"),
-            interactions.SlashCommandChoice(name="Horror", value="Horror"),
-            interactions.SlashCommandChoice(name="Mahou Shoujo", value="Mahou Shoujo"),
-            interactions.SlashCommandChoice(name="Mecha", value="Mecha"),
-            interactions.SlashCommandChoice(name="Music", value="Music"),
-            interactions.SlashCommandChoice(name="Mystery", value="Mystery"),
-            interactions.SlashCommandChoice(name="Psychological", value="Psychological"),
-            interactions.SlashCommandChoice(name="Romance", value="Romance"),
-            interactions.SlashCommandChoice(name="Sci-Fi", value="Sci-Fi"),
-            interactions.SlashCommandChoice(name="Slice of Life", value="Slice of Life"),
-            interactions.SlashCommandChoice(name="Sports", value="Sports"),
-            interactions.SlashCommandChoice(name="Supernatural", value="Supernatural"),
-            interactions.SlashCommandChoice(name="Thriller", value="Thriller"),
+    @app_commands.describe(
+        genre='Request recommendation(s) of a specific genre.',
+        medium='Choose to recommend anime/manga',
+        force='Force updates anilist stats. WILL BE SLOW.'
+    )
+    @app_commands.choices(
+        genre=[
+            app_commands.Choice(name="Action", value="Action"),
+            app_commands.Choice(name="Adventure", value="Adventure"),
+            app_commands.Choice(name="Comedy", value="Comedy"),
+            app_commands.Choice(name="Drama", value="Drama"),
+            app_commands.Choice(name="Ecchi", value="Ecchi"),
+            app_commands.Choice(name="Fantasy", value="Fantasy"),
+            app_commands.Choice(name="Horror", value="Horror"),
+            app_commands.Choice(name="Mahou Shoujo", value="Mahou Shoujo"),
+            app_commands.Choice(name="Mecha", value="Mecha"),
+            app_commands.Choice(name="Music", value="Music"),
+            app_commands.Choice(name="Mystery", value="Mystery"),
+            app_commands.Choice(name="Psychological", value="Psychological"),
+            app_commands.Choice(name="Romance", value="Romance"),
+            app_commands.Choice(name="Sci-Fi", value="Sci-Fi"),
+            app_commands.Choice(name="Slice of Life", value="Slice of Life"),
+            app_commands.Choice(name="Sports", value="Sports"),
+            app_commands.Choice(name="Supernatural", value="Supernatural"),
+            app_commands.Choice(name="Thriller", value="Thriller"),
+        ],
+        medium=[
+            app_commands.Choice(name="Anime", value="anime"),
+            app_commands.Choice(name="Manga", value="manga")
         ]
-    )
-    @interactions.slash_option(
-        name="medium",
-        description="Choose to recommend anime/manga",
-        required=False,
-        opt_type=interactions.OptionType.STRING,
-        choices=[
-            interactions.SlashCommandChoice(name="Anime", value="anime"),
-            interactions.SlashCommandChoice(name="Manga", value="manga")
-        ]
-    )
-    @interactions.slash_option(
-        name="force",
-        description="Force updates anilist stats. WILL BE SLOW.",
-        required=False,
-        opt_type=interactions.OptionType.BOOLEAN,
     )
     async def show_animanga_rec(
-            self, ctx: interactions.SlashContext, genre: str = "", medium: str = "anime", force: bool = False
+            self, ctx: Interaction, genre: str = "", medium: str = "anime", force: bool = False
     ):
-        if ctx.author_id not in bd.linked_profiles:
-            await ctx.send(
+        if ctx.user.id not in bd.linked_profiles:
+            await ctx.response.send_message(
                 content=f"Your anilist profile isn't linked! (/anilist link)"
             )
             return True
 
-        await ctx.defer()
+        await ctx.response.defer()
         try:
             await am.check_recommendation(
-                anilist_id=bd.linked_profiles[ctx.author_id],
+                anilist_id=bd.linked_profiles[ctx.user.id],
                 media_type=medium,
                 force_update=force,
             )
         except RequestError:
-            await ctx.send("An error occurred connecting to Anilist. Please try again later.")
+            await ctx.response.send_message("An error occurred connecting to Anilist. Please try again later.")
             return True
 
         embed = am.get_rec_embed(
-            username=ctx.user.username,
-            anilist_id=bd.linked_profiles[ctx.author_id],
+            username=ctx.user.name,
+            anilist_id=bd.linked_profiles[ctx.user.id],
             media_type=medium,
             genre=genre,
             page=0,
         )
-        rec_msg = await ctx.send(embed=embed, components=[am.prev_rec_button(), am.next_rec_button()])
+        rec_msg = await ctx.response.send_message(embed=embed, components=[am.prev_rec_button(), am.next_rec_button()])
         channel = ctx.channel
         sent = bu.ListMsg(
             rec_msg.id,
@@ -119,8 +103,8 @@ class Anime(interactions.Extension):
             channel,
             "rec",
             {
-                "username": ctx.user.username,
-                "anilist_id": bd.linked_profiles[ctx.author_id],
+                "username": ctx.user.name,
+                "anilist_id": bd.linked_profiles[ctx.user.id],
                 "genre": genre,
                 "animanga": medium
             }

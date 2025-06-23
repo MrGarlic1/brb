@@ -2,14 +2,13 @@ import io
 import json
 from dataclasses import dataclass
 from random import sample
-from typing import Union
-import matplotlib.pyplot as plt
-import matplotlib.font_manager
+from bot.Shared.buttons import PrevPgButton, NextPgButton
+from discord.ui import View
+from discord import Interaction, Guild, Embed, File, Member, DMChannel, Message
 
-import interactions
 from PIL import Image, ImageFont, ImageDraw
 
-import Core.botdata as bd
+import bot.Core.botdata as bd
 
 
 bingo_tags = (
@@ -128,7 +127,7 @@ class BingoShot:
         else:
             return None
 
-    async def is_valid(self, starting_anilist: dict, anilist_info: dict, poll_msg: interactions.Message = None) -> bool:
+    async def is_valid(self, starting_anilist: dict, anilist_info: dict, poll_msg: Message = None) -> bool:
         shot_type = self.get_shot_type()
         if shot_type == "not_tv":
             return anilist_info["format"] != "TV"
@@ -146,9 +145,15 @@ class BingoShot:
                     any(genre.upper() == self.tag.upper() for genre in anilist_info["genres"])
             )
         if shot_type == "character":
-            yes_votes = await poll_msg.fetch_reaction(emoji="🔺")
-            no_votes = await poll_msg.fetch_reaction(emoji="🔻")
-            return len(yes_votes) / (len(no_votes) + len(yes_votes)) > 0.5
+            yes_votes = 1
+            no_votes = 1
+            for reaction in poll_msg.reactions:
+                if reaction.emoji == "🔺":
+                    yes_votes = reaction.count
+                elif reaction.emoji == "🔻":
+                    no_votes = reaction.count
+
+            return yes_votes / (no_votes + yes_votes) > 0.5
         if shot_type == "rewatch":
             for show in starting_anilist:
                 if show["mediaId"] != self.anilist_id:
@@ -176,7 +181,7 @@ class BingoTile:
 @dataclass
 class BingoPlayer:
     def __init__(
-            self, member: interactions.Member = None, dmchannel: interactions.DMChannel = None,
+            self, member: Member = None, dmchannel: DMChannel = None,
             shots: list[BingoShot] = None, done: bool = False, donetime: str = None, anilist_id: int = None,
             starting_anilist: list = None, board: dict[tuple[int, int], BingoTile] = None
     ):
@@ -401,7 +406,7 @@ class BingoGame:
             json.dump(self.asdict(), f, indent=4, separators=(",", ":"))
 
     def update_game_after_shot(
-            self, ctx: interactions.SlashContext, shot: BingoShot, player_idx: int, hit_tile: tuple[int, int] = None
+            self, ctx: Interaction, shot: BingoShot, player_idx: int, hit_tile: tuple[int, int] = None
     ) -> None:
 
         # Push updates to player boards, check if game is finished
@@ -419,136 +424,22 @@ class BingoGame:
         return None
 
     def update_boards_after_create(
-            self, ctx: interactions.SlashContext
+            self, ctx: Interaction
     ) -> None:
         # Update master board/game state
         self.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Bingo/{self.name}")
         bd.active_bingos[ctx.guild_id] = self
         return None
 
-    def gen_stats_embed(self, ctx: Union[interactions.SlashContext, interactions.ComponentContext],
-                        expired: bool, page: int = 0) -> tuple[interactions.Embed, Union[None, interactions.File]]:
-        embed: interactions.Embed = interactions.Embed()
-        embed.set_author(name=f"Anime Trains", icon_url=bd.bot_avatar_url)
-        footer_end: str = ' | This message is inactive.' if expired else ' | This message deactivates after 5 minutes.'
-        """
-        max_pages: int = len(self.players) + 1
-        page: int = 1 + (page % max_pages)  # Loop back through pages both ways
-        embed.set_footer(text=f'Page {page}/{max_pages} {footer_end}')
-
-        # Game stats page
-        embed.set_thumbnail(url=ctx.guild.icon.url)
-        embed.description = f"### Stats for {self.name}"
-        embed.add_field(name="\u200b", value="\u200b", inline=False)
-        for player in self.players:
-
-        # Total shots/in-zone shots
-            total_shots: int = len(player.shots)
-            hit_shots: int = 0
-        prev_shot_time = datetime.strptime(self.date, bd.date_format)
-        time_between_shots_list = []
-        weights = []
-
-        # Get time deltas for all previous shots and current time, take weighted average
-        for shot_idx, shot in enumerate(player.shots):
-            if self.board[shot.coords()].zone in self.known_entries[shot.show_id]["genres"]:
-                in_zone_shots += 1
-            time_between_shots_list.append(
-                (datetime.strptime(shot.time, bd.date_format) - prev_shot_time).total_seconds()
-            )
-            # Weight based on seconds elapsed since shot. Time delta minimum is 300
-            weights.append(
-                log(0.01 * max((datetime.now() - prev_shot_time).total_seconds(), 300)) ** -.9
-            )
-            prev_shot_time = datetime.strptime(shot.time, bd.date_format)
-
-        time_between_shots_list.append((datetime.now() - prev_shot_time).total_seconds())
-        weights.append(
-            log((datetime.now() - prev_shot_time).total_seconds()) ** -1
-        )
-        avg_secs_between_shots = round(sum(time_between_shots_list) / len(time_between_shots_list))
-
-        embed.add_field(name="🧮 Total Shots", value=total_shots, inline=True)
-        embed.add_field(name="🛤️ Total Rails Used", value=player.rails, inline=True)
-        embed.add_field(name="🍥 % in Zone", value=f"{round(in_zone_shots / total_shots * 100)}%", inline=True)
-        embed.add_field(name="🚂 Done?", value="✅" if player.done else "❌", inline=True)
-        embed.add_field(
-            name="⏳ Avg. Time Between Shots", value=str(timedelta(seconds=avg_secs_between_shots)), inline=False
-        )
-
-        # Projected completion time
-        if not player.shots:
-            projected_time = "N/A"
-        elif player.done:
-            projected_time = datetime.strptime(player.donetime, "%Y%m%d%H%M%S")
-            projected_time = projected_time.strftime("%Y/%m/%d at %H:%M:%S")
-        else:
-            # player.end is [ROW, COL]
-            last_shot = player.shots[-1]
-            dist_left = abs(last_shot.row - player.end[0]) + abs(last_shot.col - player.end[1])
-            weighted_time_deltas = [t * w for t, w in zip(time_between_shots_list, weights)]
-            weighted_avg_secs_between_shots = sum(weighted_time_deltas) / sum(weights)
-            projected_time = datetime.now() + timedelta(
-                seconds=round(dist_left * 1.5) * weighted_avg_secs_between_shots)
-            projected_time = projected_time.strftime("%Y/%m/%d at %H:%M:%S")
-
-        embed.add_field(
-            name="🗓️ Projected Completion Date", value=projected_time, inline=False
-        )
-
-        # Shot genre pie chart
-
-        genre_counts: dict[str, int] = {}
-        for shot in player.shots:
-            shot_type = shot.get_shot_type()
-            if shot_type != "character":
-                for genre in self.known_entries[shot.anilist_id]["genres"]:
-                    if genre in genre_counts:
-                        genre_counts[genre] += 1
-                    else:
-                        genre_counts[genre] = 1
-
-        plt.style.use("dark_background")
-        fig, ax = plt.subplots()
-
-        plt.rcParams["font.size"] = 14
-        plt.rcParams["font.family"] = "gg sans"
-        plt.rcParams["font.weight"] = "bold"
-        wedges, text, autotexts = ax.pie(list(genre_counts.values()), autopct="%1.1f%%")
-        plt.setp(autotexts, size=16, weight="medium", color="black")
-        plt.title(
-            label="Shot Genre Percentages              ",
-            weight="bold", size=17, family="gg sans", horizontalalignment="right"
-        )
-        plt.legend(
-            genre_counts.keys(), title="Genres", loc="lower left", framealpha=0, bbox_to_anchor=(-0.45, 0.2, 0.75, 1),
-            prop=matplotlib.font_manager.FontProperties(family="gg sans", weight="medium", size=15, style="italic"),
-            title_fontproperties=matplotlib.font_manager.FontProperties(family="gg sans", weight="medium", size=17)
-        )
-        filepath = f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}/stats_img.png"
-        plt.savefig(filepath, transparent=True)
-        plt.close(fig)
-
-        with open(filepath, "rb") as f:
-            file = io.BytesIO(f.read())
-        image = interactions.File(file, file_name="stats_img.png")
-
-        embed.set_image(
-            url="attachment://stats_img.png"
-        )
-        return embed, image
-        """
-
     def gen_board_embed(
-            self, page: int, sender_idx: int, expired: bool
-    ) -> tuple[interactions.Embed, interactions.File]:
+            self, page: int, sender_idx: int
+    ) -> tuple[Embed, File]:
 
-        embed: interactions.Embed = interactions.Embed()
+        embed: Embed = Embed()
         embed.set_author(name=f"Anime Bingo", icon_url=bd.bot_avatar_url)
-        footer_end: str = ' | This message is inactive.' if expired else ' | This message deactivates after 5 minutes.'
         max_pages: int = len(self.players)
         page: int = 1 + (page % max_pages)  # Loop back through pages both ways
-        embed.set_footer(text=f'Page {page}/{max_pages} {footer_end}')
+        embed.set_footer(text=f'Page {page}/{max_pages}')
 
         # Player stats page
         player_idx: int = page - 1
@@ -563,7 +454,7 @@ class BingoGame:
             draw_tags=draw_tags
         )
 
-        embed.set_thumbnail(url=player.member.avatar_url)
+        embed.set_thumbnail(url=player.member.avatar.url)
         embed.description = f"### Board for {player.member.mention}"
 
         total_hits = len([shot.hit for shot in player.shots if shot.hit])
@@ -579,7 +470,7 @@ class BingoGame:
                 f"{bd.parent}/Guilds/{player.member.guild.id}/Bingo/{self.name}/{sender_idx}.png", "rb"
         ) as f:
             file = io.BytesIO(f.read())
-        image = interactions.File(file, file_name="bingo_board.png")
+        image = File(file, filename="bingo_board.png")
 
         embed.set_image(
             url="attachment://bingo_board.png"
@@ -588,7 +479,7 @@ class BingoGame:
 
 
 async def load_bingo_game(
-        filepath: str, guild: interactions.Guild, active_only: bool = False
+        filepath: str, guild: Guild, active_only: bool = False
 ) -> BingoGame | None:
     with open(f"{filepath}/gamedata.json", "r") as f:
         game_dict = json.load(f)
@@ -606,7 +497,6 @@ async def load_bingo_game(
                 )
             )
         member = await guild.fetch_member(player["member_id"])
-        dm = await member.fetch_dm(force=False)
 
         board: dict = {}
         for pos, tile in player["board"].items():
@@ -618,7 +508,8 @@ async def load_bingo_game(
         player_list.append(
             BingoPlayer(
                 member=member, done=player["done"],
-                dmchannel=dm, shots=shot_list, donetime=player["donetime"], starting_anilist=player["starting_anilist"],
+                dmchannel=member.dm_channel, shots=shot_list, donetime=player["donetime"],
+                starting_anilist=player["starting_anilist"],
                 anilist_id=player["anilist_id"], board=board
             )
         )
@@ -634,13 +525,13 @@ async def load_bingo_game(
     return game
 
 
-def bingo_game_embed(ctx: interactions.SlashContext, game: BingoGame) -> interactions.Embed:
-    embed = interactions.Embed()
+def bingo_game_embed(ctx: Interaction, game: BingoGame) -> Embed:
+    embed = Embed()
     embed.set_author(name="Anime Bingo", icon_url=bd.bot_avatar_url)
-    embed.color = 0xff9c2c
+    embed.colour = 0xff9c2c
     embed.title = "It's Bingo Time"
-    embed.description = f"*{ctx.author.mention} has created \"{game.name}\"!*"
-    embed.set_thumbnail(url=ctx.author.avatar_url)
+    embed.description = f"*{ctx.user.mention} has created \"{game.name}\"!*"
+    embed.set_thumbnail(url=ctx.user.avatar.url)
 
     player_mentions = []
     for player in game.players:
@@ -659,14 +550,13 @@ def bingo_game_embed(ctx: interactions.SlashContext, game: BingoGame) -> interac
     return embed
 
 
-def gen_rules_embed(page: int, expired: bool) -> interactions.Embed:
+def gen_rules_embed(page: int) -> Embed:
     max_pages: int = 6
     page: int = 1 + (page % max_pages)  # Loop back through pages both ways
-    footer_end: str = " | This message is inactive." if expired else " | This message deactivates after 5 minutes."
-    embed = interactions.Embed()
+    embed = Embed()
     embed.set_author(name="Anime Trains", icon_url=bd.bot_avatar_url)
-    embed.color = 0xff9c2c
-    embed.set_footer(text=f'Page {page}/{max_pages} {footer_end}')
+    embed.colour = 0xff9c2c
+    embed.set_footer(text=f'Page {page}/{max_pages}')
     if page == 1:
         embed.title = "Rules"
         embed.description = \
@@ -680,5 +570,64 @@ def gen_rules_embed(page: int, expired: bool) -> interactions.Embed:
         embed.title = "Possible Tags"
         embed.description = \
             "tbd"
-    embed.set_footer(text=f'Page {page}/{max_pages} {footer_end}')
+    embed.set_footer(text=f'Page {page}/{max_pages}')
     return embed
+
+
+class GameBoardView(View):
+    """
+    Discord UI View for handling bingo board interactions.
+
+    Attributes:
+        page (int): Which response page in server's response list to display
+    """
+
+    def __init__(self, game: BingoGame, sender_idx: int):
+        super().__init__(timeout=60)
+        self.add_item(PrevPgButton())
+        self.add_item(NextPgButton())
+        self.page = 1
+        self.game = game
+        self.sender_idx = sender_idx
+
+    async def interaction_check(self, interaction: Interaction) -> bool:
+        if interaction.data['custom_id'] == 'prev_pg':
+            self.page -= 1
+
+        elif interaction.data['custom_id'] == 'next_pg':
+            self.page += 1
+
+        embed = self.game.gen_board_embed(page=self.page, sender_idx=self.sender_idx)
+
+        await interaction.response.edit_message(
+            embed=embed, view=self
+        )
+        return False
+
+
+class GameRulesView(View):
+    """
+    Discord UI View for handling bingo rule interactions.
+
+    Attributes:
+        page (int): Which response page in server's response list to display
+    """
+    def __init__(self):
+        super().__init__(timeout=60)
+        self.add_item(PrevPgButton())
+        self.add_item(NextPgButton())
+        self.page = 1
+
+    async def interaction_check(self, interaction: Interaction) -> bool:
+        if interaction.data['custom_id'] == 'prev_pg':
+            self.page -= 1
+
+        elif interaction.data['custom_id'] == 'next_pg':
+            self.page += 1
+
+        embed = gen_rules_embed(page=self.page)
+
+        await interaction.response.edit_message(
+            embed=embed, view=self
+        )
+        return False

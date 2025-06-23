@@ -1,6 +1,6 @@
 # File containing global variables for bot.
 
-from os import environ, listdir, path
+from os import environ, path
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -14,9 +14,8 @@ default_config: dict = {
 }
 token: str = environ["TOKEN"]
 parent: str = f"{path.dirname(path.realpath(__file__))}/.."
-assert "main.py" in listdir(parent), f"Invalid parent directory {parent}, ensure parent is set to where main.py is."
 
-bot_id: int = 887530423826145310
+bot_id: int = 0
 bot_avatar_url: str = ""
 train_zones_url: str = "https://i.imgur.com/CRgbw7R.png"
 date_format: str = "%Y/%m/%d %H:%M:%S"

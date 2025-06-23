@@ -7,16 +7,20 @@ from math import log
 from os import path
 from random import randint, shuffle, choice
 from typing import Union
+from io import BytesIO
 
-import interactions
 import logging
 import matplotlib.font_manager
 import matplotlib.pyplot as plt
 from PIL import Image, ImageFont, ImageDraw
 from pilmoji import Pilmoji
 
-import Core.anilist as al
-import Core.botdata as bd
+from discord.ui import View
+from discord import Interaction, Guild, Embed, File, Member, DMChannel
+
+import bot.Core.anilist as al
+import bot.Core.botdata as bd
+from bot.Shared.buttons import NextPgButton, PrevPgButton
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +74,7 @@ class TrainItem:
 @dataclass
 class TrainPlayer:
     def __init__(
-            self, member: interactions.Member = None, tag: str = None, dmchannel: interactions.DMChannel = None,
+            self, member: Member = None, tag: str = None, dmchannel: DMChannel = None,
             rails: int = 0, shots: list[TrainShot] = None, vis_tiles: list[tuple] = None, score: dict[str, int] = None,
             start: tuple = None, end: tuple = None, done: bool = False, donetime: str = None,
             inventory: dict = None, shops_used: list[tuple[int, int]] = None, anilist_id: int = None,
@@ -590,7 +594,7 @@ class TrainGame:
 
         return True
 
-    async def push_player_update(self, ctx: interactions.SlashContext, p: TrainPlayer, p_idx: int) -> None:
+    async def push_player_update(self, ctx: Interaction, p: TrainPlayer, p_idx: int):
         try:
             board_name: str = str(p.member.id)
             self.draw_board_img(
@@ -599,8 +603,15 @@ class TrainGame:
                 player_idx=p_idx, player_board=True
             )
             board_img_path: str = f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}/{board_name}.png"
+            try:
+                with open(board_img_path, "rb") as f:
+                    file = BytesIO(f.read())
+            except FileNotFoundError:
+                await ctx.response.send_message(bd.fail_str, ephemeral=True)
+                return True
+
             await p.dmchannel.send(
-                file=interactions.File(board_img_path),
+                file=File(file, filename=board_img_path),
                 content=f"## Train board update for \"{self.name}\" in {ctx.guild.name}!"
             )
 
@@ -609,7 +620,7 @@ class TrainGame:
             del self.players[p_idx]
 
     async def update_boards_after_shot(
-            self, ctx: interactions.SlashContext,
+            self, ctx: Interaction,
             row: int, column: int
     ) -> None:
 
@@ -630,7 +641,7 @@ class TrainGame:
         return None
 
     async def update_boards_after_create(
-            self, ctx: interactions.SlashContext
+            self, ctx: Interaction
     ) -> None:
 
         tasks: list = []
@@ -644,15 +655,13 @@ class TrainGame:
         bd.active_trains[ctx.guild_id] = self
         return None
 
-    def gen_stats_embed(self, ctx: Union[interactions.SlashContext, interactions.ComponentContext],
-                        expired: bool, page: int = 0) -> tuple[interactions.Embed, Union[None, interactions.File]]:
-        embed: interactions.Embed = interactions.Embed()
+    def gen_stats_embed(self, ctx: Interaction, page: int = 0) -> tuple[Embed, Union[None, File]]:
+        embed: Embed = Embed()
         embed.set_author(name=f"Anime Trains", icon_url=bd.bot_avatar_url)
-        footer_end: str = ' | This message is inactive.' if expired else ' | This message deactivates after 5 minutes.'
 
         max_pages: int = len(self.players) + 1
         page: int = 1 + (page % max_pages)  # Loop back through pages both ways
-        embed.set_footer(text=f'Page {page}/{max_pages} {footer_end}')
+        embed.set_footer(text=f'Page {page}/{max_pages}')
 
         # Game stats page
         if page == 1:
@@ -701,18 +710,19 @@ class TrainGame:
                     board_name="MASTER", player_board=False
                 )
                 board_img_path = f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}/MASTER.png"
-                image = interactions.File(board_img_path, file_name="MASTER.png")
+                try:
+                    with open(board_img_path, "rb") as f:
+                        file = BytesIO(f.read())
+                except FileNotFoundError:
+                    return embed, None
+
+                image = File(file, filename="MASTER.png")
                 embed.set_image(
                     url="attachment://MASTER.png"
                 )
+                return embed, image
             else:
-                with open(f"{bd.parent}/Data/nothing.png", "rb") as f:
-                    file = io.BytesIO(f.read())
-                image: interactions.File = interactions.File(file, file_name="nothing.png")
-                embed.set_image(
-                    url="attachment://nothing.png"
-                )
-            return embed, image
+                return embed, None
 
         # Player stats page
         player_idx: int = page - 2
@@ -720,15 +730,9 @@ class TrainGame:
 
         if len(player.shots) == 0:
             embed.description = f"### {player.member.mention} has not placed any rails yet!"
-            with open(f"{bd.parent}/Data/nothing.png", "rb") as f:
-                file = io.BytesIO(f.read())
-            image: interactions.File = interactions.File(file, file_name="nothing.png")
-            embed.set_image(
-                url="attachment://nothing.png"
-            )
-            return embed, image
+            return embed, None
 
-        embed.set_thumbnail(url=player.member.avatar_url)
+        embed.set_thumbnail(url=player.member.avatar.url)
         embed.description = f"### Stats for {player.member.mention}"
         embed.add_field(name="\u200b", value="\u200b", inline=False)
 
@@ -819,7 +823,7 @@ class TrainGame:
 
         with open(filepath, "rb") as f:
             file = io.BytesIO(f.read())
-        image = interactions.File(file, file_name="stats_img.png")
+        image = File(file, filename="stats_img.png")
 
         embed.set_image(
             url="attachment://stats_img.png"
@@ -1027,9 +1031,9 @@ class TrainGame:
         else:
             self.players[sender_idx].rails += rails
 
-    def buy_item(self, itemname: str, showinfo: str, ctx: interactions.SlashContext) -> bool:
+    def buy_item(self, itemname: str, showinfo: str, ctx: Interaction) -> bool:
 
-        player_idx, player = self.get_player(ctx.author_id)
+        player_idx, player = self.get_player(ctx.user.id)
         if player is None or self.shop[itemname].amount < 1 or not player.shots:
             return True
 
@@ -1053,8 +1057,8 @@ class TrainGame:
         self.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}")
         return False
 
-    def use_bucket(self, ctx: interactions.SlashContext, row: int, col: int) -> bool:
-        player_idx, player = self.get_player(ctx.author_id)
+    def use_bucket(self, ctx: Interaction, row: int, col: int) -> bool:
+        player_idx, player = self.get_player(ctx.user.id)
         if player is None:
             return True
 
@@ -1066,7 +1070,7 @@ class TrainGame:
         player.update_item_count("Bucket")
         return False
 
-    async def calculate_player_scores(self, ctx: interactions.SlashContext) -> None:
+    async def calculate_player_scores(self, ctx: Interaction) -> None:
 
         def add_to_score(p: TrainPlayer, key: str, val: int):
             if key in player.score:
@@ -1206,17 +1210,16 @@ class TrainGame:
 
         self.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}")
 
-    def gen_score_embed(self, ctx: Union[interactions.SlashContext, interactions.ComponentContext],
-                        expired: bool, page: int = 0) -> tuple[interactions.Embed, Union[None, interactions.File]]:
+    def gen_score_embed(self, ctx: Interaction,
+                        page: int = 0) -> tuple[Embed, Union[None, File]]:
 
-        embed = interactions.Embed()
+        embed = Embed()
 
         max_pages: int = len(self.players) + 1
         page: int = 1 + (page % max_pages)  # Loop back through pages both ways
-        footer_end: str = " | This message is inactive." if expired else " | This message deactivates after 5 minutes."
-        embed.set_footer(text=f"Page {page}/{max_pages} {footer_end}")
+        embed.set_footer(text=f"Page {page}/{max_pages}")
         embed.set_author(name="Anime Trains", icon_url=bd.bot_avatar_url)
-        embed.color = 0xff9c2c
+        embed.colour = 0xff9c2c
 
         self.players.sort(key=lambda p: p.score["total"], reverse=True)
 
@@ -1241,31 +1244,32 @@ class TrainGame:
                     filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}",
                     board_name="MASTER", player_board=False
                 )
-            image = interactions.File(board_img_path, file_name="MASTER.png")
+            try:
+                with open(board_img_path, "rb") as f:
+                    file = BytesIO(f.read())
+            except FileNotFoundError:
+                return embed, None
+
+            image = File(file, filename="MASTER.png")
             embed.set_image(
                 url="attachment://MASTER.png"
             )
             return embed, image
 
         player_idx: int = page - 2
-        embed.set_thumbnail(url=self.players[player_idx].member.avatar_url)
-        embed.title = f"{self.players[player_idx].member.username}"
+        embed.set_thumbnail(url=self.players[player_idx].member.avatar.url)
+        embed.title = f"{self.players[player_idx].member.name}"
         for category, score in self.players[player_idx].score.items():
             embed.add_field(
                 name=category.title(),
                 value=score
             )
-        with open(f"{bd.parent}/Data/nothing.png", "rb") as f:
-            file = io.BytesIO(f.read())
-        image: interactions.File = interactions.File(file, file_name="nothing.png")
-        embed.set_image(
-            url="attachment://nothing.png"
-        )
-        return embed, image
+
+        return embed, None
 
 
 async def load_trains_game(
-        filepath: str, guild: interactions.Guild, active_only: bool = False
+        filepath: str, guild: Guild, active_only: bool = False
 ) -> TrainGame | None:
     with open(f"{filepath}/gamedata.json", "r") as f:
         game_dict = json.load(f)
@@ -1318,11 +1322,10 @@ async def load_trains_game(
                 )
 
         member = await guild.fetch_member(player["member_id"])
-        dm = await member.fetch_dm(force=False)
         player_list.append(
             TrainPlayer(
                 member=member, tag=player["tag"], done=player["done"], rails=player["rails"],
-                dmchannel=dm, start=tuple(player["start"]),
+                dmchannel=member.dm_channel, start=tuple(player["start"]),
                 end=tuple(player["end"]), score=player["score"], shots=shot_list,
                 vis_tiles=[tuple(tile) for tile in player["vis_tiles"]], donetime=player["donetime"],
                 inventory=item_dict, starting_anilist=player["starting_anilist"], anilist_id=player["anilist_id"],
@@ -1344,13 +1347,13 @@ async def load_trains_game(
     return game
 
 
-def train_game_embed(ctx: interactions.SlashContext, game: TrainGame) -> interactions.Embed:
-    embed = interactions.Embed()
+def train_game_embed(ctx: Interaction, game: TrainGame) -> Embed:
+    embed = Embed()
     embed.set_author(name="Anime Trains", icon_url=bd.bot_avatar_url)
-    embed.color = 0xff9c2c
+    embed.colour = 0xff9c2c
     embed.title = "It's Train Time"
-    embed.description = f"*{ctx.author.mention} has created \"{game.name}\"!*"
-    embed.set_thumbnail(url=ctx.author.avatar_url)
+    embed.description = f"*{ctx.user.mention} has created \"{game.name}\"!*"
+    embed.set_thumbnail(url=ctx.user.avatar.url)
 
     embed.add_field(
         name="Board Size",
@@ -1374,10 +1377,9 @@ def train_game_embed(ctx: interactions.SlashContext, game: TrainGame) -> interac
     return embed
 
 
-def gen_rules_embed(page: int, expired: bool) -> interactions.Embed:
+def gen_rules_embed(page: int) -> Embed:
     max_pages: int = 6
     page: int = 1 + (page % max_pages)  # Loop back through pages both ways
-    footer_end: str = " | This message is inactive." if expired else " | This message deactivates after 5 minutes."
     if page == 1:
         embed = train_rules_embed()
     elif page == 2:
@@ -1390,14 +1392,14 @@ def gen_rules_embed(page: int, expired: bool) -> interactions.Embed:
         embed = train_items_embed()
     else:
         embed = train_scoring_embed()
-    embed.set_footer(text=f'Page {page}/{max_pages} {footer_end}')
+    embed.set_footer(text=f'Page {page}/{max_pages}')
     return embed
 
 
-def train_symbols_embed() -> interactions.Embed:
-    embed = interactions.Embed()
+def train_symbols_embed() -> Embed:
+    embed = Embed()
     embed.set_author(name="Anime Trains", icon_url=bd.bot_avatar_url)
-    embed.color = 0xff9c2c
+    embed.colour = 0xff9c2c
     embed.title = "Symbol Reference"
     embed.add_field(
         name=f"{bd.emoji['wheat']}: Wheat",
@@ -1448,10 +1450,10 @@ def train_symbols_embed() -> interactions.Embed:
     return embed
 
 
-def train_quests_embed() -> interactions.Embed:
-    embed = interactions.Embed()
+def train_quests_embed() -> Embed:
+    embed = Embed()
     embed.set_author(name="Anime Trains", icon_url=bd.bot_avatar_url)
-    embed.color = 0xff9c2c
+    embed.colour = 0xff9c2c
     embed.title = "Quests"
     embed.description = "*Quests may be completed by every player once.*"
 
@@ -1469,10 +1471,10 @@ def train_quests_embed() -> interactions.Embed:
     return embed
 
 
-def train_scoring_embed() -> interactions.Embed:
-    embed = interactions.Embed()
+def train_scoring_embed() -> Embed:
+    embed = Embed()
     embed.set_author(name="Anime Trains", icon_url=bd.bot_avatar_url)
-    embed.color = 0xff9c2c
+    embed.colour = 0xff9c2c
     embed.title = "Scoring"
     embed.description = \
         "**1.** Each player's score is calculated at the end of the game.\n\n" \
@@ -1485,10 +1487,10 @@ def train_scoring_embed() -> interactions.Embed:
     return embed
 
 
-def train_rules_embed() -> interactions.Embed:
-    embed = interactions.Embed()
+def train_rules_embed() -> Embed:
+    embed = Embed()
     embed.set_author(name="Anime Trains", icon_url=bd.bot_avatar_url)
-    embed.color = 0xff9c2c
+    embed.colour = 0xff9c2c
     embed.title = "Rules"
     embed.description = \
         "**1.** Each shot (3 hours) corresponds to one track being placed down.\n\n" \
@@ -1502,10 +1504,10 @@ def train_rules_embed() -> interactions.Embed:
     return embed
 
 
-def train_zones_embed() -> interactions.Embed:
-    embed = interactions.Embed()
+def train_zones_embed() -> Embed:
+    embed = Embed()
     embed.set_author(name="Anime Trains", icon_url=bd.bot_avatar_url)
-    embed.color = 0xff9c2c
+    embed.colour = 0xff9c2c
     embed.title = "Genre Zones"
     embed.description = "If the primary show used for a shot has a genre matching the genre zone of the shot, " \
                         "only 1/2 of the usual amount of rails are consumed."
@@ -1519,10 +1521,10 @@ def train_zones_embed() -> interactions.Embed:
     return embed
 
 
-def train_items_embed() -> interactions.Embed:
-    embed = interactions.Embed()
+def train_items_embed() -> Embed:
+    embed = Embed()
     embed.set_author(name="Anime Trains", icon_url=bd.bot_avatar_url)
-    embed.color = 0xff9c2c
+    embed.colour = 0xff9c2c
     embed.title = "Item Reference"
     for item in default_shop().values():
         embed.add_field(
@@ -1595,6 +1597,64 @@ def default_shop() -> dict[str, TrainItem]:
                 amount=2
             )
     }
+
+
+class GameStatsView(View):
+    """
+    Discord UI View for handling train stats interactions.
+
+    Attributes:
+        page (int): Which response page in server's response list to display
+    """
+
+    def __init__(self, game: TrainGame):
+        super().__init__(timeout=60)
+        self.add_item(PrevPgButton())
+        self.add_item(NextPgButton())
+        self.page = 1
+        self.game = game
+
+    async def interaction_check(self, interaction: Interaction) -> bool:
+        if interaction.data['custom_id'] == 'prev_pg':
+            self.page -= 1
+
+        elif interaction.data['custom_id'] == 'next_pg':
+            self.page += 1
+
+        embed = self.game.gen_stats_embed(interaction, self.page)
+
+        await interaction.response.edit_message(
+            embed=embed, view=self
+        )
+        return False
+
+
+class GameRulesView(View):
+    """
+    Discord UI View for handling train rule interactions.
+
+    Attributes:
+        page (int): Which response page in server's response list to display
+    """
+    def __init__(self):
+        super().__init__(timeout=60)
+        self.add_item(PrevPgButton())
+        self.add_item(NextPgButton())
+        self.page = 1
+
+    async def interaction_check(self, interaction: Interaction) -> bool:
+        if interaction.data['custom_id'] == 'prev_pg':
+            self.page -= 1
+
+        elif interaction.data['custom_id'] == 'next_pg':
+            self.page += 1
+
+        embed = gen_rules_embed(page=self.page)
+
+        await interaction.response.edit_message(
+            embed=embed, view=self
+        )
+        return False
 
 
 genre_colors: dict = {

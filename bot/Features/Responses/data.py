@@ -1,8 +1,11 @@
-import interactions
 from emoji import emojize, demojize
 import json
-import Core.botdata as bd
+import bot.Core.botdata as bd
+from bot.Shared.buttons import PrevPgButton, NextPgButton
 import logging
+from discord.ui import View
+from discord import Interaction, Guild, Embed, Message
+from random import choice
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +71,7 @@ def rmv_response(guild_id: int, delete_req: Response) -> bool:
     try:
         with open(f"{bd.parent}/Guilds/{guild_id}/{f_name}", "r") as f:
             lines: list[dict] = json.load(f)
-    except json.decoder.JSONDecodeError or FileNotFoundError:
+    except json.decoder.JSONDecodeError or FileNotFoundError as e:
         logger.warning(f"Error in response file {f_name} in server {guild_id}: {e}")
         return True
 
@@ -122,20 +125,19 @@ def get_resp(guild_id: int, trig: str, text: str = "", exact: bool = None) -> Re
     return None
 
 
-def gen_resp_list(guild: interactions.Guild, page: int, expired: bool) -> interactions.Embed:
+def gen_resp_list(guild: Guild, page: int) -> Embed:
 
     guild_id = int(guild.id)
-    list_msg = interactions.Embed(
+    list_msg = Embed(
         description="*Your response list, sir.*"
     )
 
     # Determine max pg @ 10 entries per pg
     max_pages: int = 1 if len(bd.responses[guild_id]) <= 10 else len(bd.responses[guild_id]) // 10 + 1
     page: int = 1 + ((page - 1) % max_pages)  # Loop back through pages both ways
-    footer_end: str = " | This message is inactive." if expired else " | This message deactivates after 5 minutes."
     list_msg.set_author(name=guild.name, icon_url=bd.bot_avatar_url)
     list_msg.set_thumbnail(url=guild.icon.url)
-    list_msg.set_footer(text=f"Page {page}/{max_pages} {footer_end}")
+    list_msg.set_footer(text=f"Page {page}/{max_pages}")
     nums: range = range((page-1)*10, len(bd.responses[guild_id])) if page == max_pages else range((page-1)*10, page*10)
     for i in nums:
         pref: str = "**Exact Trigger:** " if bd.responses[guild_id][i].exact else "**Phrase Trigger:** "
@@ -149,3 +151,61 @@ def gen_resp_list(guild: interactions.Guild, page: int, expired: bool) -> intera
             value=rsp_field, inline=False
         )
     return list_msg
+
+
+def generate_response(message: Message) -> str | None:
+    if message.author.bot:
+        return None
+    channel = message.channel
+    if channel.type == 1:  # Ignore DMs
+        return None
+
+    guild_id = message.guild.id
+
+    to_send = [
+        response.text for response in bd.responses[guild_id]
+        if response.trig == message.content.lower() and response.exact
+    ]
+    if to_send:
+        return choice(to_send)
+
+    if not bd.config[guild_id]["ALLOW_PHRASES"]:
+        return None
+
+    to_send = [
+        response.text for response in bd.responses[guild_id]
+        if response.trig in message.content.lower() and not response.exact
+    ]
+    if to_send:
+        return choice(to_send)
+
+    return None
+
+
+class RspView(View):
+    """
+    Discord UI View for handling response view interactions.
+
+    Attributes:
+        page (int): Which response page in server's response list to display
+    """
+
+    def __init__(self):
+        super().__init__(timeout=60)
+        self.add_item(PrevPgButton())
+        self.add_item(NextPgButton())
+        self.page = 1
+
+    async def interaction_check(self, interaction: Interaction) -> bool:
+        if interaction.data['custom_id'] == 'prev_pg':
+            self.page -= 1
+
+        elif interaction.data['custom_id'] == 'next_pg':
+            self.page += 1
+
+        embed = gen_resp_list(interaction.guild, self.page)
+
+        await interaction.response.edit_message(
+            embed=embed, view=self
+        )
+        return False

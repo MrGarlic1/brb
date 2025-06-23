@@ -3,13 +3,55 @@ from asyncio import gather, sleep, Semaphore
 from datetime import datetime
 from random import uniform
 from typing import Optional, Dict, List, Tuple
-import Core.botdata as bd
-from interactions import Embed
+import bot.Core.botdata as bd
 from httpx import AsyncClient, ReadTimeout, RequestError, post
-
-from interactions import ButtonStyle, Button
+from bot.Shared.buttons import NextPgButton, PrevPgButton
+from discord.ui import View
+from discord import Interaction, Embed
 
 logger = logging.getLogger(__name__)
+
+
+class RecView(View):
+    """
+    Discord UI View for handling animanga recommendation interactions.
+
+    Attributes:
+        anilist_id (str): Anilist id to recommend for
+        username (str): Discord username
+        media_type (str): Specify to recommend manga/anime
+        genre (str): Limit recommendations to specified genre
+        page (int): Which recommendation in user's rec list to display
+    """
+
+    def __init__(self, username: str, anilist_id: int, media_type: str, genre: str):
+        super().__init__(timeout=60)
+        self.add_item(PrevPgButton())
+        self.add_item(NextPgButton())
+        self.anilist_id = anilist_id
+        self.username = username
+        self.media_type = media_type
+        self.genre = genre
+        self.page = 0
+
+    async def interaction_check(self, interaction: Interaction) -> bool:
+        if interaction.data['custom_id'] == 'prev_rec':
+            self.page -= 1
+        elif interaction.data['custom_id'] == 'next_rec':
+            self.page += 1
+
+        embed, file = get_rec_embed(
+            username=self.username,
+            media_type=self.media_type,
+            genre=self.genre,
+            page=self.page,
+            anilist_id=self.anilist_id
+        )
+
+        await interaction.response.edit_message(
+            embed=embed, attachments=[file], view=self
+        )
+        return True
 
 
 class MediaRec:
@@ -48,22 +90,6 @@ class RecScoringModel:
     rec_show_score_weight = 1
     rec_genre_score_weight = 1.5
     score_variation = 0.2
-
-
-def next_rec_button() -> Button:
-    return Button(
-            style=ButtonStyle.SUCCESS,
-            label='Next',
-            custom_id='next_rec',
-        )
-
-
-def prev_rec_button() -> Button:
-    return Button(
-            style=ButtonStyle.DANGER,
-            label='Prev',
-            custom_id='prev_rec',
-        )
 
 
 async def query_user_statistics(

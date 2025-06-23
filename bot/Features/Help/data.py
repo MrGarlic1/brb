@@ -1,52 +1,65 @@
-import interactions
-from emoji import emojize, demojize
-import Core.botdata as bd
+import bot.Core.botdata as bd
+from discord.ui import View, Select
+from discord import Interaction, Embed, SelectOption
 
-
-help_pages = {
-    "general": 0,
-    "response": 1,
-    "trains": 2,
-    "bingo": 3,
-    "config": 4,
-    "animanga": 5
+help_msgs = {
+    "general": "General Commands here",
+    "response": "**/response add [trigger] [response] <exact>**\n",
+    "trains": "/response remove [trigger] <response> <exact>\n",
+    "bingo": "/listresponses",
+    "config": "placeholder",
+    "animanga": "placeholder",
 }
 
-help_msgs = [
-    "General Commands here",
-    "**/response add [trigger] [response] <exact>**\n"
-    "/response remove [trigger] <response> <exact>\n"
-    "/listresponses",
-    "placeholder",
-    "placeholder",
-    "placeholder",
-    "placeholder"
-]
 
-
-def gen_help_embed(page: int, expired: bool = False) -> (interactions.Embed, interactions.StringSelectMenu):
-    embed: interactions.Embed = interactions.Embed()
+def gen_help_embed(category: str) -> (Embed, Select):
+    embed: Embed = Embed()
     embed.set_author(name=f"Response Bot Help", icon_url=bd.bot_avatar_url)
-    footer_end: str = ' | This message is inactive.' if expired else ' | This message deactivates after 5 minutes.'
-    embed.set_footer(text=footer_end)
-    category = [category for category, pagenum in help_pages.items() if pagenum == page][0].title()
+    embed.set_footer(text="")
     embed.add_field(
         name=f"{category} Commands",
-        value=help_msgs[page]
+        value=help_msgs[category]
     )
-    components = help_category_menu if not expired else None
-    return embed, components
+    return embed
 
 
-help_category_menu = interactions.StringSelectMenu(
-    interactions.StringSelectOption(value="general", label="General", emoji="🌎"),
-    interactions.StringSelectOption(value="response", label="Response", emoji="📣"),
-    interactions.StringSelectOption(value="trains", label="Trains", emoji="🚅"),
-    interactions.StringSelectOption(value="bingo", label="Bingo", emoji="🎱"),
-    interactions.StringSelectOption(value="config", label="Config", emoji="⚙"),
-    interactions.StringSelectOption(value="animanga", label="Animanga", emoji="🌸"),
+help_category_menu = Select(
+    options=[
+        SelectOption(value="general", label="General", emoji="🌎"),
+        SelectOption(value="response", label="Response", emoji="📣"),
+        SelectOption(value="trains", label="Trains", emoji="🚅"),
+        SelectOption(value="bingo", label="Bingo", emoji="🎱"),
+        SelectOption(value="config", label="Config", emoji="⚙"),
+        SelectOption(value="animanga", label="Animanga", emoji="🌸"),
+    ],
     custom_id="help_category",
-    placeholder="Select a category...",
-    min_values=1,
-    max_values=1,
+    placeholder="Select a category..."
 )
+
+
+class HelpView(View):
+    """
+    Discord UI View for handling help interactions.
+
+    Attributes:
+        anilist_id (str): Anilist id to recommend for
+        username (str): Discord username
+        media_type (str): Specify to recommend manga/anime
+        genre (str): Limit recommendations to specified genre
+        page (int): Which recommendation in user's rec list to display
+    """
+
+    def __init__(self):
+        super().__init__(timeout=60)
+        self.add_item(help_category_menu)
+        self.category = 'general'
+
+    async def interaction_check(self, interaction: Interaction) -> bool:
+        category = interaction.data['values'][0]
+
+        embed = gen_help_embed(category)
+
+        await interaction.response.edit_message(
+            embed=embed, view=self
+        )
+        return True

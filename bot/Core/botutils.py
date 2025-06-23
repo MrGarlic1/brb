@@ -7,22 +7,21 @@ Bot functions
 import asyncio
 import json
 from dataclasses import dataclass
-from os import makedirs, listdir, path, remove
+from os import makedirs, listdir, path
 from shutil import rmtree
-from random import choice
 from re import findall
-from time import strftime
+from typing import Sequence
+from discord import Guild, TextChannel, Interaction, Member
+from discord.app_commands import Choice
 
-import interactions
 import logging
 import matplotlib.font_manager
 
-import Core.botdata as bd
-from Features.Responses.data import gen_resp_list, load_responses
-from Features.Trains.data import gen_rules_embed, load_trains_game
-from Features.Bingo.data import load_bingo_game
-from Features.Help.data import gen_help_embed, help_pages
-from Features.Animanga.data import get_rec_embed, next_rec_button, prev_rec_button
+import botdata as bd
+from bot.Features.Responses.data import load_responses
+from bot.Features.Trains.data import gen_rules_embed, load_trains_game
+from bot.Features.Bingo.data import load_bingo_game
+from bot.Features.Help.data import gen_help_embed
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +30,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ListMsg:
     def __init__(
-            self, num: int, page: int, guild: interactions.Guild, channel: interactions.BaseChannel,
+            self, num: int, page: int, guild: Guild, channel: TextChannel,
             msg_type: str, payload=None
     ):
         self.num = num
@@ -40,13 +39,6 @@ class ListMsg:
         self.channel = channel
         self.msg_type = msg_type
         self.payload = payload
-
-
-def dict_to_choices(dictionary: dict) -> list[interactions.SlashCommandChoice]:
-    out: list = []
-    for key in dictionary.keys():
-        out.append(interactions.SlashCommandChoice(name=key, value=key))
-    return out
 
 
 def load_fonts(filepath) -> None:
@@ -71,7 +63,7 @@ def load_anilist_caches() -> None:
         bd.linked_profiles = {int(key): int(val) for key, val in json.load(f).items()}
 
 
-def load_config(guild: interactions.Guild) -> None:
+def load_config(guild: Guild) -> None:
     # Load and validate guild bd.configs
     try:
 
@@ -111,27 +103,25 @@ def load_config(guild: interactions.Guild) -> None:
         )
 
 
-async def close_msg(list_msg: ListMsg, delay: int, ctx: interactions.SlashContext) -> None:
+async def close_msg(list_msg: ListMsg, delay: int, ctx: Interaction) -> None:
     await asyncio.sleep(delay)
 
-    if list_msg.msg_type == "rsplist":
-        embed = gen_resp_list(ctx.guild, list_msg.page, True)
-    elif list_msg.msg_type == "help":
+    if list_msg.msg_type == "help":
         embed, _ = gen_help_embed(page=list_msg.page, expired=True)
     elif list_msg.msg_type == "trainrules":
         embed = gen_rules_embed(list_msg.page, True)
     elif list_msg.msg_type == "bingoboard":
-        sender_idx, _ = list_msg.payload.get_player(player_id=ctx.author_id)
+        sender_idx, _ = list_msg.payload.get_player(player_id=ctx.user.id)
         embed, _ = list_msg.payload.gen_board_embed(
             page=list_msg.page, sender_idx=sender_idx, expired=True
         )
     else:
         embed = None
-    await ctx.edit(embeds=embed)
+    await ctx.message.edit(embed=embed)
     bd.active_msgs.remove(list_msg)
 
 
-async def get_members_from_str(guild, txt: str) -> list[interactions.Member]:
+async def get_members_from_str(guild, txt: str) -> list[Member]:
     mention_pattern = r"<@(\d+)>"
     mentions = set(findall(mention_pattern, txt))
 
@@ -146,7 +136,7 @@ async def get_members_from_str(guild, txt: str) -> list[interactions.Member]:
     return members
 
 
-def get_player_tags(users: list[interactions.Member]) -> list[str]:
+def get_player_tags(users: list[Member]) -> list[str]:
     tags: list = []
     for user in users:
         done = False
@@ -163,10 +153,10 @@ def get_player_tags(users: list[interactions.Member]) -> list[str]:
 def autocomplete_filter(option: str) -> dict[str: str]:
     if len(option) > 100:
         option = option[:99]
-    return {"name": option, "value": option}
+    return Choice(name=option, value=option)
 
 
-async def init_guilds(guilds: list[interactions.Guild]):
+async def init_guilds(guilds: Sequence[Guild]):
     for guild in guilds:
         # Make guild folder if it doesn't exist
         if not path.exists(f"{bd.parent}/Guilds/{guild.id}/Trains"):
@@ -228,100 +218,7 @@ async def init_guilds(guilds: list[interactions.Guild]):
                 logger.debug(f'Unknown file {name} exists in guild trains directory')
 
 
-def handle_page_change(ctx: interactions.api.events.Component.ctx) -> tuple[
-    None | interactions.Embed, list[interactions.Button], None | interactions.File
-]:
-    image = None
-    embed = None
-    components = None
-    for idx, msg in enumerate(bd.active_msgs):  # Search active messages for correct one
-        if msg.num != int(ctx.message.id):
-            continue
-
-        if ctx.custom_id == "help_category":
-            if not ctx.values:
-                bd.active_msgs[idx].page = help_pages["general"]
-            bd.active_msgs[idx].page = help_pages[ctx.values[0]]
-            embed, components = gen_help_embed(bd.active_msgs[idx].page, expired=False)
-            continue
-
-        if msg.msg_type == "rec":
-            if ctx.custom_id == "next_rec":
-                msg.page += 1
-            else:
-                msg.page -= 1
-            embed = get_rec_embed(
-                username=msg.payload["username"],
-                anilist_id=msg.payload["anilist_id"],
-                genre=msg.payload["genre"],
-                media_type=msg.payload["animanga"],
-                page=msg.page
-            )
-            components = [prev_rec_button(), next_rec_button()]
-            continue
-
-        game = msg.payload
-
-        # Update page num
-        if ctx.custom_id == "prevpg":
-            bd.active_msgs[idx].page -= 1
-        elif ctx.custom_id == "nextpg":
-            bd.active_msgs[idx].page += 1
-
-        if msg.msg_type == "trainstats":
-            embed, image = game.gen_stats_embed(
-                ctx=ctx, page=bd.active_msgs[idx].page, expired=False
-            )
-        elif msg.msg_type == "trainscores":
-            embed, image = game.gen_score_embed(
-                ctx=ctx, page=bd.active_msgs[idx].page, expired=False
-            )
-        elif msg.msg_type == "bingoboard":
-            sender_idx, _ = game.get_player(player_id=ctx.author_id)
-            embed, image = game.gen_board_embed(
-                page=bd.active_msgs[idx].page, sender_idx=sender_idx, expired=False
-            )
-        elif msg.msg_type == "trainrules":
-            embed = gen_rules_embed(bd.active_msgs[idx].page, False)
-        elif msg.msg_type == "rsplist":
-            embed = gen_resp_list(ctx.guild, bd.active_msgs[idx].page, False)
-
-        components = [nextpg_button(), prevpg_button()]
-        break
-
-    return embed, components, image
-
-
-def generate_response(message: interactions.api.events.MessageCreate.message) -> str | None:
-    if message.author.bot:
-        return None
-    channel = message.channel
-    if channel.type == 1:  # Ignore DMs
-        return None
-
-    guild_id = message.guild.id
-
-    to_send = [
-        response.text for response in bd.responses[guild_id]
-        if response.trig == message.content.lower() and response.exact
-    ]
-    if to_send:
-        return choice(to_send)
-
-    if not bd.config[guild_id]["ALLOW_PHRASES"]:
-        return None
-
-    to_send = [
-        response.text for response in bd.responses[guild_id]
-        if response.trig in message.content.lower() and not response.exact
-    ]
-    if to_send:
-        return choice(to_send)
-
-    return None
-
-
-def setup_guild(guild: interactions.Guild):
+def setup_guild(guild: Guild):
     if not path.exists(f'{bd.parent}/Guilds/{guild.id}'):
         makedirs(f'{bd.parent}/Guilds/{guild.id}/Trains')
         with open(f'{bd.parent}/Guilds/{int(guild.id)}/config.json', 'w') as f:
@@ -334,19 +231,3 @@ def setup_guild(guild: interactions.Guild):
         with open(f'{bd.parent}/Guilds/{int(guild.id)}/config.json', 'w') as f:
             json.dump(bd.default_config, f, indent=4)
         return False
-
-
-def nextpg_button() -> interactions.Button:
-    return interactions.Button(
-        style=interactions.ButtonStyle.SECONDARY,
-        label="←",
-        custom_id="prevpg",
-    )
-
-
-def prevpg_button() -> interactions.Button:
-    return interactions.Button(
-        style=interactions.ButtonStyle.SECONDARY,
-        label="→️",
-        custom_id="nextpg",
-    )

@@ -1,7 +1,7 @@
-import interactions
-import Core.botdata as bd
+import bot.Core.botdata as bd
 import json
-from Core.botutils import dict_to_choices
+from discord import app_commands, Interaction
+from discord.ext import commands
 
 config_keys = {
     "Allow Phrase-Based Responses": "ALLOW_PHRASES",
@@ -11,29 +11,23 @@ config_keys = {
 }
 
 
-class Config(interactions.Extension):
-    @interactions.slash_command(
-        name="config",
-        sub_cmd_name="set",
-        sub_cmd_description="Configure the bot's server settings",
-        default_member_permissions=interactions.Permissions.ADMINISTRATOR,
-        dm_permission=False
+class Config(commands.GroupCog, name='config'):
+    @app_commands.command(
+        name='set',
+        description='Configure the bot\'s server settings (admin only)'
     )
-    @interactions.slash_option(
-        name="setting",
-        description="Server setting to change/set",
-        opt_type=interactions.OptionType.STRING,
-        choices=dict_to_choices(config_keys)
+    @app_commands.choices(
+        setting=[
+            app_commands.Choice(name=config_key, value=config_key) for config_key in config_keys.values()
+        ]
     )
-    @interactions.slash_option(
-        name="value",
-        description="The value to set for this setting",
-        opt_type=interactions.OptionType.STRING,
-        autocomplete=True
-    )
-    async def config_set(self, ctx: interactions.SlashContext, setting: str, value: str):
+    async def set(self, ctx: Interaction, setting: str, value: str):
+        if not ctx.user.guild_permissions.administrator:
+            await ctx.response.send_message(content="You must be an administrator to use this command!", ephemeral=True)
+            return True
+
         if setting not in config_keys:
-            await ctx.send(content=bd.fail_str)
+            await ctx.response.send_message(content=bd.fail_str)
             return True
 
         config_key = config_keys[setting]
@@ -45,47 +39,44 @@ class Config(interactions.Extension):
             else:
                 value = bool(value)
         except ValueError:
-            await ctx.send(content=bd.fail_str)
+            await ctx.response.send_message(content=bd.fail_str)
             return True
 
         bd.config[ctx.guild_id][config_key] = value
         with open(f"{bd.parent}/Guilds/{ctx.guild_id}/config.json", "w") as f:
             json.dump(bd.config[ctx.guild_id], f, indent=4)
-        await ctx.send(content=bd.pass_str)
+        await ctx.response.send_message(content=bd.pass_str)
 
-    @config_set.autocomplete("value")
-    async def autocomplete(self, ctx: interactions.AutocompleteContext):
-        setting = ctx.kwargs.get("setting")
+    @set.autocomplete("value")
+    async def value_autocomplete(self, ctx: Interaction, current: str):
+        setting = ctx.namespace["setting"]
         if setting not in config_keys:
             choices = []
         elif config_keys[setting] == "MAX_USER_RESPONSES":
             choices = ["Please enter a positive integer."]
         else:
             choices = ["True", "False"]
-        await ctx.send(choices)
+        return choices
 
-    @interactions.slash_command(
-        name="config",
-        sub_cmd_name="wipe",
-        sub_cmd_description="Resets ALL server settings to default.",
-        default_member_permissions=interactions.Permissions.ADMINISTRATOR,
-        dm_permission=False
+    @app_commands.command(
+        name='wipe',
+        description='Resets ALL server settings to default. (admin only)'
     )
-    async def cfg_reset(self, ctx: interactions.SlashContext):
+    async def wipe(self, ctx: Interaction):
+        if not ctx.user.guild_permissions.administrator:
+            await ctx.response.send_message(content="You must be an administrator to use this command!", ephemeral=True)
+            return True
         with open(f"{bd.parent}/Guilds/{ctx.guild_id}/config.json", "w") as f:
             json.dump(bd.default_config, f, indent=4)
         bd.config[ctx.guild_id] = bd.default_config
-        await ctx.send(content=bd.pass_str)
+        await ctx.response.send_message(content=bd.pass_str)
 
-    @interactions.slash_command(
-        name="config",
-        sub_cmd_name="view",
-        sub_cmd_description="Views the current server settings.",
-        default_member_permissions=interactions.Permissions.ADMINISTRATOR,
-        dm_permission=False
+    @app_commands.command(
+        name='view',
+        description='Views the current server settings.'
     )
-    async def cfg_view(self, ctx: interactions.SlashContext):
-        await ctx.send(
+    async def view(self, ctx: Interaction):
+        await ctx.response.send_message(
             content=f"Allow Phrases: {bd.config[ctx.guild_id]['ALLOW_PHRASES']}\n"
                     f"Limit Responses: {bd.config[ctx.guild_id]['LIMIT_USER_RESPONSES']}\n"
                     f"Response Limit # (Only if Limit Responses is True): "
