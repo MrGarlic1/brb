@@ -2,11 +2,40 @@ import interactions
 import Core.botdata as bd
 import Features.Animanga.data as am
 import Core.botutils as bu
+from Core.anilist import query_user_id
 from asyncio import create_task
 from httpx import RequestError
+from json import dump
 
 
 class Anime(interactions.Extension):
+    @interactions.slash_command(
+        name="anilist",
+        sub_cmd_name="link",
+        sub_cmd_description="Link your discord profile to an anilist profile",
+        dm_permission=True
+    )
+    @interactions.slash_option(
+        name="username",
+        description="Anilist username",
+        required=True,
+        opt_type=interactions.OptionType.STRING
+    )
+    async def link_anilist(self, ctx: interactions.SlashContext, username: str):
+        if username is None:
+            await ctx.send(content="Could not find anilist profile, please check username!")
+            return True
+        anilist_user_id = query_user_id(username)
+        if anilist_user_id is None:
+            await ctx.send(content="Could not find anilist profile, please check username!")
+            return True
+
+        bd.linked_profiles[ctx.author_id] = anilist_user_id
+        with open(f"{bd.parent}/Data/linked_profiles.json", "w") as f:
+            dump(bd.linked_profiles, f, separators=(",", ":"))
+        await ctx.send(content=bd.pass_str)
+        return False
+
     @interactions.slash_command(
         name="recommend",
         description="Have the bot recommend anime/manga for you.",

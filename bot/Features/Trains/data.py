@@ -9,14 +9,16 @@ from random import randint, shuffle, choice
 from typing import Union
 
 import interactions
+import logging
 import matplotlib.font_manager
 import matplotlib.pyplot as plt
 from PIL import Image, ImageFont, ImageDraw
-from colorama import Fore
 from pilmoji import Pilmoji
 
 import Core.anilist as al
 import Core.botdata as bd
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -603,7 +605,7 @@ class TrainGame:
             )
 
         except AttributeError:
-            print(Fore.YELLOW + f"Could not find user with ID {p.member.id}" + Fore.RESET)
+            logger.warning(f"Could not find user with ID {p.member.id}, removing.")
             del self.players[p_idx]
 
     async def update_boards_after_shot(

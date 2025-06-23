@@ -2,7 +2,9 @@ import interactions
 from emoji import emojize, demojize
 import json
 import Core.botdata as bd
-from colorama import Fore
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Response:
@@ -27,7 +29,7 @@ def dict_to_rsp(rsp_dict: dict) -> Response | None:
     try:
         _ = Response(rsp_dict["exact"], rsp_dict["trig"], rsp_dict["text"], rsp_dict["user_id"])
     except KeyError:
-        print(Fore.YELLOW + "Invalid response found, ignoring." + Fore.RESET)
+        logger.warning("Invalid response found, ignoring.")
         return None
     rsp = Response(rsp_dict["exact"], rsp_dict["trig"], rsp_dict["text"], rsp_dict["user_id"])
     return rsp
@@ -67,7 +69,7 @@ def rmv_response(guild_id: int, delete_req: Response) -> bool:
         with open(f"{bd.parent}/Guilds/{guild_id}/{f_name}", "r") as f:
             lines: list[dict] = json.load(f)
     except json.decoder.JSONDecodeError or FileNotFoundError:
-        print(Fore.YELLOW + f"Error for {f_name} in server {guild_id}", Fore.RESET)
+        logger.warning(f"Error in response file {f_name} in server {guild_id}: {e}")
         return True
 
     # Search for desired index of response to delete. Filter by trigger, then text,

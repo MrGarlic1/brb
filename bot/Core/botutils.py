@@ -14,8 +14,8 @@ from re import findall
 from time import strftime
 
 import interactions
+import logging
 import matplotlib.font_manager
-from colorama import Fore
 
 import Core.botdata as bd
 from Features.Responses.data import gen_resp_list, load_responses
@@ -23,6 +23,8 @@ from Features.Trains.data import gen_rules_embed, load_trains_game
 from Features.Bingo.data import load_bingo_game
 from Features.Help.data import gen_help_embed, help_pages
 from Features.Animanga.data import get_rec_embed, next_rec_button, prev_rec_button
+
+logger = logging.getLogger(__name__)
 
 
 # Class Definitions
@@ -80,9 +82,8 @@ def load_config(guild: interactions.Guild) -> None:
         for key in bd.default_config.keys():
             if key not in bd.config[int(guild.id)].keys():
                 bd.config[int(guild.id)][key] = bd.default_config[key]
-                print(
-                    Fore.WHITE + f"{strftime('%Y-%m-%d %H:%M:%S')}:  " +
-                    Fore.YELLOW + f"Config file for {guild.name} missing {key}, set to default." + Fore.RESET
+                logger.warning(
+                    f"Config file for {guild.name} missing {key}, set to default."
                 )
                 with open(f"{bd.parent}/Guilds/{guild.id}/config.json", "w") as f:
                     json.dump(bd.config[int(guild.id)], f, indent=4)
@@ -93,9 +94,8 @@ def load_config(guild: interactions.Guild) -> None:
             if key not in bd.default_config.keys():
                 temp = dict(bd.config[int(guild.id)])
                 del temp[key]
-                print(
-                    Fore.WHITE + f"{strftime('%Y-%m-%d %H:%M:%S')}:  " +
-                    Fore.YELLOW + f"Invalid key {key} in {guild.name} config, removed." + Fore.RESET
+                logger.warning(
+                    f"Invalid key {key} in {guild.name} config, removed."
                 )
                 with open(f"{bd.parent}/Guilds/{guild.id}/config.json", "w") as f:
                     json.dump(temp, f, indent=4)
@@ -106,9 +106,8 @@ def load_config(guild: interactions.Guild) -> None:
         with open(f"{bd.parent}/Guilds/{guild.id}/config.json", "w") as f:
             json.dump(bd.default_config, f, indent=4)
             bd.config[int(guild.id)] = bd.default_config
-        print(
-            Fore.WHITE + f"{strftime('%Y-%m-%d %H:%M:%S')}:  " +
-            Fore.YELLOW + f"No config file found for {guild.name}, created default config file." + Fore.RESET
+        logger.warning(
+            f"No config file found for {guild.name}, created default config file."
         )
 
 
@@ -172,35 +171,21 @@ async def init_guilds(guilds: list[interactions.Guild]):
         # Make guild folder if it doesn't exist
         if not path.exists(f"{bd.parent}/Guilds/{guild.id}/Trains"):
             makedirs(f"{bd.parent}/Guilds/{guild.id}/Trains")
-            print(
-                Fore.WHITE + f"{strftime(bd.date_format)}:  " +
-                Fore.YELLOW + f"Created guild folder for {guild.name}" + Fore.RESET
+            logger.info(
+                f"Created guild trains folder for {guild.name}"
             )
         if not path.exists(f"{bd.parent}/Guilds/{guild.id}/Bingo"):
             makedirs(f"{bd.parent}/Guilds/{guild.id}/Bingo")
-            print(
-                Fore.WHITE + f"{strftime(bd.date_format)}:  " +
-                Fore.YELLOW + f"Created guild folder for {guild.name}" + Fore.RESET
+            logger.info(
+                f"Created guild bingo folder for {guild.name}"
             )
 
         load_config(guild)
         bd.responses[guild.id] = load_responses(f"{bd.parent}/Guilds/{guild.id}/responses.json")
 
-        print(
-            Fore.WHITE + f"{strftime(bd.date_format)}:  " +
-            Fore.GREEN + f"Responses loaded for {guild.name}" + Fore.RESET
+        logger.info(
+            f"Responses loaded for {guild.name}"
         )
-
-        # DELETE THESE LINES ONCE BOT HAS BEEN LOADED ONCE
-        if path.exists(f"{bd.parent}/Guilds/{guild.id}/mentions.json"):
-            bd.responses[guild.id] += load_responses(f"{bd.parent}/Guilds/{guild.id}/mentions.json")
-
-            temp_lines = [response.__dict__ for response in bd.responses[guild.id]]
-            with open(f"{bd.parent}/Guilds/{guild.id}/responses.json", "w") as f:
-                json.dump(temp_lines, f, indent=4)
-            remove(f"{bd.parent}/Guilds/{guild.id}/mentions.json")
-            print("Legacy mentions file removed and rolled into response file.")
-        # END DELETE OF LINES
 
         # Load trains games
 
@@ -214,14 +199,13 @@ async def init_guilds(guilds: list[interactions.Guild]):
                     bd.active_trains[guild.id] = game
                     break
             except (FileNotFoundError, TypeError, ValueError, KeyError) as e:
-                print(e)
+                logger.warning(f'Error loading train data for guild {guild.name}: {e}')
                 del_game_files(guild_id=guild.id, game_name=name, game_type="Trains")
-                print(
-                    Fore.WHITE + f'{strftime(bd.date_format)} :  ' +
-                    Fore.YELLOW + f"Invalid game \"{name}\" in guild {guild.id}, attempted delete." + Fore.RESET
+                logger.warning(
+                    f"Invalid trains game \"{name}\" in guild {guild.name}, attempted delete."
                 )
             except NotADirectoryError:
-                pass
+                logger.debug(f'Unknown file {name} exists in guild trains directory')
 
         # Load bingo games
 
@@ -235,14 +219,13 @@ async def init_guilds(guilds: list[interactions.Guild]):
                     bd.active_bingos[guild.id] = game
                     break
             except (FileNotFoundError, TypeError, ValueError, KeyError) as e:
-                print(e)
+                logger.warning(f'Error loading bingo data for guild {guild.name}: {e}')
                 del_game_files(guild_id=guild.id, game_name=name, game_type="Bingo")
-                print(
-                    Fore.WHITE + f'{strftime(bd.date_format)} :  ' +
-                    Fore.YELLOW + f"Invalid game \"{name}\" in guild {guild.id}, attempted delete." + Fore.RESET
+                logger.warning(
+                    f"Invalid bingo game \"{name}\" in guild {guild.name}, attempted delete."
                 )
             except NotADirectoryError:
-                pass
+                logger.debug(f'Unknown file {name} exists in guild trains directory')
 
 
 def handle_page_change(ctx: interactions.api.events.Component.ctx) -> tuple[

@@ -1,3 +1,4 @@
+import logging
 from asyncio import gather, sleep, Semaphore
 from datetime import datetime
 from random import uniform
@@ -7,6 +8,8 @@ from interactions import Embed
 from httpx import AsyncClient, ReadTimeout, RequestError, post
 
 from interactions import ButtonStyle, Button
+
+logger = logging.getLogger(__name__)
 
 
 class MediaRec:
@@ -31,6 +34,20 @@ class MediaRec:
 
     def __eq__(self, other):
         return isinstance(other, MediaRec) and other.media_id == self.media_id
+
+
+class RecScoringModel:
+    """Contains weights/factors/corrections for animanga rec scoring"""
+
+    global_mean = 65
+    genre_count_weight = 0.16
+    popularity_exp = 1.5
+    global_scale_exp = 0.35
+    node_score_weight = 0.8
+    favorite_weight = 3
+    rec_show_score_weight = 1
+    rec_genre_score_weight = 1.5
+    score_variation = 0.2
 
 
 def next_rec_button() -> Button:
@@ -88,24 +105,27 @@ async def query_user_statistics(
     }}
     """
     variables = {'userId': anilist_id}
+    logger.info(f'Querying user statistics for {anilist_id} ({media_type})')
 
     try:
         response = post(
             url='https://graphql.anilist.co',
             json={'query': query, 'variables': variables},
         )
-    except ReadTimeout:
+    except ReadTimeout as e:
+        logger.error(f'Request timed out fetching {anilist_id}: {e}')
         return None
-    if response.status_code != 200:
-        return None
-    user_data = response.json()['data']['User']
-    if not user_data['statistics'][media_type]['count']:
-        return None
+    if response.status_code == 200:
+        user_data = response.json()['data']['User']
+        if user_data['statistics'][media_type]['count']:
+            favorites = [
+                fav['id'] for fav in user_data['favourites'][media_type]['nodes']
+            ]
+            user_data['favourites'][media_type] = favorites
+            return user_data
 
-    favorites = [fav['id'] for fav in user_data['favourites'][media_type]['nodes']]
-    user_data['favourites'][media_type] = favorites
-
-    return user_data
+    logger.error(f'Failed to fetch user statistics for {anilist_id}')
+    return None
 
 
 async def query_media_recs(
@@ -179,6 +199,7 @@ async def query_media_recs(
                 'perChunk': chunk_size,
                 'chunk': chunk,
             }
+            logger.debug(f'Querying chunk {chunk} for {anilist_id}')
             async with max_concurrent:
                 try:
                     data = await session.post(
@@ -189,13 +210,22 @@ async def query_media_recs(
                     if data.status_code == 200:
                         return data
                 except ReadTimeout:
-                    pass
-
+                    logger.warning(
+                        f'List data chunk {chunk} for {anilist_id} timed out'
+                    )
+            logger.warning(
+                f'Attempt {attempt + 1}/{max_attempts} failed for chunk {chunk}'
+            )
             await sleep((1.75 ** attempt) + uniform(0, 1))
+
+        logger.warning(
+            f'Failed to get list data chunk {chunk} after {max_attempts}'
+        )
         return None
 
     tasks: list = []
 
+    logger.info(f'Querying user list data for {anilist_id} ({media_type})')
     async with AsyncClient() as client:
         for i in range(1, watched_count // chunk_size + 2):
             tasks.append(query_list_recommendations(client, i))
@@ -265,25 +295,19 @@ def calculate_rec_scores(
     Returns:
         list[MediaRec]: List of user's recommendations
     """
-    max_popularity = 0
-    global_mean = 65
-    genre_count_weight = 0.16
-    popularity_exp = 1.5
-    global_scale_exp = 0.35
+    model = RecScoringModel()
 
-    # Obtain max user score, collect watched show info
+    # Pre-processing: Obtain max user score, collect watched show info, calculate user genre scores
     max_score = 1
-    seen_show_ids = []
-    for entry in list_data:
-        seen_show_ids.append(entry['media']['id'])
-        if entry['score'] > max_score:
-            max_score = entry['score']
-        if entry['media']['popularity'] > max_popularity:
-            max_popularity = entry['media']['popularity']
+    max_popularity = 0
+    seen_show_ids = set()
+    for list_entry in list_data:
+        seen_show_ids.add(list_entry['media']['id'])
+        if list_entry['score'] > max_score:
+            max_score = list_entry['score']
+        if list_entry['media']['popularity'] > max_popularity:
+            max_popularity = list_entry['media']['popularity']
 
-    seen_show_ids = set(seen_show_ids)
-
-    # Get user genre scores
     user_genre_scores = {}
     for genre in user_stats['genres']:
         genre_name = genre['genre']
@@ -291,34 +315,45 @@ def calculate_rec_scores(
             user_genre_scores[genre_name] = 0
         else:
             user_genre_scores[genre_name] = (
-                                                    genre['meanScore'] - user_stats['meanScore']
-                                            ) / 100 + (genre['count'] - 0.5 * len(seen_show_ids)) / len(
+                genre['meanScore'] - user_stats['meanScore']
+            ) / 100 + (genre['count'] - 0.5 * len(seen_show_ids)) / len(
                 seen_show_ids
-            ) * genre_count_weight
+            ) * model.genre_count_weight
 
     recommendation_scores: dict[int:MediaRec] = {}
-    for entry in list_data:
-        if not entry['media']['recommendations']['nodes']:
+    for list_entry in list_data:
+        if not list_entry['media']['recommendations']['nodes']:
             continue
-        if entry['status'] == 'DROPPED':
+        if list_entry['status'] == 'DROPPED':
             continue
 
         # Weight each show's recommendation by strength of recommendation on the site
-        max_recs = max(8, len(entry['media']['recommendations']['nodes']))
-        max_rec_rating = entry['media']['recommendations']['nodes'][0]['rating']
+        max_show_recs = max(8, len(list_entry['media']['recommendations']['nodes']))
+        max_rec_rating = list_entry['media']['recommendations']['nodes'][0][
+            'rating'
+        ]
         if max_rec_rating == 0:
             continue
 
-        favorite_weight = 3 if entry['media']['id'] in user_favorites else 1
+        favorite_weight = (
+            model.favorite_weight
+            if list_entry['media']['id'] in user_favorites
+            else 1
+        )
 
-        for show_rec in entry['media']['recommendations']['nodes'][0:max_recs]:
+        for show_rec in list_entry['media']['recommendations']['nodes'][
+                        0:max_show_recs
+                        ]:
+            rec_total_weight = show_rec['rating'] / max_rec_rating
+
+            media_rec = show_rec['mediaRecommendation']
             # Filter out bad data from anilist
-            if show_rec['mediaRecommendation'] is None:
+            if media_rec is None:
                 continue
-            if show_rec['mediaRecommendation']['id'] in seen_show_ids:
+            if media_rec['id'] in seen_show_ids:
                 continue
-            if not show_rec['mediaRecommendation']['meanScore']:
-                show_rec['mediaRecommendation']['meanScore'] = global_mean
+            if not media_rec['meanScore']:
+                media_rec['meanScore'] = model.global_mean
 
             # Filter out shows with prequels that have not been seen yet
             try:
@@ -326,44 +361,44 @@ def calculate_rec_scores(
                         related_show[0]['relationType'] == 'PREQUEL'
                         and related_show[1]['id'] not in seen_show_ids
                         for related_show in zip(
-                            show_rec['mediaRecommendation']['relations']['edges'],
-                            show_rec['mediaRecommendation']['relations']['nodes'],
+                            media_rec['relations']['edges'],
+                            media_rec['relations']['nodes'],
                         )
                 ):
                     continue
             except KeyError:
-                pass
+                logger.debug(
+                    f'No related media found for {media_rec["title"]["romaji"]}'
+                )
 
-            # Scoring weights
-            node_score_weight = 0 if entry['score'] == 0 else 0.8
-            rec_show_score_weight = 1
+            rec_pop_factor = 1 - media_rec['popularity'] / max_popularity
             rec_pop_factor = (
-                    1 - show_rec['mediaRecommendation']['popularity'] / max_popularity
+                rec_pop_factor ** model.popularity_exp if rec_pop_factor > 0 else 0.1
             )
-            rec_genre_score_weight = 1.5
-            rec_pop_factor = (
-                rec_pop_factor ** popularity_exp if rec_pop_factor > 0 else 0.1
-            )
-            rec_total_weight = show_rec['rating'] / max_rec_rating
 
-            # Scoring
-            node_score = node_score_weight * (
-                    entry['score'] / max_score - user_stats['meanScore'] / 100
+            node_score = (
+                model.node_score_weight
+                * (list_entry['score'] / max_score - user_stats['meanScore'] / 100)
+                if list_entry['score'] != 0
+                else 0
             )
+
             rec_show_score = (
-                    rec_show_score_weight
-                    * (show_rec['mediaRecommendation']['meanScore'] - global_mean)
+                    model.rec_show_score_weight
+                    * (media_rec['meanScore'] - model.global_mean)
                     / 100
             )
             rec_genre_score = 0
-            for genre in show_rec['mediaRecommendation']['genres']:
+            for genre in media_rec['genres']:
                 try:
                     rec_genre_score += user_genre_scores[genre] / len(
-                        show_rec['mediaRecommendation']['genres']
+                        media_rec['genres']
                     ) ** (1 / 2)
                 except (KeyError, ZeroDivisionError):
-                    continue
-                rec_genre_score *= rec_genre_score_weight
+                    logger.debug(
+                        f'No user data for {genre} in {media_rec["title"]["romaji"]}, skipping genre score'
+                    )
+                rec_genre_score *= model.rec_genre_score_weight
 
             total_rec_score = (
                     (node_score + rec_show_score + rec_genre_score)
@@ -371,27 +406,20 @@ def calculate_rec_scores(
                     * rec_pop_factor
                     * favorite_weight
             )
-            if show_rec['mediaRecommendation']['id'] not in recommendation_scores:
-                recommendation_scores[show_rec['mediaRecommendation']['id']] = (
-                    MediaRec(
-                        media_id=show_rec['mediaRecommendation']['id'],
-                        title=show_rec['mediaRecommendation']['title']['romaji'],
-                        genres=show_rec['mediaRecommendation']['genres'],
-                        cover_url=show_rec['mediaRecommendation']['coverImage'][
-                            'large'
-                        ],
-                        mean_score=show_rec['mediaRecommendation']['meanScore'],
-                    )
+            if media_rec['id'] not in recommendation_scores:
+                recommendation_scores[media_rec['id']] = MediaRec(
+                    media_id=media_rec['id'],
+                    title=media_rec['title']['romaji'],
+                    genres=media_rec['genres'],
+                    cover_url=media_rec['coverImage']['large'],
+                    mean_score=media_rec['meanScore'],
                 )
-            recommendation_scores[
-                show_rec['mediaRecommendation']['id']
-            ].score += total_rec_score
+            recommendation_scores[media_rec['id']].score += total_rec_score
 
     recommendation_scores = list(recommendation_scores.values())
 
-    # Add random variation of +/- 20%, then sort recommendations by score
     for rec in recommendation_scores:
-        rec.score *= uniform(0.8, 1.2)
+        rec.score *= uniform(1 + model.score_variation, 1 - model.score_variation)
 
     recommendation_scores = [rec for rec in recommendation_scores if rec.score >= 0]
     recommendation_scores.sort(reverse=True)
@@ -399,7 +427,7 @@ def calculate_rec_scores(
     # Normalize scores and apply filter for logical percentages
     max_score = recommendation_scores[0].score
     for rec in recommendation_scores:
-        rec.score = (rec.score / max_score) ** global_scale_exp * 100
+        rec.score = (rec.score / max_score) ** model.global_scale_exp * 100
 
     return recommendation_scores
 
@@ -422,6 +450,10 @@ async def check_recommendation(
     )
 
     # Use cached data unless cached data does not exist or is outdated
+    logger.info(
+        f'Checking recommendation cache for {anilist_id} ({media_type})'
+    )
+
     try:
         time_delta = (
                 datetime.now() - known_recs[anilist_id]['date']
@@ -429,6 +461,7 @@ async def check_recommendation(
     except KeyError:
         time_delta = 0
     if anilist_id not in known_recs or force_update or time_delta > 345600:
+        logger.debug(f'Cache age for {anilist_id}: {time_delta:.2f} seconds')
         list_data, user_stats, user_favorites = await fetch_recommendations(
             anilist_id=anilist_id,
             media_type=media_type,
@@ -442,6 +475,13 @@ async def check_recommendation(
             'date': datetime.now(),
             'recs': recommendation_scores,
         }
+        logger.info(
+            f'Updated recommendations cache for {anilist_id} ({media_type})'
+        )
+    else:
+        logger.info(
+            f'Using cached recommendation data for {anilist_id} ({media_type})'
+        )
 
     return None
 

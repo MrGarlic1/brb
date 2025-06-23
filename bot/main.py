@@ -7,7 +7,7 @@ from time import sleep
 from time import strftime
 
 import interactions
-from colorama import init, Fore
+import logging
 
 import Core.botdata as bd
 import Core.botutils as bu
@@ -19,13 +19,20 @@ bot = interactions.Client(
     delete_unused_application_cmds=True,
 )
 
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    format='%(asctime)s %(levelname)s:%(name)s: %(message)8s',
+    level=logging.INFO,
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
 
 @interactions.listen()
 async def on_guild_join(event: interactions.api.events.GuildJoin):
     guild = event.guild
     bu.setup_guild(guild)
-    print(
-        Fore.WHITE + f"{strftime(bd.date_format)}:  " + Fore.RESET + f"Added to guild {guild.id}."
+    logger.info(
+        f"Added to guild {guild.id}"
     )
 
 
@@ -38,9 +45,8 @@ async def on_ready():
     bu.load_anilist_caches()
 
     bu.load_fonts(f"{bd.parent}/Data")
-    print(
-        Fore.WHITE + f'{strftime(bd.date_format)} :  Connected to the following guilds: ' +
-        Fore.CYAN + ", ".join(guild.name for guild in guilds) + Fore.RESET
+    logger.info(
+        f'Connected to the following guilds: {", ".join(guild.name for guild in guilds)}'
     )
 
     # Load command modules; sleep to avoid rate limit
@@ -89,8 +95,10 @@ async def on_component(event: interactions.api.events.Component):
 
 
 def main():
-    init()
-    bot.start()
+    try:
+        bot.start()
+    except exception as e:
+        logger.critical(f'Failed to start bot: {e}')
 
 
 if __name__ == "__main__":
