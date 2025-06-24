@@ -171,6 +171,7 @@ cython_debug/
 *.idea/**/shelf
 *.idea/**/misc.xml
 *.idea/*
+.idea/
 
 # AWS User-specific
 .idea/**/aws.xml
