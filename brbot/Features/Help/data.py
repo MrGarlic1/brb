@@ -43,13 +43,6 @@ help_category_menu = Select(
 class HelpView(View):
     """
     Discord UI View for handling help interactions.
-
-    Attributes:
-        anilist_id (str): Anilist id to recommend for
-        username (str): Discord username
-        media_type (str): Specify to recommend manga/anime
-        genre (str): Limit recommendations to specified genre
-        page (int): Which recommendation in user's rec list to display
     """
 
     def __init__(self):

@@ -53,7 +53,7 @@ class ConfigCog(commands.GroupCog, name='config'):
         return False
 
     @set.autocomplete("value")
-    async def value_autocomplete(self, ctx: Interaction, current: str):
+    async def value_autocomplete(self, ctx: Interaction, _: str):
         setting = ctx.namespace["setting"]
         if setting not in config_keys:
             choices = []
