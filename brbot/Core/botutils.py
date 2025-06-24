@@ -18,7 +18,7 @@ import matplotlib.font_manager
 
 import brbot.Core.botdata as bd
 from brbot.Features.Responses.data import load_responses
-from brbot.Features.Trains.data import load_trains_game
+from brbot.Features.Trains.service import load_trains_game
 from brbot.Features.Bingo.data import load_bingo_game
 
 logger = logging.getLogger(__name__)
@@ -211,3 +211,4 @@ def setup_guild(guild: Guild):
         with open(f'{bd.parent}/Guilds/{int(guild.id)}/config.json', 'w') as f:
             json.dump(bd.default_config, f, indent=4)
         return False
+    return False

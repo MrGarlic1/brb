@@ -61,7 +61,8 @@ def add_response(guild_id: int, rsp: Response) -> bool:
     try:
         with open(f"{bd.parent}/Guilds/{guild_id}/{f_name}", "w") as f:
             json.dump(lines, f, indent=4)
-    except UnicodeError:
+    except UnicodeError as e:
+        logger.error(f"Could not write to {f_name}: {e}")
         return True
     return False
 
@@ -110,6 +111,7 @@ def load_responses(file) -> list:
             rsp.text = emojize(rsp.text)
 
     except FileNotFoundError:
+        logger.warning(f"Error loading response file {file}, blank file created")
         f = open(file, "w")
         f.close()
         lines: list = []
@@ -143,6 +145,7 @@ def gen_resp_list(guild: Guild, page: int) -> Embed:
         pref: str = "**Exact Trigger:** " if bd.responses[guild_id][i].exact else "**Phrase Trigger:** "
         rsp_field: str = f"{pref}{bd.responses[guild_id][i].trig} \n **Respond: ** {bd.responses[guild_id][i].text}"
         if len(rsp_field) >= 1024:
+            logger.debug(f"Response too long: {rsp_field}, showing shortened version")
             rsp_field: str = (f"{pref}{bd.responses[guild_id][i].trig} \n "
                               f"**Respond: ** *[Really, really, really long response]*")
 
@@ -166,6 +169,7 @@ def generate_response(message: Message) -> str | None:
         response.text for response in bd.responses[guild_id]
         if response.trig == message.content.lower() and response.exact
     ]
+    logger.debug(f'Exact response match found, 1/{len(to_send)} possible responses')
     if to_send:
         return choice(to_send)
 
@@ -176,6 +180,7 @@ def generate_response(message: Message) -> str | None:
         response.text for response in bd.responses[guild_id]
         if response.trig in message.content.lower() and not response.exact
     ]
+    logger.debug(f'Phrase response match found, 1/{len(to_send)} possible responses')
     if to_send:
         return choice(to_send)
 

@@ -20,27 +20,6 @@ bot_avatar_url: str = ""
 train_zones_url: str = "https://i.imgur.com/CRgbw7R.png"
 date_format: str = "%Y/%m/%d %H:%M:%S"
 
-emoji: dict = {
-    "wheat": "🌾",
-    "wood": "🌳",
-    "gems": "💎",
-    "city": "🌃",
-    "prison": "🔒",
-    "house": "🏠",
-    "river": "🏞",
-    "telescope": "🔭",
-    "gun": "🔫",
-    "bucket": "🪣",
-    "bridge": "🌉",
-    "axe": "🪓",
-    "coin": "🪙",
-    "maglev": "🚄",
-    "shop": "🛒",
-    "first": "🥇",
-    "second": "🥈",
-    "third": "🥉"
-}
-
 responses, mentions, config = {}, {}, {}
 active_msgs: list = []
 active_trains: dict = {}

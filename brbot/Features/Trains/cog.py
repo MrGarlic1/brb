@@ -1,4 +1,5 @@
-import brbot.Features.Trains.data as tr
+from brbot.Features.Trains.service import TrainGame, load_trains_game
+from brbot.Features.Trains.data import TrainShot, TrainPlayer, default_shop, train_game_embed, GameStatsView, GameRulesView, gen_rules_embed
 import brbot.Core.anilist as al
 import brbot.Core.botdata as bd
 import asyncio
@@ -9,6 +10,9 @@ from datetime import datetime
 from io import BytesIO
 from discord import app_commands, Interaction, File, Member
 from discord.ext import commands
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class TrainsCog(commands.GroupCog, name='trains'):
@@ -32,13 +36,14 @@ class TrainsCog(commands.GroupCog, name='trains'):
             await ctx.followup.send(content="Name already exists!")
             return True
 
+        logger.info(f"Creating new trains game {name} in {ctx.guild.name}")
         async def add_trains_player(m: Member, t: str):
             starting_anilist = await al.query_user_animelist(bd.linked_profiles[m.id])
             least_watched_genre = await al.query_user_genres(bd.linked_profiles[m.id])
             dm_channel = await m.create_dm() if m.dm_channel is None else m.dm_channel
-            players.append(tr.TrainPlayer(
+            players.append(TrainPlayer(
                 member=m, tag=t, dmchannel=dm_channel, starting_anilist=starting_anilist,
-                least_watched_genre=least_watched_genre)
+                least_watched_genre=least_watched_genre, anilist_id=bd.linked_profiles[m.id])
             )
 
         # Create player list and tags
@@ -49,6 +54,7 @@ class TrainsCog(commands.GroupCog, name='trains'):
         tasks: list = []
         for member, tag in zip(members, tags):
             if member.id not in bd.linked_profiles:
+                logger.error(f"User {member.name} not linked to any anilist profile, aborting game creation")
                 await ctx.followup.send(
                     content=f"Could not create game, <@{member.id}> must link their anilist profile! (/anilist link)"
                 )
@@ -68,7 +74,7 @@ class TrainsCog(commands.GroupCog, name='trains'):
         date = datetime.now().strftime(bd.date_format)
         gameid = int(datetime.now().strftime("%Y%m%d%H%M%S"))
 
-        game = tr.TrainGame(
+        game = TrainGame(
             name=name,
             date=date,
             players=players,
@@ -88,14 +94,15 @@ class TrainsCog(commands.GroupCog, name='trains'):
 
         try:
             mkdir(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{name}")
-        except OSError:
+        except OSError as e:
+            logger.error(f"Could not create game folder for {ctx.guild.name}: {e}")
             await ctx.followup.send(
                 content="Invalid name! Game must not contain the following characters: / \\ : * ? < > |"
             )
             return True
 
         # Push updates to player boards
-        await ctx.followup.send(embed=tr.train_game_embed(ctx=ctx, game=game))
+        await ctx.followup.send(embed=train_game_embed(ctx=ctx, game=game))
         await game.update_boards_after_create(ctx=ctx)
         return False
 
@@ -112,13 +119,14 @@ class TrainsCog(commands.GroupCog, name='trains'):
 
         game = bd.active_trains[ctx.guild_id]
         await ctx.response.send_message(content="\n".join([item.shop_entry() for item in game.shop.values()]))
+        return False
 
     @app_commands.command(
         name='buy',
         description='Buy an item from a shop/city.'
     )
     @app_commands.choices(
-        name=[app_commands.Choice(name=itemname, value=itemname) for itemname in tr.default_shop()]
+        name=[app_commands.Choice(name=itemname, value=itemname) for itemname in default_shop()]
     )
     async def buy(self, ctx: Interaction, name: str, showinfo: str):
         if ctx.guild_id not in bd.active_trains:
@@ -135,6 +143,7 @@ class TrainsCog(commands.GroupCog, name='trains'):
             return True
 
         await ctx.response.send_message(content=bd.pass_str)
+        return False
 
     @app_commands.command(
         name='inventory',
@@ -185,6 +194,7 @@ class TrainsCog(commands.GroupCog, name='trains'):
             await game.update_boards_after_shot(
                 ctx=ctx, row=row, column=column
             )
+        return False
 
     @app_commands.command(
         name='shot',
@@ -220,6 +230,7 @@ class TrainsCog(commands.GroupCog, name='trains'):
 
         # Fetch anilist show information if it isn't already cached
         if show_id not in game.known_shows:
+            logger.info(f"{show_id} not in {game.known_shows}, fetching anilist info")
             show_info = al.query_media(media_id=show_id)
             if show_info is None:
                 await ctx.followup.send(content="Error connecting to anilist, please check URL and try again.")
@@ -227,7 +238,7 @@ class TrainsCog(commands.GroupCog, name='trains'):
             game.known_shows[show_id] = show_info
 
         # Update board, player rails
-        shot = tr.TrainShot(
+        shot = TrainShot(
             row=row, col=column, show_id=show_id, info=info, time=datetime.now().strftime(bd.date_format)
         )
         game.update_player_stats_after_shot(sender_idx=sender_idx, player=player, shot=shot)
@@ -240,12 +251,13 @@ class TrainsCog(commands.GroupCog, name='trains'):
         if not game.active:
             await game.calculate_player_scores(ctx=ctx)
             embed, image = game.gen_score_embed(ctx=ctx, page=0)
-            view = tr.GameStatsView(game=game)
+            view = GameStatsView(game=game)
             await ctx.followup.send(
                 embed=embed,
                 file=image,
                 view=view
             )
+        return False
 
     @app_commands.command(
         name='undo',
@@ -290,12 +302,13 @@ class TrainsCog(commands.GroupCog, name='trains'):
         await game.update_boards_after_shot(
             ctx=ctx, row=shot.row, column=shot.col
         )
+        return False
 
     @app_commands.command(
         name='stats',
         description='View limited/full stats for an in-progress/completed game.'
     )
-    async def stats(self, ctx: Interaction, name: str = None):
+    async def stats(self, ctx: Interaction, name: str = None) -> bool:
         # Logic to get game or return error if no game found
         if name is None:
             if ctx.guild_id not in bd.active_trains:
@@ -305,7 +318,7 @@ class TrainsCog(commands.GroupCog, name='trains'):
 
         else:
             try:
-                game = await tr.load_trains_game(
+                game = await load_trains_game(
                     filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{name}", guild=ctx.guild
                 )
             except FileNotFoundError:
@@ -317,11 +330,12 @@ class TrainsCog(commands.GroupCog, name='trains'):
 
         # Send stats
         embed, image = game.gen_stats_embed(ctx=ctx)
-        view = tr.GameStatsView(game=game)
+        view = GameStatsView(game=game)
         if image:
             await ctx.followup.send(embed=embed, file=image, view=view)
         else:
             await ctx.followup.send(embed=embed, view=view)
+        return False
 
     @stats.autocomplete("name")
     async def autocomplete(self, ctx: Interaction, current: str):
@@ -403,7 +417,7 @@ class TrainsCog(commands.GroupCog, name='trains'):
             await ctx.response.send_message("There is already an active game in this server!")
             return True
         try:
-            test_game = await tr.load_trains_game(
+            test_game = await load_trains_game(
                 filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{name}", guild=ctx.guild
             )
         except FileNotFoundError:
@@ -414,6 +428,7 @@ class TrainsCog(commands.GroupCog, name='trains'):
             return True
 
         test_game.active = True
+        logger.info(f"Restored game {name} to active status in {ctx.guild.name}")
         test_game.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{test_game.name}")
         bd.active_trains[ctx.guild_id] = test_game
         await ctx.response.send_message(content=bd.pass_str)
@@ -436,9 +451,9 @@ class TrainsCog(commands.GroupCog, name='trains'):
         page='Specify which page of the rules to view.'
     )
     async def rules(self, ctx: Interaction, page: int = 1):
-        view = tr.GameRulesView(page= page - 1)
+        view = GameRulesView(page= page - 1)
         await ctx.response.send_message(
-            embed=tr.gen_rules_embed(page=page - 1),
+            embed=gen_rules_embed(page=page - 1),
             view=view
         )
 

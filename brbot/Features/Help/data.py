@@ -1,6 +1,9 @@
 import brbot.Core.botdata as bd
 from discord.ui import View, Select
 from discord import Interaction, Embed, SelectOption
+import logging
+
+logger = logging.getLogger(__name__)
 
 help_msgs = {
     "general": "General Commands here",
@@ -57,8 +60,8 @@ class HelpView(View):
     async def interaction_check(self, interaction: Interaction) -> bool:
         category = interaction.data['values'][0]
 
+        logger.debug(f"Generating help embed with category {category} from {interaction.data}")
         embed = gen_help_embed(category)
-
         await interaction.response.edit_message(
             embed=embed, view=self
         )

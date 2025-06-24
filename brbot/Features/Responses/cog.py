@@ -3,6 +3,9 @@ import brbot.Core.botutils as bu
 import brbot.Features.Responses.data as rsp
 from discord import app_commands, Interaction, Message
 from discord.ext import commands
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class ResponsesCog(commands.GroupCog, name='response'):
@@ -128,7 +131,9 @@ class ResponsesCog(commands.GroupCog, name='response'):
         f = open(f"{bd.parent}/Guilds/{ctx.guild_id}/responses.json", "w")
         f.close()
         bd.responses[ctx.guild_id] = []
+        logger.info(f'Cleared all responses from {ctx.guild_id}.')
         await ctx.response.send_message(content=bd.pass_str)
+        return False
 
     @commands.Cog.listener()
     async def on_message(self, message: Message):

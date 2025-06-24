@@ -2,6 +2,9 @@ import brbot.Core.botdata as bd
 import json
 from discord import app_commands, Interaction
 from discord.ext import commands
+import logging
+
+logger = logging.getLogger(__name__)
 
 config_keys = {
     "Allow Phrase-Based Responses": "ALLOW_PHRASES",
@@ -42,10 +45,12 @@ class ConfigCog(commands.GroupCog, name='config'):
             await ctx.response.send_message(content=bd.fail_str)
             return True
 
+        logger.info(f"Set key {config_key} to {value} for guild {ctx.guild.name}")
         bd.config[ctx.guild_id][config_key] = value
         with open(f"{bd.parent}/Guilds/{ctx.guild_id}/config.json", "w") as f:
             json.dump(bd.config[ctx.guild_id], f, indent=4)
         await ctx.response.send_message(content=bd.pass_str)
+        return False
 
     @set.autocomplete("value")
     async def value_autocomplete(self, ctx: Interaction, current: str):
@@ -69,7 +74,9 @@ class ConfigCog(commands.GroupCog, name='config'):
         with open(f"{bd.parent}/Guilds/{ctx.guild_id}/config.json", "w") as f:
             json.dump(bd.default_config, f, indent=4)
         bd.config[ctx.guild_id] = bd.default_config
+        logger.info(f"Reset config for guild {ctx.guild.name}")
         await ctx.response.send_message(content=bd.pass_str)
+        return False
 
     @app_commands.command(
         name='view',
