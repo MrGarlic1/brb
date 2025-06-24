@@ -1,9 +1,9 @@
-import bot.Features.Trains.data as tr
-import bot.Core.anilist as al
-import bot.Core.botdata as bd
+import brbot.Features.Trains.data as tr
+import brbot.Core.anilist as al
+import brbot.Core.botdata as bd
 import asyncio
 from os import path, listdir, mkdir
-import bot.Core.botutils as bu
+import brbot.Core.botutils as bu
 from shutil import copytree, ignore_patterns
 from datetime import datetime
 from io import BytesIO
@@ -316,9 +316,12 @@ class TrainsCog(commands.GroupCog, name='trains'):
         await ctx.response.defer()
 
         # Send stats
-        embed, image = game.gen_stats_embed(ctx=ctx, page=0)
+        embed, image = game.gen_stats_embed(ctx=ctx)
         view = tr.GameStatsView(game=game)
-        await ctx.followup.send(embed=embed, file=image, view=view)
+        if image:
+            await ctx.followup.send(embed=embed, file=image, view=view)
+        else:
+            await ctx.followup.send(embed=embed, view=view)
 
     @stats.autocomplete("name")
     async def autocomplete(self, ctx: Interaction, current: str):
@@ -432,10 +435,10 @@ class TrainsCog(commands.GroupCog, name='trains'):
     @app_commands.describe(
         page='Specify which page of the rules to view.'
     )
-    async def rules(self, ctx: Interaction, page: int = 0):
-        view = tr.GameRulesView()
+    async def rules(self, ctx: Interaction, page: int = 1):
+        view = tr.GameRulesView(page= page - 1)
         await ctx.response.send_message(
-            embeds=tr.gen_rules_embed(page=page),
+            embed=tr.gen_rules_embed(page=page - 1),
             view=view
         )
 

@@ -2,11 +2,11 @@
 Ben Samans
 main.py
 """
-from bot.Core.bot import BrBot
+from brbot.Core.bot import BrBot
 
 import logging
 
-from bot.Core.botdata import token
+from brbot.Core.botdata import token
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(

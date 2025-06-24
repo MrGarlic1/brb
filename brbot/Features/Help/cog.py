@@ -1,4 +1,4 @@
-import bot.Features.Help.data as hp
+import brbot.Features.Help.data as hp
 from discord import app_commands, Interaction
 from discord.ext import commands
 

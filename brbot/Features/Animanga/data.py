@@ -3,9 +3,9 @@ from asyncio import gather, sleep, Semaphore
 from datetime import datetime
 from random import uniform
 from typing import Optional, Dict, List, Tuple
-import bot.Core.botdata as bd
+import brbot.Core.botdata as bd
 from httpx import AsyncClient, ReadTimeout, RequestError, post
-from bot.Shared.buttons import NextPgButton, PrevPgButton
+from brbot.Shared.buttons import NextPgButton, PrevPgButton
 from discord.ui import View
 from discord import Interaction, Embed
 

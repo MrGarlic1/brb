@@ -1,4 +1,4 @@
-import bot.Core.botdata as bd
+import brbot.Core.botdata as bd
 import json
 from discord import app_commands, Interaction
 from discord.ext import commands
@@ -55,7 +55,7 @@ class ConfigCog(commands.GroupCog, name='config'):
         elif config_keys[setting] == "MAX_USER_RESPONSES":
             choices = [app_commands.Choice(name="Please enter a positive integer", value="None")]
         else:
-            choices = [app_commands.Choice(name="True", value="True"), app_commands.Choice(name="False", value="False")]
+            choices = [app_commands.Choice(name="True", value="True"), app_commands.Choice(name="False", value="")]
         return choices
 
     @app_commands.command(

@@ -1,4 +1,4 @@
-import bot.Core.botdata as bd
+import brbot.Core.botdata as bd
 from discord.ui import View, Select
 from discord import Interaction, Embed, SelectOption
 

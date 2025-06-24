@@ -1,9 +1,9 @@
-import bot.Features.Bingo.data as bi
-import bot.Core.anilist as al
-import bot.Core.botdata as bd
+import brbot.Features.Bingo.data as bi
+import brbot.Core.anilist as al
+import brbot.Core.botdata as bd
 import asyncio
 from os import path, listdir, mkdir
-import bot.Core.botutils as bu
+import brbot.Core.botutils as bu
 from shutil import copytree, ignore_patterns
 from datetime import datetime
 from discord import app_commands, Interaction, Member
@@ -306,10 +306,10 @@ class BingoCog(commands.GroupCog, name='bingo'):
     @app_commands.describe(
         page='Specify which page of the rules to view.'
     )
-    async def send_rules(self, ctx: Interaction, page: int = 0):
+    async def send_rules(self, ctx: Interaction, page: int = 1):
         await ctx.response.send_message(
-            embeds=bi.gen_rules_embed(page=page),
-            view=bi.GameRulesView()
+            embed=bi.gen_rules_embed(page=page - 1),
+            view=bi.GameRulesView(page=page - 1)
         )
         return False
 

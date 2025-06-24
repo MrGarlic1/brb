@@ -1,7 +1,7 @@
 from emoji import emojize, demojize
 import json
-import bot.Core.botdata as bd
-from bot.Shared.buttons import PrevPgButton, NextPgButton
+import brbot.Core.botdata as bd
+from brbot.Shared.buttons import PrevPgButton, NextPgButton
 import logging
 from discord.ui import View
 from discord import Interaction, Guild, Embed, Message
@@ -190,11 +190,11 @@ class RspView(View):
         page (int): Which response page in server's response list to display
     """
 
-    def __init__(self):
+    def __init__(self, page: int):
         super().__init__(timeout=60)
         self.add_item(PrevPgButton())
         self.add_item(NextPgButton())
-        self.page = 1
+        self.page = page
 
     async def interaction_check(self, interaction: Interaction) -> bool:
         if interaction.data['custom_id'] == 'prev_page':

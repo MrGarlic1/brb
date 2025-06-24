@@ -1,10 +1,10 @@
 import logging
 from pathlib import Path
 
-from discord import Intents, CustomActivity, Status, Object
+from discord import Intents, CustomActivity, Status
 from discord.ext import commands
-from bot.Core.botutils import init_guilds, load_fonts, load_anilist_caches
-import bot.Core.botdata as bd
+from brbot.Core.botutils import init_guilds, load_fonts, load_anilist_caches
+import brbot.Core.botdata as bd
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +14,7 @@ class BrBot(commands.AutoShardedBot):
     Discord bot class with improved structure and error handling
     """
 
-    FEATURES_DIRECTORY = Path('bot/Features')
+    FEATURES_DIRECTORY = Path('brbot/Features')
 
     def __init__(self) -> None:
         intents = Intents.default()
@@ -45,7 +45,7 @@ class BrBot(commands.AutoShardedBot):
                 continue
 
             try:
-                cog_path = f'bot.Features.{feature_dir.name}.cog'
+                cog_path = f'brbot.Features.{feature_dir.name}.cog'
                 await self.load_extension(cog_path)
                 logger.info(f'Loaded feature: {feature_dir.name} ({cog_path})')
             except Exception as e:

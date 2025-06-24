@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="eee0f583-7247-46f6-9074-3cbd9f1d4ddf" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/Shared/ggsans/ggsans-Bold.ttf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Shared/ggsans/ggsans-BoldItalic.ttf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Shared/ggsans/ggsans-ExtraBold.ttf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Shared/ggsans/ggsans-ExtraBoldItalic.ttf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Shared/ggsans/ggsans-Medium.ttf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Shared/ggsans/ggsans-MediumItalic.ttf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Shared/ggsans/ggsans-Normal.ttf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Shared/ggsans/ggsans-NormalItalic.ttf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Shared/ggsans/ggsans-Semibold.ttf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Shared/ggsans/ggsans-SemiboldItalic.ttf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Shared/ggsans/stylesheet.css" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Shared/zones.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/.name" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/.name" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Core/bot.py" beforeDir="false" afterPath="$PROJECT_DIR$/Core/bot.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Core/botutils.py" beforeDir="false" afterPath="$PROJECT_DIR$/Core/botutils.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Features/Animanga/cog.py" beforeDir="false" afterPath="$PROJECT_DIR$/Features/Animanga/cog.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Features/Animanga/data.py" beforeDir="false" afterPath="$PROJECT_DIR$/Features/Animanga/data.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Features/Bingo/cog.py" beforeDir="false" afterPath="$PROJECT_DIR$/Features/Bingo/cog.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Features/Bingo/data.py" beforeDir="false" afterPath="$PROJECT_DIR$/Features/Bingo/data.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Features/Config/cog.py" beforeDir="false" afterPath="$PROJECT_DIR$/Features/Config/cog.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Features/Help/cog.py" beforeDir="false" afterPath="$PROJECT_DIR$/Features/Help/cog.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Features/Responses/cog.py" beforeDir="false" afterPath="$PROJECT_DIR$/Features/Responses/cog.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Features/Responses/data.py" beforeDir="false" afterPath="$PROJECT_DIR$/Features/Responses/data.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Features/Trains/cog.py" beforeDir="false" afterPath="$PROJECT_DIR$/Features/Trains/cog.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Features/Trains/data.py" beforeDir="false" afterPath="$PROJECT_DIR$/Features/Trains/data.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Static/ggsans/ggsans-Bold.ttf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Static/ggsans/ggsans-BoldItalic.ttf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Static/ggsans/ggsans-ExtraBold.ttf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Static/ggsans/ggsans-ExtraBoldItalic.ttf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Static/ggsans/ggsans-Medium.ttf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Static/ggsans/ggsans-MediumItalic.ttf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Static/ggsans/ggsans-Normal.ttf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Static/ggsans/ggsans-NormalItalic.ttf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Static/ggsans/ggsans-Semibold.ttf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Static/ggsans/ggsans-SemiboldItalic.ttf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Static/ggsans/stylesheet.css" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Static/zones.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/../requirements.txt" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/.." />
+  </component>
+  <component name="ProblemsViewState">
+    <option name="selectedTabId" value="CurrentFile" />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;customColor&quot;: &quot;&quot;,
+  &quot;associatedIndex&quot;: 7
+}</component>
+  <component name="ProjectId" id="2nXq6PZcxurFt1dU4WUe5aAYoIY" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Python.anilist.executor": "Run",
+    "Python.main.executor": "Run",
+    "Python.trains.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "SHARE_PROJECT_CONFIGURATION_FILES": "true",
+    "git-widget-placeholder": "discord-py",
+    "last_opened_file_path": "/home/ben/Python/kusogaki-bot",
+    "settings.editor.selected.configurable": "com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable"
+  }
+}]]></component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-python-sdk-0509580d9d50-746f403e7f0c-com.jetbrains.pycharm.community.sharedIndexes.bundled-PC-241.14494.241" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="eee0f583-7247-46f6-9074-3cbd9f1d4ddf" name="Changes" comment="" />
+      <created>1729129593192</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1729129593192</updated>
+    </task>
+    <servers />
+  </component>
+</project>

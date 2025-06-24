@@ -18,9 +18,9 @@ from pilmoji import Pilmoji
 from discord.ui import View
 from discord import Interaction, Guild, Embed, File, Member, DMChannel
 
-import bot.Core.anilist as al
-import bot.Core.botdata as bd
-from bot.Shared.buttons import NextPgButton, PrevPgButton
+import brbot.Core.anilist as al
+import brbot.Core.botdata as bd
+from brbot.Shared.buttons import NextPgButton, PrevPgButton
 
 logger = logging.getLogger(__name__)
 
@@ -1322,10 +1322,11 @@ async def load_trains_game(
                 )
 
         member = await guild.fetch_member(player["member_id"])
+        dm_channel = await member.create_dm() if not member.dm_channel else member.dm_channel
         player_list.append(
             TrainPlayer(
                 member=member, tag=player["tag"], done=player["done"], rails=player["rails"],
-                dmchannel=member.dm_channel, start=tuple(player["start"]),
+                dmchannel=dm_channel, start=tuple(player["start"]),
                 end=tuple(player["end"]), score=player["score"], shots=shot_list,
                 vis_tiles=[tuple(tile) for tile in player["vis_tiles"]], donetime=player["donetime"],
                 inventory=item_dict, starting_anilist=player["starting_anilist"], anilist_id=player["anilist_id"],
@@ -1621,11 +1622,16 @@ class GameStatsView(View):
         elif interaction.data['custom_id'] == 'next_page':
             self.page += 1
 
-        embed = self.game.gen_stats_embed(interaction, self.page)
+        embed, image = self.game.gen_stats_embed(interaction, self.page)
 
-        await interaction.response.edit_message(
-            embed=embed, view=self
-        )
+        if not image:
+            await interaction.response.edit_message(
+                embed=embed, view=self, attachments=[]
+            )
+        else:
+            await interaction.response.edit_message(
+                embed=embed, view=self, attachments=[image]
+            )
         return False
 
 
@@ -1636,11 +1642,11 @@ class GameRulesView(View):
     Attributes:
         page (int): Which response page in server's response list to display
     """
-    def __init__(self):
+    def __init__(self, page: int):
         super().__init__(timeout=60)
         self.add_item(PrevPgButton())
         self.add_item(NextPgButton())
-        self.page = 1
+        self.page = page
 
     async def interaction_check(self, interaction: Interaction) -> bool:
         if interaction.data['custom_id'] == 'prev_page':

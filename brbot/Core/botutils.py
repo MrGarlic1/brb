@@ -16,10 +16,10 @@ from discord.app_commands import Choice
 import logging
 import matplotlib.font_manager
 
-import bot.Core.botdata as bd
-from bot.Features.Responses.data import load_responses
-from bot.Features.Trains.data import load_trains_game
-from bot.Features.Bingo.data import load_bingo_game
+import brbot.Core.botdata as bd
+from brbot.Features.Responses.data import load_responses
+from brbot.Features.Trains.data import load_trains_game
+from brbot.Features.Bingo.data import load_bingo_game
 
 logger = logging.getLogger(__name__)
 

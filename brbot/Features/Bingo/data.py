@@ -2,13 +2,13 @@ import io
 import json
 from dataclasses import dataclass
 from random import sample
-from bot.Shared.buttons import PrevPgButton, NextPgButton
+from brbot.Shared.buttons import PrevPgButton, NextPgButton
 from discord.ui import View
 from discord import Interaction, Guild, Embed, File, Member, DMChannel, Message
 
 from PIL import Image, ImageFont, ImageDraw
 
-import bot.Core.botdata as bd
+import brbot.Core.botdata as bd
 
 
 bingo_tags = (
@@ -597,7 +597,7 @@ class GameBoardView(View):
         elif interaction.data['custom_id'] == 'next_page':
             self.page += 1
 
-        embed = self.game.gen_board_embed(page=self.page, sender_idx=self.sender_idx)
+        embed, image = self.game.gen_board_embed(page=self.page, sender_idx=self.sender_idx)
 
         await interaction.response.edit_message(
             embed=embed, view=self
@@ -612,11 +612,11 @@ class GameRulesView(View):
     Attributes:
         page (int): Which response page in server's response list to display
     """
-    def __init__(self):
+    def __init__(self, page: int):
         super().__init__(timeout=60)
         self.add_item(PrevPgButton())
         self.add_item(NextPgButton())
-        self.page = 1
+        self.page = page
 
     async def interaction_check(self, interaction: Interaction) -> bool:
         if interaction.data['custom_id'] == 'prev_page':

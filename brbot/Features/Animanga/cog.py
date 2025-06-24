@@ -1,8 +1,6 @@
-import bot.Core.botdata as bd
-import bot.Features.Animanga.data as am
-import bot.Core.botutils as bu
-from bot.Core.anilist import query_user_id
-from asyncio import create_task
+import brbot.Core.botdata as bd
+import brbot.Features.Animanga.data as am
+from brbot.Core.anilist import query_user_id
 from httpx import RequestError
 from json import dump
 from discord import app_commands, Interaction

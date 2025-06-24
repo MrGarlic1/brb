@@ -1,6 +1,6 @@
-import bot.Core.botdata as bd
-import bot.Core.botutils as bu
-import bot.Features.Responses.data as rsp
+import brbot.Core.botdata as bd
+import brbot.Core.botutils as bu
+import brbot.Features.Responses.data as rsp
 from discord import app_commands, Interaction, Message
 from discord.ext import commands
 
@@ -109,7 +109,7 @@ class ResponsesCog(commands.GroupCog, name='response'):
         description="Show list of all responses for the server",
     )
     async def list(self, ctx: Interaction, page: int = 1):
-        view = rsp.RspView()
+        view = rsp.RspView(page=page)
         await ctx.response.send_message(
             embed=rsp.gen_resp_list(ctx.guild, page),
             view=view
