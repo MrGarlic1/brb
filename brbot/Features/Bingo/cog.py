@@ -148,9 +148,9 @@ class BingoCog(commands.GroupCog, name="bingo"):
         # Fetch anilist information if it isn't already cached
         if anilist_id not in game.known_entries:
             if shot_type == "character":
-                anilist_info = al.query_character(character_id=anilist_id)
+                anilist_info = await al.query_character(character_id=anilist_id)
             else:
-                anilist_info = al.query_media(media_id=anilist_id)
+                anilist_info = await al.query_media(media_id=anilist_id)
 
             if anilist_info is None:
                 await ctx.followup.send(
@@ -206,7 +206,12 @@ class BingoCog(commands.GroupCog, name="bingo"):
 
     @shot.autocomplete("tag")
     async def shot_autocomplete(self, _: Interaction, current: str):
-        tags = bi.bingo_tags + bi.character_tags + bi.season_tags + tuple(bi.episode_tags.keys())
+        tags = (
+            bi.bingo_tags
+            + bi.character_tags
+            + bi.season_tags
+            + tuple(bi.episode_tags.keys())
+        )
         tags = [tag for tag in tags if current.lower() in tag.lower()]
         choices = list(map(bu.autocomplete_filter, tags))
         if len(choices) > 25:

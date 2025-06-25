@@ -18,7 +18,7 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
                 content="Could not find anilist profile, please check username!"
             )
             return True
-        anilist_user_id = query_user_id(username)
+        anilist_user_id = await query_user_id(username)
         if anilist_user_id is None:
             await ctx.response.send_message(
                 content="Could not find anilist profile, please check username!"

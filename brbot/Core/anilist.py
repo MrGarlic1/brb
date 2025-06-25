@@ -1,4 +1,7 @@
 import httpx
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def anilist_id_from_url(url: str, is_character: bool = False) -> int | None:
@@ -18,7 +21,7 @@ def anilist_id_from_url(url: str, is_character: bool = False) -> int | None:
     return None
 
 
-def query_media(*, media_id: int):
+async def query_media(*, media_id: int):
     query = """
     query Media($mediaId: Int) {
       Media(id: $mediaId) {
@@ -43,16 +46,33 @@ def query_media(*, media_id: int):
     }
     """
     variables = {"mediaId": media_id}
-    response = httpx.post(
-        url="https://graphql.anilist.co", json={"query": query, "variables": variables}
+
+    max_attempts = 2
+    for attempt in range(max_attempts):
+        try:
+            with httpx.AsyncClient() as client:
+                response = await client.post(
+                    url="https://graphql.anilist.co",
+                    json={"query": query, "variables": variables},
+                )
+            if response.status_code == 200:
+                return response.json()["data"]["Media"]
+            else:
+                logger.warning(
+                    f"Error {response.status_code} while fetching show data for show {media_id} ({attempt + 1}/{max_attempts} attempts)"
+                )
+        except (httpx.ReadTimeout, httpx.RequestError) as e:
+            logger.warning(
+                f"Error {e} while fetching show data for show {media_id} ({attempt + 1}/{max_attempts} attempts)"
+            )
+
+    logger.error(
+        f"Failed to retrieve show data for show {media_id} after {max_attempts} attempts"
     )
-    if response.status_code != 200:
-        return None
-
-    return response.json()["data"]["Media"]
+    return None
 
 
-def query_user_id(username: str) -> int | None:
+async def query_user_id(username: str) -> int | None:
     query = """
     query
     User($name: String) {
@@ -62,13 +82,31 @@ def query_user_id(username: str) -> int | None:
     }
     """
     variables = {"name": username}
-    response = httpx.post(
-        url="https://graphql.anilist.co", json={"query": query, "variables": variables}
-    )
-    if response.status_code != 200:
-        return None
 
-    return response.json()["data"]["User"]["id"]
+    max_attempts = 2
+
+    for attempt in range(max_attempts):
+        try:
+            with httpx.AsyncClient() as client:
+                response = await client.post(
+                    url="https://graphql.anilist.co",
+                    json={"query": query, "variables": variables},
+                )
+            if response.status_code == 200:
+                return response.json()["data"]["User"]["id"]
+            else:
+                logger.warning(
+                    f"Error {response.status_code} while fetching user id for anilist user {username} ({attempt + 1}/{max_attempts} attempts)"
+                )
+        except (httpx.ReadTimeout, httpx.RequestError) as e:
+            logger.warning(
+                f"Error {e} while fetching user id for anilist user {username} ({attempt + 1}/{max_attempts} attempts)"
+            )
+
+    logger.error(
+        f"Failed to retrieve user id for anilist user {username} after {max_attempts} attempts"
+    )
+    return None
 
 
 # Query a user's anime list. Data is in form of [{"mediaId": 160181, "status": "CURRENT"}, {...]
@@ -86,19 +124,40 @@ async def query_user_animelist(anilist_user_id: int) -> list | None:
       }
     }
     """
-    variables = {"userId": anilist_user_id, "type": "ANIME", "statusNotIn": "PLANNING"}
-    response = httpx.post(
-        url="https://graphql.anilist.co", json={"query": query, "variables": variables}
+    variables = {
+        "userId": anilist_user_id,
+        "type": "ANIME",
+        "statusNotIn": ["PLANNING"],
+    }
+    max_attempts = 2
+    for attempt in range(max_attempts):
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    url="https://graphql.anilist.co",
+                    json={"query": query, "variables": variables},
+                )
+            if response.status_code == 200:
+                full_user_list: list = []
+                for anime_list in response.json()["data"]["MediaListCollection"][
+                    "lists"
+                ]:
+                    full_user_list += anime_list["entries"]
+                return full_user_list
+
+            else:
+                logger.warning(
+                    f"Error {response.status_code} while fetching list data for anilist user {anilist_user_id} ({attempt + 1}/{max_attempts} attempts)"
+                )
+        except (httpx.ReadTimeout, httpx.RequestError) as e:
+            logger.warning(
+                f"Error {e} while fetching list data for anilist user {anilist_user_id} ({attempt + 1}/{max_attempts} attempts)"
+            )
+
+    logger.error(
+        f"Failed to retrieve list data for anilist user {anilist_user_id} after {max_attempts} attempts"
     )
-    if response.status_code != 200:
-        return None
-
-    full_user_list: list = []
-    for anime_list in response.json()["data"]["MediaListCollection"]["lists"]:
-        anime_list = anime_list["entries"]
-        full_user_list += anime_list
-
-    return full_user_list
+    return None
 
 
 async def query_user_genres(anilist_user_id: int) -> str | None:
@@ -119,26 +178,51 @@ async def query_user_genres(anilist_user_id: int) -> str | None:
     variables = {
         "userId": anilist_user_id,
     }
-    response = httpx.post(
-        url="https://graphql.anilist.co", json={"query": query, "variables": variables}
+    max_attempts = 2
+    for attempt in range(max_attempts):
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    url="https://graphql.anilist.co",
+                    json={"query": query, "variables": variables},
+                )
+            if response.status_code == 200:
+                user_genres = response.json()["data"]["User"]["statistics"]["anime"][
+                    "genres"
+                ]
+                user_genres = sorted(
+                    user_genres, key=lambda genre: genre["minutesWatched"]
+                )
+                try:
+                    if (
+                        user_genres[0]["genre"] == "Hentai"
+                    ):  # Exclude hentai per game rules
+                        least_watched_genre = user_genres[1]["genre"]
+                    else:
+                        least_watched_genre = user_genres[0]["genre"]
+                except IndexError:  # User has not watched more than one genre
+                    least_watched_genre = ""
+                logger.debug(
+                    f"Anilist user {anilist_user_id} least watched genre is {least_watched_genre}"
+                )
+                return least_watched_genre
+
+            else:
+                logger.warning(
+                    f"Error {response.status_code} while fetching genre data for anilist user {anilist_user_id}s ({attempt + 1}/{max_attempts} attempts)"
+                )
+        except (httpx.ReadTimeout, httpx.RequestError) as e:
+            logger.warning(
+                f"Error {e} while fetching genre data for anilist user {anilist_user_id} ({attempt + 1}/{max_attempts} attempts)"
+            )
+
+    logger.error(
+        f"Failed to retrieve genre data for anilist user {anilist_user_id} after {max_attempts} attempts"
     )
-    if response.status_code != 200:
-        return None
-
-    user_genres = response.json()["data"]["User"]["statistics"]["anime"]["genres"]
-    user_genres = sorted(user_genres, key=lambda genre: genre["minutesWatched"])
-
-    try:
-        if user_genres[0]["genre"] == "Hentai":  # Exclude hentai per game rules
-            least_watched_genre = user_genres[1]["genre"]
-        else:
-            least_watched_genre = user_genres[0]["genre"]
-    except IndexError:  # User has not watched more than one genre
-        least_watched_genre = ""
-    return least_watched_genre
+    return None
 
 
-def query_character(*, character_id: int):
+async def query_character(*, character_id: int):
     query = """
     query Character($characterId: Int) {
       Character(id: $characterId) {
@@ -153,10 +237,29 @@ def query_character(*, character_id: int):
     }
     """
     variables = {"characterId": character_id}
-    response = httpx.post(
-        url="https://graphql.anilist.co", json={"query": query, "variables": variables}
-    )
-    if response.status_code != 200:
-        return None
 
-    return response.json()["data"]["Character"]
+    max_attempts = 2
+
+    for attempt in range(max_attempts):
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    url="https://graphql.anilist.co",
+                    json={"query": query, "variables": variables},
+                )
+            if response.status_code == 200:
+                return response.json()["data"]["Character"]
+
+            else:
+                logger.warning(
+                    f"Error {response.status_code} while fetching anilist character data for {character_id} ({attempt + 1}/{max_attempts} attempts)"
+                )
+        except (httpx.ReadTimeout, httpx.RequestError) as e:
+            logger.warning(
+                f"Error {e} while fetching character data for anillist character {character_id} ({attempt + 1}/{max_attempts} attempts)"
+            )
+
+    logger.error(
+        f"Failed to retrieve list data for anilist character {character_id} after {max_attempts} attempts"
+    )
+    return None

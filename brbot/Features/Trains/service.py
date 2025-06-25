@@ -561,6 +561,32 @@ class TrainGame:
 
         return True
 
+    async def set_game_anilist_info(self):
+        max_concurrent = asyncio.Semaphore(6)
+
+        async def get_player_anilist_info(player: TrainPlayer) -> TrainPlayer | None:
+            async with max_concurrent:
+                starting_anilist = await al.query_user_animelist(
+                    bd.linked_profiles[player.member.id]
+                )
+                least_watched_genre = await al.query_user_genres(
+                    bd.linked_profiles[player.member.id]
+                )
+            if not starting_anilist or not least_watched_genre:
+                raise AttributeError(
+                    f"Player {player.member.name} anilist info not found."
+                )
+
+            player.starting_anilist = starting_anilist
+            player.least_watched_genre = least_watched_genre
+            return player
+
+        tasks: list = [get_player_anilist_info(p) for p in self.players]
+        try:
+            self.players = await asyncio.gather(*tasks)
+        except Exception as e:
+            raise e
+
     async def push_player_update(self, ctx: Interaction, p: TrainPlayer, p_idx: int):
         try:
             board_name: str = str(p.member.id)

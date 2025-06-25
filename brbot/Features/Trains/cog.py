@@ -49,16 +49,12 @@ class TrainsCog(commands.GroupCog, name="trains"):
         logger.info(f"Creating new trains game {name} in {ctx.guild.name}")
 
         async def add_trains_player(m: Member, t: str):
-            starting_anilist = await al.query_user_animelist(bd.linked_profiles[m.id])
-            least_watched_genre = await al.query_user_genres(bd.linked_profiles[m.id])
             dm_channel = await m.create_dm() if m.dm_channel is None else m.dm_channel
             players.append(
                 TrainPlayer(
                     member=m,
                     tag=t,
                     dmchannel=dm_channel,
-                    starting_anilist=starting_anilist,
-                    least_watched_genre=least_watched_genre,
                     anilist_id=bd.linked_profiles[m.id],
                 )
             )
@@ -108,6 +104,15 @@ class TrainsCog(commands.GroupCog, name="trains"):
             game.gen_player_locations(river_ring=river_ring)
         except game.BoardGenError as e:
             await ctx.followup.send(content=str(e))
+            return True
+
+        try:
+            await game.set_game_anilist_info()
+        except Exception as e:
+            await ctx.followup.send(
+                content="Error fetching player anilist information. Please try again in a few seconds."
+            )
+            logger.error(f"Could not create game {self.name}: {e}")
             return True
 
         try:
@@ -250,7 +255,7 @@ class TrainsCog(commands.GroupCog, name="trains"):
         # Fetch anilist show information if it isn't already cached
         if show_id not in game.known_shows:
             logger.info(f"{show_id} not in {game.known_shows}, fetching anilist info")
-            show_info = al.query_media(media_id=show_id)
+            show_info = await al.query_media(media_id=show_id)
             if show_info is None:
                 await ctx.followup.send(
                     content="Error connecting to anilist, please check URL and try again."
