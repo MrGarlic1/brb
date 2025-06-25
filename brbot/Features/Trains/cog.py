@@ -407,12 +407,12 @@ class TrainsCog(commands.GroupCog, name="trains"):
         return False
 
     @app_commands.command(
-        name="deletetrain", description="Remove the active trains game. (admin only)"
+        name="delete", description="Remove the active trains game. (admin only)"
     )
     @app_commands.describe(
         keep_files="Choose whether to archive or completely delete the active game's files"
     )
-    async def deletetrain(self, ctx: Interaction, keep_files: bool):
+    async def delete(self, ctx: Interaction, keep_files: bool):
         if not ctx.user.guild_permissions.administrator:
             await ctx.response.send_message(
                 content="You must be an administrator to use this command!",
