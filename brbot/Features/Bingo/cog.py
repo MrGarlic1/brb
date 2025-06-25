@@ -206,7 +206,7 @@ class BingoCog(commands.GroupCog, name="bingo"):
 
     @shot.autocomplete("tag")
     async def shot_autocomplete(self, _: Interaction, current: str):
-        tags = bi.bingo_tags + bi.character_tags + bi.season_tags + bi.episode_tags
+        tags = bi.bingo_tags + bi.character_tags + bi.season_tags + tuple(bi.episode_tags.keys())
         tags = [tag for tag in tags if current.lower() in tag.lower()]
         choices = list(map(bu.autocomplete_filter, tags))
         if len(choices) > 25:

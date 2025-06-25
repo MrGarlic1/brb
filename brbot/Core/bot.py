@@ -66,6 +66,7 @@ class BrBot(commands.AutoShardedBot):
         if bd.bot_avatar_url:
             bd.bot_avatar_url = self.user.avatar.url
         else:
+            logger.warning('No bot avatar found, using default')
             bd.bot_avatar_url = "https://i.imgur.com/4CW85RL.png"
         bd.bot_id = self.user.id
         # await self.tree.sync()
