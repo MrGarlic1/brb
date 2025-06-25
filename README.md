@@ -25,26 +25,28 @@ Response bot for discord, now with trains!
 
 ## Commands
 - /response
-  - add [trigger] [response] <exact>
-  - list <page>
-  - remove [trigger] <response> <exact>
-  - clearall (Admin Only)
+  - `add [trigger] [response] <exact>`
+  - `list <page>`
+  - `remove [trigger] <response> <exact>`
+  - `clearall` (Admin Only)
 - /trains
-  - board
-  - buy [item]
-  - inventory
-  - newgame [name] [players] <width> <height>
-  - rules <page>
-  - shot [row] [column] [link] [info]
-  - stats <name>
-  - undo
-  - delete <keep_files> (Admin Only)
-  - restore [name] (Admin Only)
-- /config [allowphrases/limitresponses/userperms/view/reset]
-  - set [setting] [value]
+  - `board`
+  - `buy [item]`
+  - `inventory`
+  - `newgame [name] [players] <width> <height>`
+  - `rules <page>`
+  - `shot [row] [column] [link] [info]`
+  - `stats <name>`
+  - `undo`
+  - `delete <keep_files>` (Admin Only)
+  - `restore [name]` (Admin Only)
+- /config (Admin Only)
+  - `set [setting] [value]`
+  - `view`
+  - `wipe`
 - /animanga
-  - link [username]
-  - recommend <genre> <medium> <force>
+  - `link [username]`
+  - `recommend <genre> <medium> <force>`
 
 ### Build from source
 1. Clone repo: `git clone https://github.com/MrGarlic1/Brb`
