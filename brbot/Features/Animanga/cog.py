@@ -7,21 +7,22 @@ from discord import app_commands, Interaction
 from discord.ext import commands
 
 
-class AnimangaCog(commands.GroupCog, name='animanga'):
+class AnimangaCog(commands.GroupCog, name="animanga"):
     @app_commands.command(
-        name='link',
-        description='Link your discord profile to an anilist profile'
+        name="link", description="Link your discord profile to an anilist profile"
     )
-    @app_commands.describe(
-        username='Anilist username'
-    )
+    @app_commands.describe(username="Anilist username")
     async def link(self, ctx: Interaction, username: str):
         if username is None:
-            await ctx.response.send_message(content="Could not find anilist profile, please check username!")
+            await ctx.response.send_message(
+                content="Could not find anilist profile, please check username!"
+            )
             return True
         anilist_user_id = query_user_id(username)
         if anilist_user_id is None:
-            await ctx.response.send_message(content="Could not find anilist profile, please check username!")
+            await ctx.response.send_message(
+                content="Could not find anilist profile, please check username!"
+            )
             return True
 
         bd.linked_profiles[ctx.user.id] = anilist_user_id
@@ -31,13 +32,12 @@ class AnimangaCog(commands.GroupCog, name='animanga'):
         return False
 
     @app_commands.command(
-        name='recommend',
-        description='Have the bot recommend anime/manga for you.'
+        name="recommend", description="Have the bot recommend anime/manga for you."
     )
     @app_commands.describe(
-        genre='Request recommendation(s) of a specific genre.',
-        medium='Choose to recommend anime/manga',
-        force='Force updates anilist stats. WILL BE SLOW.'
+        genre="Request recommendation(s) of a specific genre.",
+        medium="Choose to recommend anime/manga",
+        force="Force updates anilist stats. WILL BE SLOW.",
     )
     @app_commands.choices(
         genre=[
@@ -62,15 +62,19 @@ class AnimangaCog(commands.GroupCog, name='animanga'):
         ],
         medium=[
             app_commands.Choice(name="Anime", value="anime"),
-            app_commands.Choice(name="Manga", value="manga")
-        ]
+            app_commands.Choice(name="Manga", value="manga"),
+        ],
     )
     async def show_animanga_rec(
-            self, ctx: Interaction, genre: str = "", medium: str = "anime", force: bool = False
+        self,
+        ctx: Interaction,
+        genre: str = "",
+        medium: str = "anime",
+        force: bool = False,
     ):
         if ctx.user.id not in bd.linked_profiles:
             await ctx.response.send_message(
-                content=f"Your anilist profile isn't linked! (/anilist link)"
+                content="Your anilist profile isn't linked! (/anilist link)"
             )
             return True
 
@@ -82,7 +86,9 @@ class AnimangaCog(commands.GroupCog, name='animanga'):
                 force_update=force,
             )
         except RequestError:
-            await ctx.followup.send("An error occurred connecting to Anilist. Please try again later.")
+            await ctx.followup.send(
+                "An error occurred connecting to Anilist. Please try again later."
+            )
             return True
 
         embed = am.get_rec_embed(
@@ -96,7 +102,7 @@ class AnimangaCog(commands.GroupCog, name='animanga'):
             anilist_id=bd.linked_profiles[ctx.user.id],
             media_type=medium,
             genre=genre,
-            username=ctx.user.name
+            username=ctx.user.name,
         )
         await ctx.followup.send(embed=embed, view=view)
         return False

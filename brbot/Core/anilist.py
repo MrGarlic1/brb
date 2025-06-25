@@ -42,12 +42,9 @@ def query_media(*, media_id: int):
       }
     }
     """
-    variables = {
-        "mediaId": media_id
-    }
+    variables = {"mediaId": media_id}
     response = httpx.post(
-        url="https://graphql.anilist.co",
-        json={"query": query, "variables": variables}
+        url="https://graphql.anilist.co", json={"query": query, "variables": variables}
     )
     if response.status_code != 200:
         return None
@@ -64,12 +61,9 @@ def query_user_id(username: str) -> int | None:
       }
     }
     """
-    variables = {
-        "name": username
-    }
+    variables = {"name": username}
     response = httpx.post(
-        url="https://graphql.anilist.co",
-        json={"query": query, "variables": variables}
+        url="https://graphql.anilist.co", json={"query": query, "variables": variables}
     )
     if response.status_code != 200:
         return None
@@ -92,14 +86,9 @@ async def query_user_animelist(anilist_user_id: int) -> list | None:
       }
     }
     """
-    variables = {
-        "userId": anilist_user_id,
-        "type": "ANIME",
-        "statusNotIn": "PLANNING"
-    }
+    variables = {"userId": anilist_user_id, "type": "ANIME", "statusNotIn": "PLANNING"}
     response = httpx.post(
-        url="https://graphql.anilist.co",
-        json={"query": query, "variables": variables}
+        url="https://graphql.anilist.co", json={"query": query, "variables": variables}
     )
     if response.status_code != 200:
         return None
@@ -131,8 +120,7 @@ async def query_user_genres(anilist_user_id: int) -> str | None:
         "userId": anilist_user_id,
     }
     response = httpx.post(
-        url="https://graphql.anilist.co",
-        json={"query": query, "variables": variables}
+        url="https://graphql.anilist.co", json={"query": query, "variables": variables}
     )
     if response.status_code != 200:
         return None
@@ -164,12 +152,9 @@ def query_character(*, character_id: int):
       }
     }
     """
-    variables = {
-        "characterId": character_id
-    }
+    variables = {"characterId": character_id}
     response = httpx.post(
-        url="https://graphql.anilist.co",
-        json={"query": query, "variables": variables}
+        url="https://graphql.anilist.co", json={"query": query, "variables": variables}
     )
     if response.status_code != 200:
         return None

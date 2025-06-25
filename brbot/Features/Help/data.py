@@ -17,12 +17,9 @@ help_msgs = {
 
 def gen_help_embed(category: str) -> (Embed, Select):
     embed: Embed = Embed()
-    embed.set_author(name=f"Response Bot Help", icon_url=bd.bot_avatar_url)
+    embed.set_author(name="Response Bot Help", icon_url=bd.bot_avatar_url)
     embed.set_footer(text="")
-    embed.add_field(
-        name=f"{category} Commands",
-        value=help_msgs[category]
-    )
+    embed.add_field(name=f"{category} Commands", value=help_msgs[category])
     return embed
 
 
@@ -36,7 +33,7 @@ help_category_menu = Select(
         SelectOption(value="animanga", label="Animanga", emoji="🌸"),
     ],
     custom_id="help_category",
-    placeholder="Select a category..."
+    placeholder="Select a category...",
 )
 
 
@@ -48,14 +45,14 @@ class HelpView(View):
     def __init__(self):
         super().__init__(timeout=60)
         self.add_item(help_category_menu)
-        self.category = 'general'
+        self.category = "general"
 
     async def interaction_check(self, interaction: Interaction) -> bool:
-        category = interaction.data['values'][0]
+        category = interaction.data["values"][0]
 
-        logger.debug(f"Generating help embed with category {category} from {interaction.data}")
-        embed = gen_help_embed(category)
-        await interaction.response.edit_message(
-            embed=embed, view=self
+        logger.debug(
+            f"Generating help embed with category {category} from {interaction.data}"
         )
+        embed = gen_help_embed(category)
+        await interaction.response.edit_message(embed=embed, view=self)
         return True

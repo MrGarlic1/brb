@@ -30,11 +30,15 @@ def dict_to_rsp(rsp_dict: dict) -> Response | None:
     if not rsp_dict:
         return None
     try:
-        _ = Response(rsp_dict["exact"], rsp_dict["trig"], rsp_dict["text"], rsp_dict["user_id"])
+        _ = Response(
+            rsp_dict["exact"], rsp_dict["trig"], rsp_dict["text"], rsp_dict["user_id"]
+        )
     except KeyError:
         logger.warning("Invalid response found, ignoring.")
         return None
-    rsp = Response(rsp_dict["exact"], rsp_dict["trig"], rsp_dict["text"], rsp_dict["user_id"])
+    rsp = Response(
+        rsp_dict["exact"], rsp_dict["trig"], rsp_dict["text"], rsp_dict["user_id"]
+    )
     return rsp
 
 
@@ -78,9 +82,13 @@ def rmv_response(guild_id: int, delete_req: Response) -> bool:
 
     # Search for desired index of response to delete. Filter by trigger, then text,
     # then exact until there is only 1 option. Return an error if nothing matches the delete request
-    to_del: list = [i for i, rsp in enumerate(lines) if rsp["trig"] == demojize(delete_req.trig)]
+    to_del: list = [
+        i for i, rsp in enumerate(lines) if rsp["trig"] == demojize(delete_req.trig)
+    ]
     if len(to_del) > 1:
-        to_del: list = [i for i in to_del if lines[i]["text"] == demojize(delete_req.text)]
+        to_del: list = [
+            i for i in to_del if lines[i]["text"] == demojize(delete_req.text)
+        ]
     if len(to_del) > 1:
         to_del: list = [i for i in to_del if lines[i]["exact"] == delete_req.exact]
     if not to_del or len(to_del) > 1:
@@ -118,7 +126,9 @@ def load_responses(file) -> list:
     return lines
 
 
-def get_resp(guild_id: int, trig: str, text: str = "", exact: bool = None) -> Response | None:
+def get_resp(
+    guild_id: int, trig: str, text: str = "", exact: bool = None
+) -> Response | None:
     for rsp in bd.responses[guild_id]:
         if rsp.trig == trig:
             if rsp.text == text or not text:
@@ -128,31 +138,39 @@ def get_resp(guild_id: int, trig: str, text: str = "", exact: bool = None) -> Re
 
 
 def gen_resp_list(guild: Guild, page: int) -> Embed:
-
     guild_id = int(guild.id)
-    list_msg = Embed(
-        description="*Your response list, sir.*"
-    )
+    list_msg = Embed(description="*Your response list, sir.*")
 
     # Determine max pg @ 10 entries per pg
-    max_pages: int = 1 if len(bd.responses[guild_id]) <= 10 else len(bd.responses[guild_id]) // 10 + 1
+    max_pages: int = (
+        1
+        if len(bd.responses[guild_id]) <= 10
+        else len(bd.responses[guild_id]) // 10 + 1
+    )
     page: int = 1 + ((page - 1) % max_pages)  # Loop back through pages both ways
     list_msg.set_author(name=guild.name, icon_url=bd.bot_avatar_url)
     list_msg.set_thumbnail(url=guild.icon.url)
     list_msg.set_footer(text=f"Page {page}/{max_pages}")
-    nums: range = range((page-1)*10, len(bd.responses[guild_id])) if page == max_pages else range((page-1)*10, page*10)
+    nums: range = (
+        range((page - 1) * 10, len(bd.responses[guild_id]))
+        if page == max_pages
+        else range((page - 1) * 10, page * 10)
+    )
     for i in nums:
-        pref: str = "**Exact Trigger:** " if bd.responses[guild_id][i].exact else "**Phrase Trigger:** "
+        pref: str = (
+            "**Exact Trigger:** "
+            if bd.responses[guild_id][i].exact
+            else "**Phrase Trigger:** "
+        )
         rsp_field: str = f"{pref}{bd.responses[guild_id][i].trig} \n **Respond: ** {bd.responses[guild_id][i].text}"
         if len(rsp_field) >= 1024:
             logger.debug(f"Response too long: {rsp_field}, showing shortened version")
-            rsp_field: str = (f"{pref}{bd.responses[guild_id][i].trig} \n "
-                              f"**Respond: ** *[Really, really, really long response]*")
+            rsp_field: str = (
+                f"{pref}{bd.responses[guild_id][i].trig} \n "
+                f"**Respond: ** *[Really, really, really long response]*"
+            )
 
-        list_msg.add_field(
-            name="\u200b",
-            value=rsp_field, inline=False
-        )
+        list_msg.add_field(name="\u200b", value=rsp_field, inline=False)
     return list_msg
 
 
@@ -166,10 +184,11 @@ def generate_response(message: Message) -> str | None:
     guild_id = message.guild.id
 
     to_send = [
-        response.text for response in bd.responses[guild_id]
+        response.text
+        for response in bd.responses[guild_id]
         if response.trig == message.content.lower() and response.exact
     ]
-    logger.debug(f'Exact response match found, 1/{len(to_send)} possible responses')
+    logger.debug(f"Exact response match found, 1/{len(to_send)} possible responses")
     if to_send:
         return choice(to_send)
 
@@ -177,10 +196,11 @@ def generate_response(message: Message) -> str | None:
         return None
 
     to_send = [
-        response.text for response in bd.responses[guild_id]
+        response.text
+        for response in bd.responses[guild_id]
         if response.trig in message.content.lower() and not response.exact
     ]
-    logger.debug(f'Phrase response match found, 1/{len(to_send)} possible responses')
+    logger.debug(f"Phrase response match found, 1/{len(to_send)} possible responses")
     if to_send:
         return choice(to_send)
 
@@ -202,15 +222,13 @@ class RspView(View):
         self.page = page
 
     async def interaction_check(self, interaction: Interaction) -> bool:
-        if interaction.data['custom_id'] == 'prev_page':
+        if interaction.data["custom_id"] == "prev_page":
             self.page -= 1
 
-        elif interaction.data['custom_id'] == 'next_page':
+        elif interaction.data["custom_id"] == "next_page":
             self.page += 1
 
         embed = gen_resp_list(interaction.guild, self.page)
 
-        await interaction.response.edit_message(
-            embed=embed, view=self
-        )
+        await interaction.response.edit_message(embed=embed, view=self)
         return False

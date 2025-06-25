@@ -14,7 +14,7 @@ class BrBot(commands.AutoShardedBot):
     Discord bot class with improved structure and error handling
     """
 
-    FEATURES_DIRECTORY = Path('brbot/Features')
+    FEATURES_DIRECTORY = Path("brbot/Features")
 
     def __init__(self) -> None:
         intents = Intents.default()
@@ -22,7 +22,7 @@ class BrBot(commands.AutoShardedBot):
         intents.members = True
 
         super().__init__(
-            command_prefix='asid%%*@@]][}{}{112asd',  # Prefix commands not used
+            command_prefix="asid%%*@@]][}{}{112asd",  # Prefix commands not used
             intents=intents,
             help_command=None,
         )
@@ -33,23 +33,23 @@ class BrBot(commands.AutoShardedBot):
         Handles errors for individual cog loading
         """
         if not self.FEATURES_DIRECTORY.exists():
-            logger.error(f'Features directory not found: {self.FEATURES_DIRECTORY}')
+            logger.error(f"Features directory not found: {self.FEATURES_DIRECTORY}")
             return
 
         for feature_dir in self.FEATURES_DIRECTORY.iterdir():
             if not feature_dir.is_dir():
                 continue
 
-            cog_file = feature_dir / 'cog.py'
+            cog_file = feature_dir / "cog.py"
             if not cog_file.exists():
                 continue
 
             try:
-                cog_path = f'brbot.Features.{feature_dir.name}.cog'
+                cog_path = f"brbot.Features.{feature_dir.name}.cog"
                 await self.load_extension(cog_path)
-                logger.info(f'Loaded feature: {feature_dir.name} ({cog_path})')
+                logger.info(f"Loaded feature: {feature_dir.name} ({cog_path})")
             except Exception as e:
-                logger.error(f'Failed to load feature {feature_dir.name}: {str(e)}')
+                logger.error(f"Failed to load feature {feature_dir.name}: {str(e)}")
 
     async def setup_hook(self) -> None:
         """
@@ -61,12 +61,12 @@ class BrBot(commands.AutoShardedBot):
         """
         Called when the bot has successfully connected to Discord
         """
-        logger.info(f'Logged in as {self.user.name}')
-        logger.info(f'Bot is in {len(self.guilds)} guilds')
+        logger.info(f"Logged in as {self.user.name}")
+        logger.info(f"Bot is in {len(self.guilds)} guilds")
         if bd.bot_avatar_url:
             bd.bot_avatar_url = self.user.avatar.url
         else:
-            bd.bot_avatar_url = 'https://i.imgur.com/4CW85RL.png'
+            bd.bot_avatar_url = "https://i.imgur.com/4CW85RL.png"
         bd.bot_id = self.user.id
         # await self.tree.sync()
 
@@ -74,7 +74,9 @@ class BrBot(commands.AutoShardedBot):
         load_fonts(f"{bd.parent}/Shared")
 
         await init_guilds(guilds=self.guilds)
-        await self.change_presence(status=Status.online, activity=CustomActivity(name='Responding since 2020'))
+        await self.change_presence(
+            status=Status.online, activity=CustomActivity(name="Responding since 2020")
+        )
 
     async def on_error(self, event: str, *args, **kwargs) -> None:
         """
@@ -85,9 +87,9 @@ class BrBot(commands.AutoShardedBot):
             args: Positional arguments that were passed to the event
             kwargs: Keyword arguments that were passed to the event
         """
-        logger.error(f'Error in event {event}')
+        logger.error(f"Error in event {event}")
         if args:
-            logger.error(f'Event args: {args}')
+            logger.error(f"Event args: {args}")
         if kwargs:
-            logger.error(f'Event kwargs: {kwargs}')
-        logger.error('Full traceback:', exc_info=True)
+            logger.error(f"Event kwargs: {kwargs}")
+        logger.error("Full traceback:", exc_info=True)

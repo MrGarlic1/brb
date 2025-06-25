@@ -18,6 +18,7 @@ numpy==2.2.0
 packaging==24.2
 pillow==11.1.0
 pilmoji==2.0.4
+pre-commit
 pyparsing==3.2.3
 python-dateutil==2.9.0.post0
 python-dotenv==1.1.0

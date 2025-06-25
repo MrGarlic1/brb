@@ -14,19 +14,22 @@ config_keys = {
 }
 
 
-class ConfigCog(commands.GroupCog, name='config'):
+class ConfigCog(commands.GroupCog, name="config"):
     @app_commands.command(
-        name='set',
-        description='Configure the bot\'s server settings (admin only)'
+        name="set", description="Configure the bot's server settings (admin only)"
     )
     @app_commands.choices(
         setting=[
-            app_commands.Choice(name=config_key, value=config_key) for config_key in config_keys.keys()
+            app_commands.Choice(name=config_key, value=config_key)
+            for config_key in config_keys.keys()
         ]
     )
     async def set(self, ctx: Interaction, setting: str, value: str):
         if not ctx.user.guild_permissions.administrator:
-            await ctx.response.send_message(content="You must be an administrator to use this command!", ephemeral=True)
+            await ctx.response.send_message(
+                content="You must be an administrator to use this command!",
+                ephemeral=True,
+            )
             return True
 
         if setting not in config_keys:
@@ -58,18 +61,27 @@ class ConfigCog(commands.GroupCog, name='config'):
         if setting not in config_keys:
             choices = []
         elif config_keys[setting] == "MAX_USER_RESPONSES":
-            choices = [app_commands.Choice(name="Please enter a positive integer", value="None")]
+            choices = [
+                app_commands.Choice(
+                    name="Please enter a positive integer", value="None"
+                )
+            ]
         else:
-            choices = [app_commands.Choice(name="True", value="True"), app_commands.Choice(name="False", value="")]
+            choices = [
+                app_commands.Choice(name="True", value="True"),
+                app_commands.Choice(name="False", value=""),
+            ]
         return choices
 
     @app_commands.command(
-        name='wipe',
-        description='Resets ALL server settings to default. (admin only)'
+        name="wipe", description="Resets ALL server settings to default. (admin only)"
     )
     async def wipe(self, ctx: Interaction):
         if not ctx.user.guild_permissions.administrator:
-            await ctx.response.send_message(content="You must be an administrator to use this command!", ephemeral=True)
+            await ctx.response.send_message(
+                content="You must be an administrator to use this command!",
+                ephemeral=True,
+            )
             return True
         with open(f"{bd.parent}/Guilds/{ctx.guild_id}/config.json", "w") as f:
             json.dump(bd.default_config, f, indent=4)
@@ -78,17 +90,14 @@ class ConfigCog(commands.GroupCog, name='config'):
         await ctx.response.send_message(content=bd.pass_str)
         return False
 
-    @app_commands.command(
-        name='view',
-        description='Views the current server settings.'
-    )
+    @app_commands.command(name="view", description="Views the current server settings.")
     async def view(self, ctx: Interaction):
         await ctx.response.send_message(
             content=f"Allow Phrases: {bd.config[ctx.guild_id]['ALLOW_PHRASES']}\n"
-                    f"Limit Responses: {bd.config[ctx.guild_id]['LIMIT_USER_RESPONSES']}\n"
-                    f"Response Limit # (Only if Limit Responses is True): "
-                    f"{bd.config[ctx.guild_id]['MAX_USER_RESPONSES']}\n"
-                    f"Restrict User Response Deleting: {bd.config[ctx.guild_id]['USER_ONLY_DELETE']}\n"
+            f"Limit Responses: {bd.config[ctx.guild_id]['LIMIT_USER_RESPONSES']}\n"
+            f"Response Limit # (Only if Limit Responses is True): "
+            f"{bd.config[ctx.guild_id]['MAX_USER_RESPONSES']}\n"
+            f"Restrict User Response Deleting: {bd.config[ctx.guild_id]['USER_ONLY_DELETE']}\n"
         )
 
 

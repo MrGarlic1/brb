@@ -6,8 +6,8 @@ class NextPgButton(Button):
     def __init__(self):
         super().__init__(
             style=ButtonStyle.success,
-            label='Next',
-            custom_id='next_page',
+            label="Next",
+            custom_id="next_page",
         )
 
 
@@ -15,6 +15,6 @@ class PrevPgButton(Button):
     def __init__(self):
         super().__init__(
             style=ButtonStyle.danger,
-            label='Prev',
-            custom_id='prev_page',
+            label="Prev",
+            custom_id="prev_page",
         )
