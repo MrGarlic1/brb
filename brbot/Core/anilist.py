@@ -50,7 +50,7 @@ async def query_media(*, media_id: int):
     max_attempts = 2
     for attempt in range(max_attempts):
         try:
-            with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient() as client:
                 response = await client.post(
                     url="https://graphql.anilist.co",
                     json={"query": query, "variables": variables},
@@ -87,7 +87,7 @@ async def query_user_id(username: str) -> int | None:
 
     for attempt in range(max_attempts):
         try:
-            with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient() as client:
                 response = await client.post(
                     url="https://graphql.anilist.co",
                     json={"query": query, "variables": variables},
