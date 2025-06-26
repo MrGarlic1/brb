@@ -5,6 +5,9 @@ from httpx import RequestError
 from json import dump
 from discord import app_commands, Interaction
 from discord.ext import commands
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class AnimangaCog(commands.GroupCog, name="animanga"):
@@ -26,6 +29,9 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
             return True
 
         bd.linked_profiles[ctx.user.id] = anilist_user_id
+        logger.debug(
+            f"Linked discord user {ctx.user.name} to anilist profile {username}"
+        )
         with open(f"{bd.parent}/Data/linked_profiles.json", "w") as f:
             dump(bd.linked_profiles, f, separators=(",", ":"))
         await ctx.response.send_message(content=bd.pass_str)
