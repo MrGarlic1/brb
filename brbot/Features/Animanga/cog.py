@@ -1,5 +1,6 @@
 import brbot.Core.botdata as bd
-import brbot.Features.Animanga.data as am
+from brbot.Features.Animanga.service import RecService
+from brbot.Features.Animanga.data import RecView, IgnoredRecView
 from brbot.Core.anilist import query_user_id
 from httpx import RequestError
 from json import dump
@@ -11,6 +12,9 @@ logger = logging.getLogger(__name__)
 
 
 class AnimangaCog(commands.GroupCog, name="animanga"):
+    def __init__(self):
+        self.rec_service = RecService()
+
     @app_commands.command(
         name="link", description="Link your discord profile to an anilist profile"
     )
@@ -86,10 +90,11 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
 
         await ctx.response.defer()
         try:
-            await am.check_recommendation(
+            await self.rec_service.check_recommendation(
                 anilist_id=bd.linked_profiles[ctx.user.id],
                 media_type=medium,
                 force_update=force,
+                user_discord_id=ctx.user.id,
             )
         except RequestError:
             await ctx.followup.send(
@@ -97,22 +102,62 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
             )
             return True
 
-        embed = am.get_rec_embed(
+        embed, media_rec = self.rec_service.get_rec_embed(
             username=ctx.user.name,
             anilist_id=bd.linked_profiles[ctx.user.id],
             media_type=medium,
             genre=genre,
             page=0,
         )
-        view = am.RecView(
-            anilist_id=bd.linked_profiles[ctx.user.id],
+        view = RecView(
+            rec_service=self.rec_service,
+            user_anilist_id=bd.linked_profiles[ctx.user.id],
             media_type=medium,
             genre=genre,
             username=ctx.user.name,
+            user_discord_id=ctx.user.id,
+            media_rec=media_rec,
+        )
+        await ctx.followup.send(embed=embed, view=view)
+        return False
+
+    @app_commands.command(
+        name="listignored", description="Show your ignored animanga recommendations."
+    )
+    @app_commands.describe(
+        medium="Specify ignored anime or manga (defaults to anime)",
+    )
+    @app_commands.choices(
+        medium=[
+            app_commands.Choice(name="Anime", value="anime"),
+            app_commands.Choice(name="Manga", value="manga"),
+        ],
+    )
+    async def list_ignored(self, ctx: Interaction, medium: str = "anime"):
+        if ctx.user.id not in bd.linked_profiles:
+            await ctx.response.send_message(
+                content="Your anilist profile isn't linked! (/animanga link)"
+            )
+            return True
+
+        await ctx.response.defer()
+
+        embed, ignored_media_rec = self.rec_service.get_ignored_rec_embed(
+            username=ctx.user.name,
+            user_discord_id=ctx.user.id,
+            page=0,
+            media_type=medium,
+        )
+        view = IgnoredRecView(
+            rec_service=self.rec_service,
+            media_type=medium,
+            username=ctx.user.name,
+            user_discord_id=ctx.user.id,
+            ignored_media_rec=ignored_media_rec,
         )
         await ctx.followup.send(embed=embed, view=view)
         return False
 
 
 async def setup(bot: commands.Bot):
-    await bot.add_cog(AnimangaCog(bot))
+    await bot.add_cog(AnimangaCog())

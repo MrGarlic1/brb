@@ -33,5 +33,3 @@ active_msgs: list = []
 active_trains: dict = {}
 active_bingos: dict = {}
 linked_profiles: dict = {}
-known_anime_recs: dict = {}
-known_manga_recs: dict = {}
