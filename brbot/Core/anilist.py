@@ -1,5 +1,6 @@
 import httpx
 import logging
+from asyncio import sleep
 
 logger = logging.getLogger(__name__)
 
@@ -61,11 +62,13 @@ async def query_media(*, media_id: int):
                 logger.warning(
                     f"Error {response.status_code} while fetching show data for show {media_id} ({attempt + 1}/{max_attempts} attempts)"
                 )
+                if response.status_code == 404:
+                    break
         except (httpx.ReadTimeout, httpx.RequestError) as e:
             logger.warning(
                 f"Error {e} while fetching show data for show {media_id} ({attempt + 1}/{max_attempts} attempts)"
             )
-
+        await sleep(1)
     logger.error(
         f"Failed to retrieve show data for show {media_id} after {max_attempts} attempts"
     )
@@ -98,10 +101,13 @@ async def query_user_id(username: str) -> int | None:
                 logger.warning(
                     f"Error {response.status_code} while fetching user id for anilist user {username} ({attempt + 1}/{max_attempts} attempts)"
                 )
+                if response.status_code == 404:
+                    break
         except (httpx.ReadTimeout, httpx.RequestError) as e:
             logger.warning(
                 f"Error {e} while fetching user id for anilist user {username} ({attempt + 1}/{max_attempts} attempts)"
             )
+        await sleep(1)
 
     logger.error(
         f"Failed to retrieve user id for anilist user {username} after {max_attempts} attempts"
@@ -149,10 +155,13 @@ async def query_user_animelist(anilist_user_id: int) -> list | None:
                 logger.warning(
                     f"Error {response.status_code} while fetching list data for anilist user {anilist_user_id} ({attempt + 1}/{max_attempts} attempts)"
                 )
+                if response.status_code == 404:
+                    break
         except (httpx.ReadTimeout, httpx.RequestError) as e:
             logger.warning(
                 f"Error {e} while fetching list data for anilist user {anilist_user_id} ({attempt + 1}/{max_attempts} attempts)"
             )
+        await sleep(1)
 
     logger.error(
         f"Failed to retrieve list data for anilist user {anilist_user_id} after {max_attempts} attempts"
@@ -211,10 +220,13 @@ async def query_user_genres(anilist_user_id: int) -> str | None:
                 logger.warning(
                     f"Error {response.status_code} while fetching genre data for anilist user {anilist_user_id}s ({attempt + 1}/{max_attempts} attempts)"
                 )
+                if response.status_code == 404:
+                    break
         except (httpx.ReadTimeout, httpx.RequestError) as e:
             logger.warning(
                 f"Error {e} while fetching genre data for anilist user {anilist_user_id} ({attempt + 1}/{max_attempts} attempts)"
             )
+        await sleep(1)
 
     logger.error(
         f"Failed to retrieve genre data for anilist user {anilist_user_id} after {max_attempts} attempts"
@@ -254,10 +266,13 @@ async def query_character(*, character_id: int):
                 logger.warning(
                     f"Error {response.status_code} while fetching anilist character data for {character_id} ({attempt + 1}/{max_attempts} attempts)"
                 )
+                if response.status_code == 404:
+                    break
         except (httpx.ReadTimeout, httpx.RequestError) as e:
             logger.warning(
                 f"Error {e} while fetching character data for anillist character {character_id} ({attempt + 1}/{max_attempts} attempts)"
             )
+        await sleep(1)
 
     logger.error(
         f"Failed to retrieve list data for anilist character {character_id} after {max_attempts} attempts"
