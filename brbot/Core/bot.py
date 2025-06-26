@@ -62,7 +62,7 @@ class BrBot(commands.AutoShardedBot):
         """
         logger.info(f"Logged in as {self.user.name}")
         logger.info(f"Bot is in {len(self.guilds)} guilds")
-        if self.user.avatar.url:
+        if self.user.avatar:
             bd.bot_avatar_url = self.user.avatar.url
         else:
             logger.warning("No bot avatar found, using default")
