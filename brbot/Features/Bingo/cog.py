@@ -47,7 +47,7 @@ class BingoCog(commands.GroupCog, name="bingo"):
         for member in members:
             if member.id not in bd.linked_profiles:
                 await ctx.followup.send(
-                    content=f"Could not create game, <@{member.id}> must link their anilist profile! (/anilist link)"
+                    content=f"Could not create game, <@{member.id}> must link their anilist profile! (/animanga link)"
                 )
                 return True
 
@@ -86,7 +86,7 @@ class BingoCog(commands.GroupCog, name="bingo"):
 
     @app_commands.command(name="shot", description="Make a bingo shot.")
     @app_commands.describe(
-        link="Anilist link of show/character",
+        link="anilist link of show/character",
         tag="Bingo tag to shoot for",
         info="Time/stock information",
     )

@@ -74,7 +74,7 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
     ):
         if ctx.user.id not in bd.linked_profiles:
             await ctx.response.send_message(
-                content="Your anilist profile isn't linked! (/anilist link)"
+                content="Your anilist profile isn't linked! (/animanga link)"
             )
             return True
 

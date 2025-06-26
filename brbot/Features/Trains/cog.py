@@ -25,6 +25,12 @@ logger = logging.getLogger(__name__)
 
 class TrainsCog(commands.GroupCog, name="trains"):
     @app_commands.command(name="newgame", description="Create a new trains game")
+    @app_commands.describe(
+        name="Trains game name",
+        players="@ the participating players",
+        width="Board width (must be divisible by 4)",
+        height="Board height (must be divisible by 4)",
+    )
     async def newgame(
         self,
         ctx: Interaction,
@@ -71,7 +77,7 @@ class TrainsCog(commands.GroupCog, name="trains"):
                     f"User {member.name} not linked to any anilist profile, aborting game creation"
                 )
                 await ctx.followup.send(
-                    content=f"Could not create game, <@{member.id}> must link their anilist profile! (/anilist link)"
+                    content=f"Could not create game, <@{member.id}> must link their anilist profile! (/animanga link)"
                 )
                 return True
 
@@ -147,6 +153,10 @@ class TrainsCog(commands.GroupCog, name="trains"):
         return False
 
     @app_commands.command(name="buy", description="Buy an item from a shop/city.")
+    @app_commands.describe(
+        name="Item type to buy",
+        showinfo="Show/stock information",
+    )
     @app_commands.choices(
         name=[
             app_commands.Choice(name=itemname, value=itemname)
@@ -200,6 +210,11 @@ class TrainsCog(commands.GroupCog, name="trains"):
         return False
 
     @app_commands.command(name="use", description="Use an item in your inventory.")
+    @app_commands.describe(
+        item="Item type to use",
+        row="Row to use item on",
+        column="Column to use item on",
+    )
     @app_commands.choices(item=[app_commands.Choice(name="Bucket", value="Bucket")])
     async def use(self, ctx: Interaction, item: str, row: int, column: int):
         if ctx.guild_id not in bd.active_trains:
@@ -221,6 +236,12 @@ class TrainsCog(commands.GroupCog, name="trains"):
         return False
 
     @app_commands.command(name="shot", description="Make a trains shot")
+    @app_commands.describe(
+        link="Anilist link of show",
+        row="Row to place a rail",
+        column="Column to place a rail",
+        info="Shot show/stock information",
+    )
     async def shot(self, ctx: Interaction, row: int, column: int, link: str, info: str):
         await ctx.response.defer(ephemeral=False)
         if ctx.guild_id not in bd.active_trains:
@@ -335,6 +356,9 @@ class TrainsCog(commands.GroupCog, name="trains"):
     @app_commands.command(
         name="stats",
         description="View limited/full stats for an in-progress/completed game.",
+    )
+    @app_commands.describe(
+        name="Game name to view stats of (defaults to active)",
     )
     async def stats(self, ctx: Interaction, name: str = None) -> bool:
         # Logic to get game or return error if no game found
