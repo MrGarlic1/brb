@@ -95,6 +95,8 @@ class RecView(View):
     async def interaction_check(self, interaction: Interaction) -> bool:
         if interaction.user.id != self.user_discord_id:
             return True
+        if self.media_rec is None:
+            return True
         if interaction.data["custom_id"] == "prev_page":
             self.page -= 1
         elif interaction.data["custom_id"] == "next_page":
@@ -152,6 +154,8 @@ class IgnoredRecView(View):
 
     async def interaction_check(self, interaction: Interaction) -> bool:
         if interaction.user.id != self.user_discord_id:
+            return True
+        if self.ignored_media_rec is None:
             return True
         if interaction.data["custom_id"] == "prev_page":
             self.page -= 1
