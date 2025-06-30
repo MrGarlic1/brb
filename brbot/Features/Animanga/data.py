@@ -9,6 +9,17 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class MediaRec:
+    """
+    Class storing animanga media info for display.
+
+    Attributes:
+        media_id (int): Media anilist id
+        title (str): Title (romaji)
+        score (float): Recommendation strength score
+        genres (list[str]): List of anilist genres the media has
+        mean_score (float): Mean anilist score of the media
+    """
+
     def __init__(
         self,
         media_id: int,
@@ -62,9 +73,12 @@ class RecView(View):
     Discord UI View for handling animanga recommendation interactions.
 
     Attributes:
+        rec_service (RecService): Recommendation service
+        user_discord_id (int): Requesting user's discord ID
         user_anilist_id (str): Anilist id to recommend for
         username (str): Discord username
         media_type (str): Specify to recommend manga/anime
+        media_rec (MediaRec): MediaRec of currently displayed show
         genre (str): Limit recommendations to specified genre
         page (int): Which recommendation in user's rec list to display
     """
@@ -101,6 +115,7 @@ class RecView(View):
         elif interaction.data["custom_id"] == "next_page":
             self.page += 1
         elif interaction.user.id != self.user_discord_id:
+            await interaction.response.defer()
             return True
         elif interaction.data["custom_id"] == "ignore_rec":
             self.rec_service.ignore_media_rec(
@@ -128,10 +143,12 @@ class IgnoredRecView(View):
     Discord UI View for handling animanga ignored recommendation interactions.
 
     Attributes:
+        rec_service (RecService): Recommendation service
+        user_discord_id (int): Requesting user's discord ID
         username (str): Discord username
         media_type (str): Specify to recommend manga/anime
-        genre (str): Limit recommendations to specified genre
-        page (int): Which recommendation in user's rec list to display
+        ignored_media_rec (MediaRec): MediaRec of currently displayed show
+        page (int): Which recommendation in user's ignored rec list to display
     """
 
     def __init__(
@@ -162,6 +179,7 @@ class IgnoredRecView(View):
         elif interaction.data["custom_id"] == "next_page":
             self.page += 1
         elif interaction.user.id != self.user_discord_id:
+            await interaction.response.defer()
             return True
         elif interaction.data["custom_id"] == "restore_rec":
             self.rec_service.restore_media_rec(
