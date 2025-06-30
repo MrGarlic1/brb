@@ -494,15 +494,17 @@ class RecService:
         Returns:
             Embed: Embed displaying recommended media and corresponding information
         """
-        if media_type == "manga":
-            color = 0x7CD553
-            recs = self.known_manga_recs[anilist_id]["recs"]
-        else:
-            color = 0x3BAFEB
-            recs = self.known_anime_recs[anilist_id]["recs"]
-
-        if genre:
-            recs = [rec for rec in recs if genre in rec.genres]
+        color = 0x3BAFEB
+        try:
+            if media_type == "manga":
+                color = 0x7CD553
+                recs = self.known_manga_recs[anilist_id]["recs"]
+            else:
+                recs = self.known_anime_recs[anilist_id]["recs"]
+            if genre:
+                recs = [rec for rec in recs if genre in rec.genres]
+        except KeyError:
+            recs = []
 
         embed = Embed(color=color, title=f"Recommendation for {username}")
         if not recs:
@@ -565,20 +567,23 @@ class RecService:
         Returns:
             Embed: Embed displaying recommended media and corresponding information
         """
-        if media_type == "manga":
-            color = 0x7CD553
-            ignored_recs = [
-                rec
-                for rec in self.ignored_recs[user_discord_id]["manga"]
-                if rec is not None
-            ]
-        else:
-            color = 0x3BAFEB
-            ignored_recs = [
-                rec
-                for rec in self.ignored_recs[user_discord_id]["anime"]
-                if rec is not None
-            ]
+        color = 0x3BAFEB
+        try:
+            if media_type == "manga":
+                color = 0x7CD553
+                ignored_recs = [
+                    rec
+                    for rec in self.ignored_recs[user_discord_id]["manga"]
+                    if rec is not None
+                ]
+            else:
+                ignored_recs = [
+                    rec
+                    for rec in self.ignored_recs[user_discord_id]["anime"]
+                    if rec is not None
+                ]
+        except KeyError:
+            ignored_recs = []
 
         embed = Embed(color=color, title=f"Ignored recommendation list for {username}")
         if not ignored_recs:

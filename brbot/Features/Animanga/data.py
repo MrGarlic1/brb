@@ -93,14 +93,15 @@ class RecView(View):
         self.page = 0
 
     async def interaction_check(self, interaction: Interaction) -> bool:
-        if interaction.user.id != self.user_discord_id:
-            return True
         if self.media_rec is None:
+            await interaction.response.defer()
             return True
         if interaction.data["custom_id"] == "prev_page":
             self.page -= 1
         elif interaction.data["custom_id"] == "next_page":
             self.page += 1
+        elif interaction.user.id != self.user_discord_id:
+            return True
         elif interaction.data["custom_id"] == "ignore_rec":
             self.rec_service.ignore_media_rec(
                 user_anilist_id=self.user_anilist_id,
@@ -153,14 +154,15 @@ class IgnoredRecView(View):
         self.page = 0
 
     async def interaction_check(self, interaction: Interaction) -> bool:
-        if interaction.user.id != self.user_discord_id:
-            return True
         if self.ignored_media_rec is None:
+            await interaction.response.defer()
             return True
         if interaction.data["custom_id"] == "prev_page":
             self.page -= 1
         elif interaction.data["custom_id"] == "next_page":
             self.page += 1
+        elif interaction.user.id != self.user_discord_id:
+            return True
         elif interaction.data["custom_id"] == "restore_rec":
             self.rec_service.restore_media_rec(
                 user_discord_id=self.user_discord_id,
