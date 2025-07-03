@@ -1,16 +1,9 @@
-"""
-Ben Samans
-botutils.py
-Bot functions
-"""
-
 import json
-from dataclasses import dataclass
 from os import makedirs, listdir, path
 from shutil import rmtree
 from re import findall
 from typing import Sequence
-from discord import Guild, TextChannel, Member
+from discord import Guild, Member
 from discord.app_commands import Choice
 
 import logging
@@ -24,32 +17,30 @@ from brbot.Features.Bingo.data import load_bingo_game
 logger = logging.getLogger(__name__)
 
 
-# Class Definitions
-@dataclass
-class ListMsg:
-    def __init__(
-        self,
-        num: int,
-        page: int,
-        guild: Guild,
-        channel: TextChannel,
-        msg_type: str,
-        payload=None,
-    ):
-        self.num = num
-        self.page = page
-        self.guild = guild
-        self.channel = channel
-        self.msg_type = msg_type
-        self.payload = payload
-
-
 def load_fonts(filepath) -> None:
+    """
+    Initializes fonts upon bot loading.
+    Args:
+        filepath: path to font file
+
+    Returns:
+        None
+    """
     for font in matplotlib.font_manager.findSystemFonts(filepath):
         matplotlib.font_manager.fontManager.addfont(font)
 
 
 def del_game_files(guild_id: int, game_name: str, game_type: str):
+    """
+    Deletes all game files associated with a specific game type.
+    Args:
+        guild_id: ID of guild with associated game data.
+        game_name: Name of game to delete.
+        game_type: Game type to delete.
+
+    Returns:
+        None
+    """
     try:
         rmtree(f"{bd.parent}/Guilds/{guild_id}/{game_type}/{game_name}")
     except PermissionError:
@@ -57,6 +48,11 @@ def del_game_files(guild_id: int, game_name: str, game_type: str):
 
 
 def load_anilist_caches() -> None:
+    """
+    Loads local cache of Anilist data
+    Returns:
+        None
+    """
     if not path.exists(f"{bd.parent}/Data/linked_profiles.json"):
         makedirs(f"{bd.parent}/Data", exist_ok=True)
         with open(f"{bd.parent}/Data/linked_profiles.json", "w") as f:
@@ -66,6 +62,14 @@ def load_anilist_caches() -> None:
 
 
 def load_config(guild: Guild) -> None:
+    """
+    Loads guild-specific config data from local storage
+    Args:
+        guild: Discord Guild object to load config data for
+
+    Returns:
+        None
+    """
     # Load and validate guild bd.configs
     try:
         with open(f"{bd.parent}/Guilds/{guild.id}/config.json", "r") as f:
@@ -103,6 +107,15 @@ def load_config(guild: Guild) -> None:
 
 
 async def get_members_from_str(guild, txt: str) -> list[Member]:
+    """
+    Filter/validate string input to get a list of discord members
+    Args:
+        guild: Guild to search for members
+        txt: String input
+
+    Returns:
+        List of discord members
+    """
     mention_pattern = r"<@(\d+)>"
     mentions = set(findall(mention_pattern, txt))
 
@@ -118,6 +131,14 @@ async def get_members_from_str(guild, txt: str) -> list[Member]:
 
 
 def get_player_tags(users: list[Member]) -> list[str]:
+    """
+    Find unique short names for trains players to be represented on the board
+    Args:
+        users: List of players
+
+    Returns:
+        List of unique short names
+    """
     tags: list = []
     for user in users:
         done = False
