@@ -130,35 +130,27 @@ async def get_members_from_str(guild, txt: str) -> list[Member]:
     return members
 
 
-def get_player_tags(users: list[Member]) -> list[str]:
-    """
-    Find unique short names for trains players to be represented on the board
-    Args:
-        users: List of players
-
-    Returns:
-        List of unique short names
-    """
-    tags: list = []
-    for user in users:
-        done = False
-        for idx, letter in enumerate(user.global_name):
-            if user.global_name[0 : idx + 1] not in tags:
-                tags.append(user.global_name[0 : idx + 1].upper())
-                done = True
-                break
-        if not done:
-            tags.append(user.global_name.upper())
-    return tags
-
-
 def autocomplete_filter(option: str) -> dict[str:str]:
+    """
+    Truncates long autocomplete options to avoid hard discord character limits
+    Args:
+        option: Autocomplete string option
+    Returns:
+        Truncated discord Choice object
+    """
     if len(option) > 100:
         option = option[:99]
     return Choice(name=option, value=option)
 
 
-async def init_guilds(guilds: Sequence[Guild]):
+async def init_guilds(guilds: Sequence[Guild]) -> None:
+    """
+    Validates directory structure and configuration of guilds, creates files, corrects errors, loads guild games
+    Args:
+        guilds: All the guilds the bot is connected to
+    Returns:
+        None
+    """
     for guild in guilds:
         # Make guild folder if it doesn't exist
         if not path.exists(f"{bd.parent}/Guilds/{guild.id}/Trains"):
@@ -218,17 +210,25 @@ async def init_guilds(guilds: Sequence[Guild]):
                 logger.debug(f"Unknown file {name} exists in guild trains directory")
 
 
-def setup_guild(guild: Guild):
+def setup_guild(guild: Guild) -> None:
+    """
+    Creates default guild directory structure when a guild is joined
+    Args:
+        guild: Guild that has been joined
+
+    Returns:
+        None
+    """
     if not path.exists(f"{bd.parent}/Guilds/{guild.id}"):
         makedirs(f"{bd.parent}/Guilds/{guild.id}/Trains")
         with open(f"{bd.parent}/Guilds/{int(guild.id)}/config.json", "w") as f:
             json.dump(bd.default_config, f, indent=4)
         bd.config[int(guild.id)] = bd.default_config
         bd.responses[int(guild.id)] = []
-        return False
+        return None
 
     elif not path.isfile(f"{bd.parent}/Guilds/{int(guild.id)}/config.json"):
         with open(f"{bd.parent}/Guilds/{int(guild.id)}/config.json", "w") as f:
             json.dump(bd.default_config, f, indent=4)
-        return False
-    return False
+        return None
+    return None
