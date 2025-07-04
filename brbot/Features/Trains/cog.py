@@ -54,24 +54,22 @@ class TrainsCog(commands.GroupCog, name="trains"):
 
         logger.info(f"Creating new trains game {name} in {ctx.guild.name}")
 
-        async def add_trains_player(m: Member, t: str):
+        async def add_trains_player(m: Member):
             dm_channel = await m.create_dm() if m.dm_channel is None else m.dm_channel
             players.append(
                 TrainPlayer(
                     member=m,
-                    tag=t,
                     dmchannel=dm_channel,
                     anilist_id=bd.linked_profiles[m.id],
                 )
             )
 
-        # Create player list and tags
+        # Create player list
         members = await bu.get_members_from_str(ctx.guild, players)
         players: list = []
-        tags: list = bu.get_player_tags(members)
 
         tasks: list = []
-        for member, tag in zip(members, tags):
+        for member in members:
             if member.id not in bd.linked_profiles:
                 logger.error(
                     f"User {member.name} not linked to any anilist profile, aborting game creation"
@@ -81,7 +79,7 @@ class TrainsCog(commands.GroupCog, name="trains"):
                 )
                 return True
 
-            tasks.append(asyncio.create_task(add_trains_player(m=member, t=tag)))
+            tasks.append(asyncio.create_task(add_trains_player(m=member)))
         await asyncio.gather(*tasks)
 
         # Return error if player list is empty
@@ -111,6 +109,8 @@ class TrainsCog(commands.GroupCog, name="trains"):
         except game.BoardGenError as e:
             await ctx.followup.send(content=str(e))
             return True
+
+        game.get_player_tags()
 
         try:
             await game.set_game_anilist_info()

@@ -508,6 +508,28 @@ class TrainGame:
                 )
             self.update_vis_tiles(player_idx, end_loc[0], end_loc[1], render_dist=0)
 
+    def get_player_tags(self) -> None:
+        """
+        Update game players with unique short names for  to be represented on the board
+
+        Returns:
+            None
+        """
+        used_tags: list = []
+        for player in self.players:
+            done = False
+            for idx, letter in enumerate(player.member.global_name):
+                tag = player.member.global_name[0 : idx + 1].upper()
+                if tag not in used_tags:
+                    used_tags.append(tag)
+                    player.tag = tag
+                    done = True
+                    break
+            if not done:
+                used_tags.append(player.member.global_name.upper())
+                player.tag = player.member.global_name.upper()
+        return None
+
     def is_valid_shot(self, player: TrainPlayer, shot_row: int, shot_col: int) -> bool:
         if player is None:  # Player not in game
             return False
