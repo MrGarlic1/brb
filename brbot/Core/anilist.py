@@ -6,6 +6,14 @@ logger = logging.getLogger(__name__)
 
 
 def anilist_id_from_url(url: str, is_character: bool = False) -> int | None:
+    """
+    Parses anilist URLs to return media/character IDs
+    Args:
+        url: anilist URL to obtain ID from
+        is_character: Return character ID instead of media ID
+    Returns:
+        Character/media ID (int) or None if no ID could be found
+    """
     url = url.lower().split("/")
     url = tuple(filter(None, url))
     if is_character and "character" not in url:
@@ -23,6 +31,13 @@ def anilist_id_from_url(url: str, is_character: bool = False) -> int | None:
 
 
 async def query_media(*, media_id: int):
+    """
+    Retrieves anilist data used in anime games for a media
+    Args:
+        media_id: Anilist ID of media to query
+    Returns:
+         GraphQL data of media from anilist, or None if request failed after retries
+    """
     query = """
     query Media($mediaId: Int) {
       Media(id: $mediaId) {
@@ -76,6 +91,13 @@ async def query_media(*, media_id: int):
 
 
 async def query_user_id(username: str) -> int | None:
+    """
+    Obtains user anilist ID for linking discord profiles
+    Args:
+        username: Anilist username to obtain user ID
+    Returns:
+         User ID (int) or None if no ID could be retrieved after retries
+    """
     query = """
     query
     User($name: String) {
@@ -115,8 +137,14 @@ async def query_user_id(username: str) -> int | None:
     return None
 
 
-# Query a user's anime list. Data is in form of [{"mediaId": 160181, "status": "CURRENT"}, {...]
 async def query_user_animelist(anilist_user_id: int) -> list | None:
+    """
+    Retrieves user anime list data used in anime games
+    Args:
+        anilist_user_id: Anilist ID of user to query list
+    Returns:
+         GraphQL data of the media list collection from anilist, or None if request failed after retries
+    """
     query = """
     query MediaListCollection($type: MediaType, $userId: Int, $statusNotIn: [MediaListStatus]) {
     MediaListCollection(type: $type, userId: $userId, status_not_in: $statusNotIn) {
@@ -170,6 +198,13 @@ async def query_user_animelist(anilist_user_id: int) -> list | None:
 
 
 async def query_user_genres(anilist_user_id: int) -> str | None:
+    """
+    Retrieves anilist user genre statistics data used in anime games
+    Args:
+        anilist_user_id: Anilist ID of media to query
+    Returns:
+         GraphQL data of genre statistics from anilist, or None if request failed after retries
+    """
     query = """
     query Statistics($userId: Int) {
       User(id: $userId) {
@@ -235,6 +270,13 @@ async def query_user_genres(anilist_user_id: int) -> str | None:
 
 
 async def query_character(*, character_id: int):
+    """
+    Retrieves character data used in anime games
+    Args:
+        character_id: Anilist ID of character to query
+    Returns:
+         GraphQL character data from anilist, or None if request failed after retries
+    """
     query = """
     query Character($characterId: Int) {
       Character(id: $characterId) {
