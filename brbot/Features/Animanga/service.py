@@ -127,8 +127,11 @@ class RecService:
               entries {
                 score
                 status
+                progress
                 media {
                   id
+                  episodes
+                  chapters
                   popularity
                   recommendations(sort: $sort, perPage: $perPage) {
                     nodes {
@@ -305,8 +308,27 @@ class RecService:
         for list_entry in list_data:
             if not list_entry["media"]["recommendations"]["nodes"]:
                 continue
+
             if list_entry["status"] == "DROPPED":
                 continue
+
+            # If source show isn't complete, weight recommendations by % of media viewed
+            if list_entry["status"] in ("PAUSED", "CURRENT"):
+                if not list_entry["progress"]:
+                    list_entry["progress"] = 0
+
+                if list_entry["media"]["episodes"]:
+                    progress_weight = (
+                        list_entry["progress"] / list_entry["media"]["episodes"]
+                    )
+                elif list_entry["media"]["chapters"]:
+                    progress_weight = (
+                        list_entry["progress"] / list_entry["media"]["chapters"]
+                    )
+                else:
+                    progress_weight = 0
+            else:
+                progress_weight = 1
 
             # Weight each show's recommendation by strength of recommendation on the site
             max_show_recs = max(8, len(list_entry["media"]["recommendations"]["nodes"]))
@@ -389,6 +411,7 @@ class RecService:
                     * rec_total_weight
                     * rec_pop_factor
                     * favorite_weight
+                    * progress_weight
                 )
                 if media_rec["id"] not in recommendation_scores:
                     recommendation_scores[media_rec["id"]] = MediaRec(
@@ -506,7 +529,9 @@ class RecService:
         except KeyError:
             recs = []
 
-        embed = Embed(color=color, title=f"Recommendation for {username}")
+        embed = Embed(
+            color=color, title=f"{username}'s Recommended {media_type.title()}"
+        )
         if not recs:
             embed.description = "I couldn't find any recommendations!"
             return embed, None
@@ -585,7 +610,7 @@ class RecService:
         except KeyError:
             ignored_recs = []
 
-        embed = Embed(color=color, title=f"Ignored recommendation list for {username}")
+        embed = Embed(color=color, title=f"{username}'s Ignored {media_type.title()}")
         if not ignored_recs:
             embed.description = "You have not ignored any recommendations!"
             return embed, None
