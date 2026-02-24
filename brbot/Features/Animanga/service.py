@@ -294,8 +294,8 @@ class RecService:
             if list_entry["media"]["popularity"] > max_popularity:
                 max_popularity = list_entry["media"]["popularity"]
 
-        print("Max Score:", max_score)
-        print("Max Popularity:", max_popularity)
+        logger.info("Max Score:", max_score)
+        logger.info("Max Popularity:", max_popularity)
 
         user_genre_scores = {}
         for genre in user_stats["genres"]:
@@ -309,7 +309,7 @@ class RecService:
                     seen_show_ids
                 ) * model.genre_count_weight
 
-        print("User Genre Scores:", user_genre_scores)
+        logger.info("User Genre Scores:", user_genre_scores)
 
         recommendation_scores = {}
         for list_entry in list_data:
