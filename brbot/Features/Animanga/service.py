@@ -393,6 +393,7 @@ class RecService:
                 node_score = (
                     model.node_score_weight
                     * (list_entry["score"] / max_score - user_stats["meanScore"] / 100)
+                    / (user_stats["standardDeviation"] / 100)
                     if list_entry["score"] != 0
                     else 0
                 )
@@ -412,7 +413,8 @@ class RecService:
                         logger.debug(
                             f'No user data for {genre} in {media_rec["title"]["romaji"]}, skipping genre score'
                         )
-                    rec_genre_score *= model.rec_genre_score_weight
+
+                rec_genre_score *= model.rec_genre_score_weight
 
                 total_rec_score = (
                     (node_score + rec_show_score + rec_genre_score)
