@@ -138,6 +138,7 @@ class RecService:
                     nodes {
                       rating
                       mediaRecommendation {
+                        format
                         id
                         coverImage {
                           large
