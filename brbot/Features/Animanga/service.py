@@ -130,6 +130,7 @@ class RecService:
                 progress
                 media {
                   id
+                  format
                   episodes
                   chapters
                   popularity
@@ -304,7 +305,7 @@ class RecService:
                     seen_show_ids
                 ) * model.genre_count_weight
 
-        recommendation_scores: dict[int:MediaRec] = {}
+        recommendation_scores = {}
         for list_entry in list_data:
             if not list_entry["media"]["recommendations"]["nodes"]:
                 continue
@@ -356,6 +357,7 @@ class RecService:
                 if (
                     media_rec["id"] in seen_show_ids
                     or media_rec["id"] in ignored_media_ids
+                    or media_rec["format"] == "MUSIC"
                 ):
                     continue
                 if not media_rec["meanScore"]:
