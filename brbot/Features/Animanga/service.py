@@ -303,6 +303,7 @@ class RecService:
                 user_genre_scores[genre_name] = (
                     (genre["meanScore"] - user_stats["meanScore"])
                     / 100
+                    * model.genre_user_score_weight
                     * +(genre["count"] - 0.4 * len(seen_show_ids))
                     / len(seen_show_ids)
                     * model.genre_count_weight

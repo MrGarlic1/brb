@@ -205,6 +205,7 @@ class RecScoringModel:
 
     global_mean = 65
     genre_count_weight = 1.2
+    genre_user_score_weight = 0.8
     popularity_exp = 1.4
     global_scale_exp = 0.35
     node_score_weight = 0.8
