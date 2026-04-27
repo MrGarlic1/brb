@@ -46,6 +46,10 @@ class RecService:
             self.ignored_recs = {}
 
     @staticmethod
+    def _signed_power_floor(x, p, f):
+        return min(abs(x) ** p, f) * (1 if x >= 0 else -1)
+
+    @staticmethod
     async def query_user_statistics(anilist_id: int, media_type: str) -> Optional[Dict]:
         """
         Queries anilist for user statistics used for weighting/scoring of animanga recommendations
@@ -294,20 +298,53 @@ class RecService:
             if list_entry["media"]["popularity"] > max_popularity:
                 max_popularity = list_entry["media"]["popularity"]
 
+        max_genre_z_score = 0
+        for genre in user_stats["genres"]:
+            genre_z_score = (genre["meanScore"] - user_stats["meanScore"]) / max(
+                user_stats["standardDeviation"], 1
+            )
+            if genre_z_score > max_genre_z_score:
+                max_genre_z_score = genre_z_score
+
         user_genre_scores = {}
+        print(len(seen_show_ids))
         for genre in user_stats["genres"]:
             genre_name = genre["genre"]
             if not genre["meanScore"]:
                 user_genre_scores[genre_name] = 0
             else:
-                user_genre_scores[genre_name] = (
-                    (genre["meanScore"] - user_stats["meanScore"])
-                    / 100
-                    * model.genre_user_score_weight
-                    * +(genre["count"] - 0.45 * len(seen_show_ids))
-                    / len(seen_show_ids)
+                genre_z_score = (genre["meanScore"] - user_stats["meanScore"]) / max(
+                    user_stats["standardDeviation"], 1
+                )
+                user_genre_scores[genre_name] = RecService._signed_power_floor(
+                    x=genre_z_score
+                    / max(max_genre_z_score, 0.001)
+                    * model.genre_user_score_weight,
+                    p=1,
+                    f=model.genre_user_score_max,
+                )
+                print(user_genre_scores[genre_name])
+                user_genre_scores[genre_name] += (
+                    RecService._signed_power_floor(
+                        x=(genre["count"] - 0.40 * len(seen_show_ids))
+                        / len(seen_show_ids),
+                        p=0.6,
+                        f=model.genre_count_score_max,
+                    )
                     * model.genre_count_weight
                 )
+                print(
+                    RecService._signed_power_floor(
+                        x=(genre["count"] - 0.40 * len(seen_show_ids))
+                        / len(seen_show_ids),
+                        p=0.6,
+                        f=model.genre_count_score_max,
+                    )
+                    * model.genre_count_weight
+                )
+
+            print(genre_name)
+            print(user_genre_scores[genre_name])
 
         recommendation_scores = {}
         for list_entry in list_data:
@@ -391,7 +428,7 @@ class RecService:
                 node_score = (
                     model.node_score_weight
                     * (list_entry["score"] / max_score - user_stats["meanScore"] / 100)
-                    / min(user_stats["standardDeviation"] / 100, 0.01)
+                    / max(user_stats["standardDeviation"], 1)
                     if list_entry["score"] != 0
                     else 0
                 )
