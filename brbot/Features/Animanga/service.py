@@ -307,7 +307,6 @@ class RecService:
                 max_genre_z_score = genre_z_score
 
         user_genre_scores = {}
-        print(len(seen_show_ids))
         for genre in user_stats["genres"]:
             genre_name = genre["genre"]
             if not genre["meanScore"]:
@@ -323,7 +322,6 @@ class RecService:
                     p=1,
                     f=model.genre_user_score_max,
                 )
-                print(user_genre_scores[genre_name])
                 user_genre_scores[genre_name] += (
                     RecService._signed_power_floor(
                         x=(genre["count"] - 0.40 * len(seen_show_ids))
@@ -333,18 +331,6 @@ class RecService:
                     )
                     * model.genre_count_weight
                 )
-                print(
-                    RecService._signed_power_floor(
-                        x=(genre["count"] - 0.40 * len(seen_show_ids))
-                        / len(seen_show_ids),
-                        p=0.6,
-                        f=model.genre_count_score_max,
-                    )
-                    * model.genre_count_weight
-                )
-
-            print(genre_name)
-            print(user_genre_scores[genre_name])
 
         recommendation_scores = {}
         for list_entry in list_data:
