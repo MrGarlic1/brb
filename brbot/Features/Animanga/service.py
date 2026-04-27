@@ -302,7 +302,7 @@ class RecService:
             else:
                 user_genre_scores[genre_name] = (
                     genre["meanScore"] - user_stats["meanScore"]
-                ) / 100 + (genre["count"] - 0.5 * len(seen_show_ids)) / len(
+                ) / 100 + (genre["count"] - 0.4 * len(seen_show_ids)) / len(
                     seen_show_ids
                 ) * model.genre_count_weight
 
@@ -388,7 +388,7 @@ class RecService:
                 node_score = (
                     model.node_score_weight
                     * (list_entry["score"] / max_score - user_stats["meanScore"] / 100)
-                    / (user_stats["standardDeviation"] / 100)
+                    / min(user_stats["standardDeviation"] / 100, 0.01)
                     if list_entry["score"] != 0
                     else 0
                 )
