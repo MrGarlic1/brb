@@ -301,10 +301,12 @@ class RecService:
                 user_genre_scores[genre_name] = 0
             else:
                 user_genre_scores[genre_name] = (
-                    genre["meanScore"] - user_stats["meanScore"]
-                ) / 100 + (genre["count"] - 0.4 * len(seen_show_ids)) / len(
-                    seen_show_ids
-                ) * model.genre_count_weight
+                    (genre["meanScore"] - user_stats["meanScore"])
+                    / 100
+                    * +(genre["count"] - 0.4 * len(seen_show_ids))
+                    / len(seen_show_ids)
+                    * model.genre_count_weight
+                )
 
         recommendation_scores = {}
         for list_entry in list_data:
