@@ -9,33 +9,44 @@ Response bot for discord, now with trains!
   - Max responses per user
   - Set response delete permissions to user-specific or global
   - Allow/disallow phrase responses
-### Anime trains game (rules to be listed)
+### Anime trains game
   - Automatic scoring
   - Randomly generated setup for the board
   - Configurable size/players
   - Fully playable through discord/anilist
+### Anime bingo game (BETA)
+  - Randomly generated bingo boards
+  - View your/other player's boards
+  - Fully playable through discord
+  - TBD: Scoring, stats
+### Animanga
+  - Link discord profile to anilist
+  - Generate personalized manga/anime recommendations
 
 ## Commands
-- /listresponses
-- /trains [newgame/board/stats/shot/undo]
-- /train rules
-- /train buy [item]
-- /train use [item]
-- /response [add/remove]
-- /mod [add/remove/deleteRspData/deletetrain/restoretrain]
-- /config [allowphrases/limitresponses/userperms/view/reset]
-- /anilist link [profile]
-
-## Installation
-### MacOS/Linux
-1. Download appropriate release package
-2. Set your discord token in .env
-3. Run autorun.command/autorun.sh
-
-### Windows
-1. Download appropriate release package
-2. Set your discord token in .env
-3. Run main.exe
+- /response
+  - `add [trigger] [response] <exact>`
+  - `list <page>`
+  - `remove [trigger] <response> <exact>`
+  - `clearall` (Admin Only)
+- /trains
+  - `board`
+  - `buy [item]`
+  - `inventory`
+  - `newgame [name] [players] <width> <height>`
+  - `rules <page>`
+  - `shot [row] [column] [link] [info]`
+  - `stats <name>`
+  - `undo`
+  - `delete <keep_files>` (Admin Only)
+  - `restore [name]` (Admin Only)
+- /config (Admin Only)
+  - `set [setting] [value]`
+  - `view`
+  - `wipe`
+- /animanga
+  - `link [username]`
+  - `recommend <genre> <medium> <force>`
 
 ### Build from source
 1. Clone repo: `git clone https://github.com/MrGarlic1/Brb`
@@ -43,4 +54,4 @@ Response bot for discord, now with trains!
 3. Create and activate venv: `python -m venv venv; source ./venv/bin/activate`
 4. Install requirements: `pip install -r requirements.txt`
 5. Edit .env file with bot token
-6. Run bot: `python src/main.py`
+6. Run bot: `python main.py`
