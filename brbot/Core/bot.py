@@ -1,8 +1,10 @@
 import logging
-from pathlib import Path
 
 from discord import Intents, CustomActivity, Status
 from discord.ext import commands
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from os import makedirs
+from brbot.db.models import Base
 from brbot.Core.botutils import init_guilds, load_fonts, load_anilist_caches
 import brbot.Core.botdata as bd
 
@@ -14,11 +16,11 @@ class BrBot(commands.AutoShardedBot):
     Discord bot class with improved structure and error handling
     """
 
-    FEATURES_DIRECTORY = Path("brbot/Features")
-
     def __init__(self) -> None:
         intents = Intents.default()
         intents.message_content = True
+        self.engine = None
+        self.session_generator: async_sessionmaker[AsyncSession] | None = None
 
         super().__init__(
             command_prefix="asid%%*@@]][}{}{112asd",  # Prefix commands not used
@@ -31,11 +33,11 @@ class BrBot(commands.AutoShardedBot):
         Load all cog extensions from the features directory
         Handles errors for individual cog loading
         """
-        if not self.FEATURES_DIRECTORY.exists():
-            logger.error(f"Features directory not found: {self.FEATURES_DIRECTORY}")
+        if not bd.FEATURES_DIRECTORY.exists():
+            logger.error(f"Features directory not found: {bd.FEATURES_DIRECTORY}")
             return
 
-        for feature_dir in self.FEATURES_DIRECTORY.iterdir():
+        for feature_dir in bd.FEATURES_DIRECTORY.iterdir():
             if not feature_dir.is_dir():
                 continue
 
@@ -50,10 +52,27 @@ class BrBot(commands.AutoShardedBot):
             except Exception as e:
                 logger.error(f"Failed to load feature {feature_dir.name}: {str(e)}")
 
+    async def load_db(self) -> None:
+        if not bd.DATA_DIRECTORY.exists():
+            logger.warning(
+                f"Data directory not found at {bd.DATA_DIRECTORY}, initialized new."
+            )
+            makedirs(bd.DATA_DIRECTORY, exist_ok=True)
+
+        # IF CHANGED, ALSO CHANGE IN alembic.ini
+        self.engine = create_async_engine(
+            f"sqlite+aiosqlite:///{bd.DATA_DIRECTORY / "brb.db"}", echo=False
+        )
+        self.session_generator = async_sessionmaker(self.engine, expire_on_commit=False)
+
+        async with self.engine.connect() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
     async def setup_hook(self) -> None:
         """
         Setup hook called before the bot starts
         """
+        await self.load_db()
         await self.load_cogs()
 
     async def on_ready(self) -> None:

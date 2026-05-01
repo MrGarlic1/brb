@@ -2,6 +2,7 @@ import brbot.Core.botdata as bd
 from brbot.Features.Animanga.service import RecService
 from brbot.Features.Animanga.data import RecView, IgnoredRecView
 from brbot.Core.anilist import query_user_id
+from brbot.Core.bot import BrBot
 from httpx import RequestError
 from json import dump
 from discord import app_commands, Interaction
@@ -12,8 +13,9 @@ logger = logging.getLogger(__name__)
 
 
 class AnimangaCog(commands.GroupCog, name="animanga"):
-    def __init__(self):
+    def __init__(self, bot: BrBot):
         self.rec_service = RecService()
+        self.bot = bot
 
     @app_commands.command(
         name="link", description="Link your discord profile to an anilist profile"
@@ -159,5 +161,5 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
         return False
 
 
-async def setup(bot: commands.Bot):
-    await bot.add_cog(AnimangaCog())
+async def setup(bot: BrBot):
+    await bot.add_cog(AnimangaCog(bot))

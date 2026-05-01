@@ -1,3 +1,4 @@
+from brbot.Core.bot import BrBot
 from brbot.Features.Trains.service import TrainGame, load_trains_game
 from brbot.Features.Trains.data import (
     TrainShot,
@@ -24,6 +25,9 @@ logger = logging.getLogger(__name__)
 
 
 class TrainsCog(commands.GroupCog, name="trains"):
+    def __init__(self, bot: BrBot):
+        self.bot = bot
+
     @app_commands.command(name="newgame", description="Create a new trains game")
     @app_commands.describe(
         name="Trains game name",
@@ -528,5 +532,5 @@ class TrainsCog(commands.GroupCog, name="trains"):
         await ctx.response.send_message(embed=gen_rules_embed(page=page - 1), view=view)
 
 
-async def setup(bot: commands.Bot):
+async def setup(bot: BrBot):
     await bot.add_cog(TrainsCog(bot))

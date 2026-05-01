@@ -53,11 +53,11 @@ def load_anilist_caches() -> None:
     Returns:
         None
     """
-    if not path.exists(f"{bd.parent}/Data/linked_profiles.json"):
-        makedirs(f"{bd.parent}/Data", exist_ok=True)
-        with open(f"{bd.parent}/Data/linked_profiles.json", "w") as f:
+    if not path.exists(f"{bd.DATA_DIRECTORY}/linked_profiles.json"):
+        makedirs(f"{bd.DATA_DIRECTORY}", exist_ok=True)
+        with open(f"{bd.DATA_DIRECTORY}/linked_profiles.json", "w") as f:
             json.dump({}, f, separators=(",", ":"))
-    with open(f"{bd.parent}/Data/linked_profiles.json", "r") as f:
+    with open(f"{bd.DATA_DIRECTORY}/linked_profiles.json", "r") as f:
         bd.linked_profiles = {int(key): int(val) for key, val in json.load(f).items()}
 
 
@@ -130,7 +130,7 @@ async def get_members_from_str(guild, txt: str) -> list[Member]:
     return members
 
 
-def autocomplete_filter(option: str) -> dict[str:str]:
+def autocomplete_filter(option: str) -> Choice:
     """
     Truncates long autocomplete options to avoid hard discord character limits
     Args:

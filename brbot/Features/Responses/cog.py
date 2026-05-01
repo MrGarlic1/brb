@@ -1,5 +1,6 @@
 import brbot.Core.botdata as bd
 import brbot.Core.botutils as bu
+from brbot.Core.bot import BrBot
 import brbot.Features.Responses.data as rsp
 from discord import app_commands, Interaction, Message
 from discord.ext import commands
@@ -9,6 +10,9 @@ logger = logging.getLogger(__name__)
 
 
 class ResponsesCog(commands.GroupCog, name="response"):
+    def __init__(self, bot: BrBot):
+        self.bot = bot
+
     @app_commands.command(
         name="add",
         description="Add a response",
@@ -51,6 +55,7 @@ class ResponsesCog(commands.GroupCog, name="response"):
 
         if not error:
             await ctx.response.send_message(content=bd.pass_str)
+            return False
         else:
             await ctx.response.send_message(content=bd.fail_str)
             return True
@@ -166,5 +171,5 @@ class ResponsesCog(commands.GroupCog, name="response"):
         return False
 
 
-async def setup(bot: commands.Bot):
+async def setup(bot: BrBot):
     await bot.add_cog(ResponsesCog(bot))

@@ -4,6 +4,8 @@ from discord import app_commands, Interaction
 from discord.ext import commands
 import logging
 
+from brbot.Core.bot import BrBot
+
 logger = logging.getLogger(__name__)
 
 config_keys = {
@@ -15,6 +17,9 @@ config_keys = {
 
 
 class ConfigCog(commands.GroupCog, name="config"):
+    def __init__(self, bot: BrBot):
+        self.bot = bot
+
     @app_commands.command(
         name="set", description="Configure the bot's server settings (admin only)"
     )
@@ -101,5 +106,5 @@ class ConfigCog(commands.GroupCog, name="config"):
         )
 
 
-async def setup(bot: commands.Bot):
+async def setup(bot: BrBot):
     await bot.add_cog(ConfigCog(bot))

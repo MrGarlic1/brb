@@ -4,6 +4,7 @@ import brbot.Core.botdata as bd
 import asyncio
 from os import path, listdir, mkdir
 import brbot.Core.botutils as bu
+from brbot.Core.bot import BrBot
 from shutil import copytree, ignore_patterns
 from datetime import datetime
 from discord import app_commands, Interaction, Member
@@ -11,6 +12,9 @@ from discord.ext import commands
 
 
 class BingoCog(commands.GroupCog, name="bingo"):
+    def __init__(self, bot: BrBot):
+        self.bot = bot
+
     @app_commands.command(name="newgame", description="Create a new bingo game")
     @app_commands.describe(
         name="Bingo game name", players="@ the participating players"
@@ -336,5 +340,5 @@ class BingoCog(commands.GroupCog, name="bingo"):
         return False
 
 
-async def setup(bot: commands.Bot):
+async def setup(bot: BrBot):
     await bot.add_cog(BingoCog(bot))
