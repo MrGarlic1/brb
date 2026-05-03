@@ -1,3 +1,4 @@
+from datetime import datetime
 from discord.channel import DMChannel
 from discord.member import Member as DiscordMember
 from discord.guild import Guild as DiscordGuild
@@ -30,18 +31,24 @@ class User(Base):
     user_id: Mapped[int] = mapped_column(
         BigInteger, primary_key=True, autoincrement=False
     )
+    name: Mapped[str] = mapped_column(String(240))
     anilist_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     anilist_username: Mapped[Optional[str]] = mapped_column(String(240), nullable=True)
-    rec_timestamp_manga: Mapped[Optional[DateTime]] = mapped_column(
+    rec_timestamp_manga: Mapped[Optional[datetime]] = mapped_column(
         DateTime, nullable=True
     )
-    rec_timestamp_anime: Mapped[Optional[DateTime]] = mapped_column(
+    rec_timestamp_anime: Mapped[Optional[datetime]] = mapped_column(
         DateTime, nullable=True
     )
     memberships = relationship("Member", back_populates="user")
+    ignored_recommendations = relationship("IgnoredRecommendation")
 
     discord_user: ClassVar[Optional[DiscordUser]] = None
     dmchannel: ClassVar[Optional[DMChannel]] = None
+
+    @property
+    def mention_str(self):
+        return f"<@{self.user_id}>"
 
 
 class Guild(Base):
@@ -60,11 +67,13 @@ class GuildConfig(Base):
     guild_id: Mapped[int] = mapped_column(
         ForeignKey("guilds.id"), primary_key=True, autoincrement=False
     )
+    guild = relationship("Guild", back_populates="config")
     allow_phrases: Mapped[bool] = mapped_column(Boolean)
     limit_user_responses: Mapped[bool] = mapped_column(Boolean)
     max_user_responses: Mapped[int] = mapped_column(Integer)
     restrict_response_deletion: Mapped[bool] = mapped_column(Boolean)
-    guild = relationship("Guild", back_populates="config")
+
+    __table_args__ = (UniqueConstraint("guild_id", name="uq_guild_config_guild_id"),)
 
 
 class Member(Base):
@@ -87,7 +96,6 @@ class Member(Base):
 class Response(Base):
     __tablename__ = "responses"
     id: Mapped[int] = mapped_column(primary_key=True)
-
     guild_id: Mapped[int] = mapped_column(ForeignKey("guilds.id"))
     member_id: Mapped[int] = mapped_column(ForeignKey("members.id"))
     trigger: Mapped[str] = mapped_column(String(2000))
@@ -111,7 +119,8 @@ class Response(Base):
 
 class Recommendation(Base):
     __tablename__ = "recommendations"
-    media_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    media_id: Mapped[int] = mapped_column(Integer)
     anilist_user_id: Mapped[int] = mapped_column(Integer)
     is_manga: Mapped[bool] = mapped_column(Boolean)
     title: Mapped[str] = mapped_column(String(400))
@@ -129,6 +138,42 @@ class Recommendation(Base):
         else:
             return other == self.media_id
 
+    __table_args__ = (
+        Index("ix_recommendation_anilist_user_id", "anilist_user_id"),
+        Index("ix_recommendation_anilist_user_id_type", "anilist_user_id", "is_manga"),
+        UniqueConstraint(
+            "media_id",
+            "anilist_user_id",
+            "is_manga",
+            name="uq_recommendation_anilist_user_id_media_id",
+        ),
+    )
+
+
+class IgnoredRecommendation(Base):
+    __tablename__ = "ignored_recommendations"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    media_id: Mapped[int] = mapped_column(Integer)
+    ignoring_user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"))
+    is_manga: Mapped[bool] = mapped_column(Boolean)
+    title: Mapped[str] = mapped_column(String(400))
+    genres: Mapped[List[str]] = mapped_column(JSON)
+    cover_url: Mapped[str] = mapped_column(String(400))
+    mean_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    __table_args__ = (
+        Index("ix_recommendation_ignoring_user_id", "ignoring_user_id"),
+        Index(
+            "ix_recommendation_ignoring_user_id_type", "ignoring_user_id", "is_manga"
+        ),
+        UniqueConstraint(
+            "media_id",
+            "ignoring_user_id",
+            "is_manga",
+            name="uq_ignoring_user_id_media_id",
+        ),
+    )
+
 
 ## BINGO
 
@@ -144,7 +189,7 @@ class BingoGame(Base):
     known_entries: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     guild = relationship("Guild", back_populates="bingo_games")
     players = relationship(
-        "Player", back_populates="game", cascade="all, delete-orphan"
+        "BingoPlayer", back_populates="game", cascade="all, delete-orphan"
     )
 
 
@@ -237,7 +282,7 @@ class TrainGame(Base):
         "TrainItem", back_populates="game", cascade="all, delete-orphan"
     )
     players = relationship(
-        "Player", back_populates="game", cascade="all, delete-orphan"
+        "TrainPlayer", back_populates="game", cascade="all, delete-orphan"
     )
     __table_args__ = (Index("ix_train_game_guild_id", "guild_id"),)
 
@@ -283,7 +328,9 @@ class TrainPlayer(Base):
     current_tile_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("player_tiles.id"), nullable=True
     )
-    current_tile = relationship("TrainPlayerTile")
+    current_tile = relationship(
+        "TrainPlayerTile", foreign_keys=[current_tile_id], post_update=True
+    )
     done: Mapped[bool] = mapped_column(Boolean)
     donetime: Mapped[Optional[DateTime]] = mapped_column(DateTime, nullable=True)
     least_watched_genre: Mapped[Optional[str]] = mapped_column(
@@ -294,7 +341,10 @@ class TrainPlayer(Base):
         "TrainShot", back_populates="player", cascade="all, delete-orphan"
     )
     player_tiles = relationship(
-        "TrainPlayerTile", back_populates="player", cascade="all, delete-orphan"
+        "TrainPlayerTile",
+        back_populates="player",
+        cascade="all, delete-orphan",
+        foreign_keys="TrainPlayerTile.player_id",
     )
     member = relationship("Member")
     items = relationship("TrainItem", back_populates="owner")
@@ -337,7 +387,9 @@ class TrainPlayerTile(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     tile_id: Mapped[int] = mapped_column(ForeignKey("train_tiles.id"))
     player_id: Mapped[int] = mapped_column(ForeignKey("train_players.id"))
-    player = relationship("TrainPlayer", back_populates="player_tiles")
+    player = relationship(
+        "TrainPlayer", back_populates="player_tiles", foreign_keys=[player_id]
+    )
     tile = relationship("TrainTile", back_populates="player_tiles")
     visible: Mapped[bool] = mapped_column(Boolean)
     has_rail: Mapped[bool] = mapped_column(Boolean)

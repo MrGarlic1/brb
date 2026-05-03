@@ -1,12 +1,14 @@
 import brbot.Core.botdata as bd
-from brbot.Features.Animanga.service import RecService
-from brbot.Features.Animanga.data import RecView, IgnoredRecView
+from brbot.Features.Animanga.service import AnimangaService
+from brbot.Features.Animanga.data import RecView, IgnoredRecView, MediaType
 from brbot.Core.anilist import query_user_id
 from brbot.Core.bot import BrBot
+from brbot.db.models import User
+from brbot.Shared.Users.repository import get_or_create_user
 from httpx import RequestError
-from json import dump
 from discord import app_commands, Interaction
 from discord.ext import commands
+from sqlalchemy.exc import IntegrityError
 import logging
 
 logger = logging.getLogger(__name__)
@@ -14,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 class AnimangaCog(commands.GroupCog, name="animanga"):
     def __init__(self, bot: BrBot):
-        self.rec_service = RecService()
+        self.animanga_service = AnimangaService()
         self.bot = bot
 
     @app_commands.command(
@@ -22,24 +24,37 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
     )
     @app_commands.describe(username="Anilist username")
     async def link(self, ctx: Interaction, username: str):
-        if username is None:
-            await ctx.response.send_message(
-                content="Could not find anilist profile, please check username!"
-            )
-            return True
-        anilist_user_id = await query_user_id(username)
-        if anilist_user_id is None:
-            await ctx.response.send_message(
-                content="Could not find anilist profile, please check username!"
-            )
-            return True
+        async with self.bot.session_generator() as session:
+            user: User = await get_or_create_user(ctx.user.id, ctx.user.name, session)
 
-        bd.linked_profiles[ctx.user.id] = anilist_user_id
+            if username is None:
+                await ctx.response.send_message(
+                    content="Could not find anilist profile, please check username!"
+                )
+                return True
+            anilist_user_id = await query_user_id(username)
+            if anilist_user_id is None:
+                await ctx.response.send_message(
+                    content="Could not find anilist profile, please check username!"
+                )
+                return True
+
+            user.anilist_id = anilist_user_id
+            user.anilist_username = username
+            user.rec_timestamp_manga = None
+            user.rec_timestamp_anime = None
+
+            try:
+                await session.commit()
+            except IntegrityError:
+                await session.rollback()
+                await ctx.response.send_message(
+                    content="A transient error occurred, please try again!"
+                )
+
         logger.debug(
             f"Linked discord user {ctx.user.name} to anilist profile {username}"
         )
-        with open(f"{bd.parent}/Data/linked_profiles.json", "w") as f:
-            dump(bd.linked_profiles, f, separators=(",", ":"))
         await ctx.response.send_message(content=bd.pass_str)
         return False
 
@@ -73,52 +88,62 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
             app_commands.Choice(name="Thriller", value="Thriller"),
         ],
         medium=[
-            app_commands.Choice(name="Anime", value="anime"),
-            app_commands.Choice(name="Manga", value="manga"),
+            app_commands.Choice(name="Anime", value=MediaType.Anime.name),
+            app_commands.Choice(name="Manga", value=MediaType.Manga.name),
         ],
     )
     async def show_animanga_rec(
         self,
         ctx: Interaction,
         genre: str = "",
-        medium: str = "anime",
+        medium: str = MediaType.Anime.name,
         force: bool = False,
     ):
-        if ctx.user.id not in bd.linked_profiles:
-            await ctx.response.send_message(
-                content="Your anilist profile isn't linked! (/animanga link)"
-            )
-            return True
+        async with self.bot.session_generator() as session:
+            user = await get_or_create_user(ctx.user.id, ctx.user.name, session)
+            user_anilist_id = user.anilist_id
+            anilist_username = user.anilist_username
+            if user_anilist_id is None:
+                await ctx.response.send_message(
+                    content="Your anilist profile isn't linked! (/animanga link)"
+                )
+                return True
 
-        await ctx.response.defer()
-        try:
-            await self.rec_service.check_recommendation(
-                anilist_id=bd.linked_profiles[ctx.user.id],
+            medium: MediaType = (
+                MediaType.Anime if medium == MediaType.Anime.name else MediaType.Manga
+            )
+            await ctx.response.defer()
+
+            try:
+                await self.animanga_service.check_or_update_recommendation_cache(
+                    user=user,
+                    media_type=medium,
+                    session=session,
+                    force_update=force,
+                )
+            except RequestError:
+                await ctx.followup.send(
+                    "An error occurred connecting to Anilist. Please try again later."
+                )
+                return True
+
+            embed, media_id = await self.animanga_service.gen_rec_embed_page(
+                anilist_user_id=user_anilist_id,
+                anilist_username=anilist_username,
                 media_type=medium,
-                force_update=force,
-                user_discord_id=ctx.user.id,
+                genre=genre,
+                page=0,
+                session=session,
             )
-        except RequestError:
-            await ctx.followup.send(
-                "An error occurred connecting to Anilist. Please try again later."
-            )
-            return True
-
-        embed, media_rec = self.rec_service.get_rec_embed(
-            username=ctx.user.name,
-            anilist_id=bd.linked_profiles[ctx.user.id],
-            media_type=medium,
-            genre=genre,
-            page=0,
-        )
         view = RecView(
-            rec_service=self.rec_service,
-            user_anilist_id=bd.linked_profiles[ctx.user.id],
+            animanga_service=self.animanga_service,
+            user_id=user.user_id,
+            anilist_user_id=user_anilist_id,
+            anilist_username=anilist_username,
             media_type=medium,
             genre=genre,
-            username=ctx.user.name,
-            user_discord_id=ctx.user.id,
-            media_rec=media_rec,
+            current_media_id=media_id,
+            session_generator=self.bot.session_generator,
         )
         await ctx.followup.send(embed=embed, view=view)
         return False
@@ -131,31 +156,42 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
     )
     @app_commands.choices(
         medium=[
-            app_commands.Choice(name="Anime", value="anime"),
-            app_commands.Choice(name="Manga", value="manga"),
+            app_commands.Choice(name="Anime", value=MediaType.Anime.name),
+            app_commands.Choice(name="Manga", value=MediaType.Manga.name),
         ],
     )
-    async def list_ignored(self, ctx: Interaction, medium: str = "anime"):
-        if ctx.user.id not in bd.linked_profiles:
-            await ctx.response.send_message(
-                content="Your anilist profile isn't linked! (/animanga link)"
-            )
-            return True
+    async def list_ignored(self, ctx: Interaction, medium: str = MediaType.Anime.name):
+        async with self.bot.session_generator() as session:
+            user = await get_or_create_user(ctx.user.id, ctx.user.name, session)
+            if user.anilist_id is None:
+                await ctx.response.send_message(
+                    content="Your anilist profile isn't linked! (/animanga link)"
+                )
+                return True
+
+        medium: MediaType = (
+            MediaType.Anime if medium == MediaType.Anime.name else MediaType.Manga
+        )
 
         await ctx.response.defer()
-
-        embed, ignored_media_rec = self.rec_service.get_ignored_rec_embed(
-            username=ctx.user.name,
-            user_discord_id=ctx.user.id,
-            page=0,
-            media_type=medium,
-        )
+        async with self.bot.session_generator() as session:
+            (
+                embed,
+                ignored_media_id,
+            ) = await self.animanga_service.get_ignored_rec_embed_page(
+                username=ctx.user.name,
+                user_discord_id=ctx.user.id,
+                page=0,
+                session=session,
+                media_type=medium,
+            )
         view = IgnoredRecView(
-            rec_service=self.rec_service,
+            animanga_service=self.animanga_service,
+            user_id=ctx.user.id,
             media_type=medium,
-            username=ctx.user.name,
-            user_discord_id=ctx.user.id,
-            ignored_media_rec=ignored_media_rec,
+            discord_username=ctx.user.name,
+            current_media_id=ignored_media_id,
+            session_generator=self.bot.session_generator,
         )
         await ctx.followup.send(embed=embed, view=view)
         return False

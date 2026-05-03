@@ -2,55 +2,31 @@ import logging
 from asyncio import gather, sleep, Semaphore
 from datetime import datetime
 from random import uniform
-from typing import Optional, Dict, List, Tuple
-from brbot.Features.Animanga.data import MediaRec, RecScoringModel
-from brbot.Core.botdata import parent
+
+from sqlalchemy import select, delete, func
+from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Optional, Dict, List, Tuple, Sequence
+from brbot.Features.Animanga.data import RecScoringModel, MediaType
+from brbot.db.models import Recommendation, IgnoredRecommendation, User
 from httpx import AsyncClient, ReadTimeout, RequestError, post
 from discord import Embed
-from json import load, dump
 
 logger = logging.getLogger(__name__)
 
 
-def __dict__(self):
-    return {
-        "media_id": self.media_id,
-        "title": self.title,
-        "score": self.title,
-        "genres": self.title,
-        "cover_url": self.title,
-        "mean_score": self.title,
-    }
-
-
-class RecService:
+class AnimangaService:
     def __init__(self):
         self.known_manga_recs = {}
         self.known_anime_recs = {}
-        try:
-            with open(f"{parent}/Data/ignored_recs.json", "r") as f:
-                ignored_recs_data = {int(k): v for k, v in load(f).items()}
-            for user_id, user_ignored in ignored_recs_data.items():
-                user_ignored["anime"] = [
-                    MediaRec.from_dict(rec) for rec in user_ignored["anime"]
-                ]
-                user_ignored["manga"] = [
-                    MediaRec.from_dict(rec) for rec in user_ignored["manga"]
-                ]
-                ignored_recs_data[user_id] = user_ignored
-            self.ignored_recs = ignored_recs_data
-        except Exception as e:
-            logger.warning(
-                f"Failed to load ignored recs at {parent}/Data/ignored_recs.json: {e}"
-            )
-            self.ignored_recs = {}
 
     @staticmethod
     def _signed_power_floor(x, p, f):
         return min(abs(x) ** p, f) * (1 if x >= 0 else -1)
 
     @staticmethod
-    async def query_user_statistics(anilist_id: int, media_type: str) -> Optional[Dict]:
+    async def query_user_statistics(
+        anilist_id: int, media_type: MediaType
+    ) -> Optional[Dict]:
         """
         Queries anilist for user statistics used for weighting/scoring of animanga recommendations
 
@@ -61,11 +37,12 @@ class RecService:
         Returns:
             dict: Anilist media type user statistics data
         """
+        media_type_str = media_type.name.lower()
         query = f"""
         query User($userId: Int) {{
           User(id: $userId) {{
             statistics {{
-              {media_type} {{
+              {media_type_str} {{
                 count
                 meanScore
                 standardDeviation
@@ -77,7 +54,7 @@ class RecService:
               }}
             }}
             favourites {{
-              {media_type} {{
+              {media_type_str} {{
                 nodes {{
                   id
                 }}
@@ -87,7 +64,7 @@ class RecService:
         }}
         """
         variables = {"userId": anilist_id}
-        logger.info(f"Querying user statistics for {anilist_id} ({media_type})")
+        logger.info(f"Querying user statistics for {anilist_id} ({media_type_str})")
 
         try:
             response = post(
@@ -99,11 +76,12 @@ class RecService:
             return None
         if response.status_code == 200:
             user_data = response.json()["data"]["User"]
-            if user_data["statistics"][media_type]["count"]:
+            if user_data["statistics"][media_type_str]["count"]:
                 favorites = [
-                    fav["id"] for fav in user_data["favourites"][media_type]["nodes"]
+                    fav["id"]
+                    for fav in user_data["favourites"][media_type_str]["nodes"]
                 ]
-                user_data["favourites"][media_type] = favorites
+                user_data["favourites"][media_type_str] = favorites
                 return user_data
 
         logger.error(f"Failed to fetch user statistics for {anilist_id}")
@@ -111,19 +89,20 @@ class RecService:
 
     @staticmethod
     async def query_media_recs(
-        anilist_id: int, media_type: str, watched_count: int
+        anilist_id: int, media_type: MediaType, watched_count: int
     ) -> Optional[List[Dict]]:
         """
         Queries anilist for user list data used for weighting/scoring of animanga recommendations
 
         Args:
             anilist_id (int): Anilist user ID to query
-            media_type (str): Specifies anime or manga statistics
+            media_type (MediaType): Specifies anime or manga statistics
             watched_count (int): Completed entries on user's list
 
         Returns:
             Optional[list[dict]]: Anilist media list collection data
         """
+        media_type_str = media_type.name.lower()
         query = """
         query MediaListCollection($userId: Int, $type: MediaType, $statusNotIn: [MediaListStatus], $sort: [RecommendationSort], $perPage: Int, $perChunk: Int, $chunk: Int) {
           MediaListCollection(userId: $userId, type: $type, status_not_in: $statusNotIn, perChunk: $perChunk, chunk: $chunk) {
@@ -179,7 +158,7 @@ class RecService:
             for attempt in range(max_attempts):
                 req_vars = {
                     "userId": anilist_id,
-                    "type": media_type.upper(),
+                    "type": media_type_str.upper(),
                     "statusNotIn": "PLANNING",
                     "perPage": 8,
                     "sort": "RATING_DESC",
@@ -212,7 +191,7 @@ class RecService:
 
         tasks: list = []
 
-        logger.info(f"Querying user list data for {anilist_id} ({media_type})")
+        logger.info(f"Querying user list data for {anilist_id} ({media_type_str})")
         async with AsyncClient() as client:
             for i in range(1, watched_count // chunk_size + 2):
                 tasks.append(query_list_recommendations(client, i))
@@ -232,15 +211,16 @@ class RecService:
 
         return full_rec_list
 
-    async def fetch_recommendations(
-        self, anilist_id: int, media_type: str
+    @staticmethod
+    async def fetch_new_recommendation_api_data(
+        anilist_id: int, media_type: MediaType
     ) -> Tuple[List, Dict, List]:
         """
         Wrapper function for fetching anilist data for animanga recs
 
         Args:
             anilist_id (int): Anilist user ID to query
-            media_type (str): Specifies anime or manga statistics
+            media_type (MediaType): Specifies anime or manga statistics
 
         Returns:
             tuple: Tuple containing user list data, user statistics, and favorites
@@ -248,15 +228,16 @@ class RecService:
         Raises:
             RequestError if either user statistics or list data is empty
         """
-        user_data = await self.query_user_statistics(
+        user_data = await AnimangaService.query_user_statistics(
             anilist_id=anilist_id, media_type=media_type
         )
+        media_type_str = media_type.name.lower()
         if not user_data:
             raise RequestError("Error obtaining data from anilist.")
-        user_stats = user_data["statistics"][media_type]
-        user_favorites = user_data["favourites"][media_type]
+        user_stats = user_data["statistics"][media_type_str]
+        user_favorites = user_data["favourites"][media_type_str]
 
-        list_data = await self.query_media_recs(
+        list_data = await AnimangaService.query_media_recs(
             anilist_id=anilist_id,
             media_type=media_type,
             watched_count=user_stats["count"],
@@ -271,8 +252,10 @@ class RecService:
         list_data: List[Dict],
         user_stats: Dict,
         user_favorites: List[int],
-        ignored_media_ids: list[int],
-    ) -> List[MediaRec]:
+        ignored_media_ids: Sequence[int],
+        anilist_user_id: int,
+        media_type: MediaType,
+    ) -> List[Recommendation]:
         """
         Scoring algorithm for animanga recs
 
@@ -281,9 +264,11 @@ class RecService:
             user_stats (dict): Anilist user statistics
             user_favorites (list[int]): List of user favorited media IDs
             ignored_media_ids (list[int]): List of user's ignored media IDs to avoid recommending
+            anilist_user_id (int): Anilist user ID
+            media_type: MediaType enum value specifying anime/manga
 
         Returns:
-            list[MediaRec]: List of user's recommendations
+            list[Recommendation]: List of user's recommendations
         """
         model = RecScoringModel()
 
@@ -315,7 +300,7 @@ class RecService:
                 genre_z_score = (genre["meanScore"] - user_stats["meanScore"]) / max(
                     user_stats["standardDeviation"], 1
                 )
-                user_genre_scores[genre_name] = RecService._signed_power_floor(
+                user_genre_scores[genre_name] = AnimangaService._signed_power_floor(
                     x=genre_z_score
                     / max(max_genre_z_score, 0.001)
                     * model.genre_user_score_weight,
@@ -323,7 +308,7 @@ class RecService:
                     f=model.genre_user_score_max,
                 )
                 user_genre_scores[genre_name] += (
-                    RecService._signed_power_floor(
+                    AnimangaService._signed_power_floor(
                         x=(genre["count"] - 0.40 * len(seen_show_ids))
                         / len(seen_show_ids),
                         p=0.6,
@@ -332,7 +317,7 @@ class RecService:
                     * model.genre_count_weight
                 )
 
-        recommendation_scores = {}
+        recommendation_scores: Dict[int, Recommendation] = {}
         for list_entry in list_data:
             if not list_entry["media"]["recommendations"]["nodes"]:
                 continue
@@ -444,131 +429,252 @@ class RecService:
                     * favorite_weight
                     * progress_weight
                 )
+                """
+                    id: Mapped[int] = mapped_column(primary_key=True)
+                    media_id: Mapped[int] = mapped_column(Integer)
+                    anilist_user_id: Mapped[int] = mapped_column(Integer)
+                    is_manga: Mapped[bool] = mapped_column(Boolean)
+                    title: Mapped[str] = mapped_column(String(400))
+                    score: Mapped[float] = mapped_column(Float)
+                    genres: Mapped[List[str]] = mapped_column(JSON)
+                    cover_url: Mapped[str] = mapped_column(String(400))
+                    mean_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+                """
+
                 if media_rec["id"] not in recommendation_scores:
-                    recommendation_scores[media_rec["id"]] = MediaRec(
+                    recommendation_scores[media_rec["id"]] = Recommendation(
                         media_id=media_rec["id"],
+                        anilist_user_id=anilist_user_id,
+                        is_manga=media_type.value,
                         title=media_rec["title"]["romaji"],
+                        score=0,
                         genres=media_rec["genres"],
                         cover_url=media_rec["coverImage"]["large"],
                         mean_score=media_rec["meanScore"],
                     )
+
                 recommendation_scores[media_rec["id"]].score += total_rec_score
 
-        recommendation_scores = list(recommendation_scores.values())
+        recommendation_scores_list = list(recommendation_scores.values())
 
-        if not recommendation_scores:
-            return recommendation_scores
+        if not recommendation_scores_list:
+            return recommendation_scores_list
 
-        for rec in recommendation_scores:
+        for rec in recommendation_scores_list:
             rec.score *= uniform(1 + model.score_variation, 1 - model.score_variation)
 
-        recommendation_scores = [rec for rec in recommendation_scores if rec.score >= 0]
-        recommendation_scores.sort(reverse=True)
+        recommendation_scores_list = [
+            rec for rec in recommendation_scores_list if rec.score >= 0
+        ]
+        recommendation_scores_list.sort(reverse=True)
 
         # Normalize scores and apply filter for logical percentages
-        max_score = recommendation_scores[0].score
-        for rec in recommendation_scores:
+        max_score = recommendation_scores_list[0].score
+        for rec in recommendation_scores_list:
             rec.score = (rec.score / max_score) ** model.global_scale_exp * 100
 
-        return recommendation_scores
+        return recommendation_scores_list
 
-    async def check_recommendation(
+    async def check_or_update_recommendation_cache(
         self,
-        anilist_id: int,
-        user_discord_id: int,
-        media_type: str,
+        user: User,
+        media_type: MediaType,
+        session: AsyncSession,
         force_update: bool = False,
     ) -> None:
         """
         Check if recommendations exist in cache and are up to date, and fetch new data if not cached.
 
         Args:
-            anilist_id (int): Anilist user ID to query
-            user_discord_id (int): Discord user ID
-            media_type (str): Anilist user statistics
+            user (User): User DB object
+            media_type (MediaType): Defined by enum as anime or manga
+            session (AsyncSession): sqlalchemy async db session
             force_update (bool): If true, will always fetch new data from anilist instead of using cache
         """
-        known_recs = (
-            self.known_manga_recs if media_type == "manga" else self.known_anime_recs
+        anilist_id = user.anilist_id
+        anilist_username = user.anilist_username
+        user_id = user.user_id
+        rec_timestamp = (
+            user.rec_timestamp_anime
+            if media_type == MediaType.Anime
+            else user.rec_timestamp_manga
         )
 
+        if anilist_id is None:
+            return None
+
         # Use cached data unless cached data does not exist or is outdated
-        logger.info(f"Checking recommendation cache for {anilist_id} ({media_type})")
 
-        try:
-            time_delta = (
-                datetime.now() - known_recs[anilist_id]["date"]
-            ).total_seconds()
-        except KeyError:
-            time_delta = 0
-        if anilist_id not in known_recs or force_update or time_delta > 345600:
-            logger.debug(f"Cache age for {anilist_id}: {time_delta:.2f} seconds")
-            list_data, user_stats, user_favorites = await self.fetch_recommendations(
-                anilist_id=anilist_id,
-                media_type=media_type,
-            )
-            ignored_recs = (
-                self.ignored_recs[user_discord_id][media_type]
-                if user_discord_id in self.ignored_recs
-                else []
-            )
-            recommendation_scores = self.calculate_rec_scores(
-                list_data=list_data,
-                user_stats=user_stats,
-                user_favorites=user_favorites,
-                ignored_media_ids=ignored_recs,
-            )
-            known_recs[anilist_id] = {
-                "date": datetime.now(),
-                "recs": recommendation_scores,
-            }
+        use_cached = (
+            AnimangaService.is_recommendation_cache_fresh(rec_timestamp)
+            and not force_update
+        )
+        if use_cached:
             logger.info(
-                f"Updated recommendations cache for {anilist_id} ({media_type})"
+                f"Using cached {media_type} recommendations for anilist user {anilist_username}."
             )
+            return None
+
+        # Update last fetched timestamp
+        if media_type == MediaType.Anime:
+            user.rec_timestamp_anime = datetime.now()
         else:
-            logger.info(
-                f"Using cached recommendation data for {anilist_id} ({media_type})"
-            )
+            user.rec_timestamp_manga = datetime.now()
+        await session.commit()
 
+        logger.info(
+            f"Updating cached {media_type} recommendations for anilist user {anilist_username}."
+        )
+
+        (
+            list_data,
+            user_stats,
+            user_favorites,
+        ) = await self.fetch_new_recommendation_api_data(
+            anilist_id=anilist_id,
+            media_type=media_type,
+        )
+
+        stmt = select(IgnoredRecommendation.media_id).where(
+            IgnoredRecommendation.ignoring_user_id == user_id
+        )
+        result = await session.execute(stmt)
+        ignored_recs = result.scalars().all()
+
+        recommendations = self.calculate_rec_scores(
+            list_data=list_data,
+            user_stats=user_stats,
+            user_favorites=user_favorites,
+            ignored_media_ids=ignored_recs,
+            anilist_user_id=anilist_id,
+            media_type=media_type,
+        )
+
+        await AnimangaService.update_db_recommendations(
+            recommendations, anilist_id, media_type, session
+        )
+        logger.info(
+            f"Updated {len(recommendations)} {media_type.name} recs for anilist user {anilist_username}."
+        )
         return None
 
-    def get_rec_embed(
-        self, username: str, anilist_id: int, media_type: str, genre: str, page: int
-    ) -> tuple[Embed, MediaRec | None]:
+    @staticmethod
+    async def update_db_recommendations(
+        new_recs: List[Recommendation],
+        anilist_id: int,
+        media_type: MediaType,
+        session: AsyncSession,
+    ) -> None:
+        stmt = (
+            delete(Recommendation)
+            .where(Recommendation.anilist_user_id == anilist_id)
+            .where(Recommendation.is_manga == media_type.value)
+        )
+        await session.execute(stmt)
+
+        session.add_all(new_recs)
+
+        try:
+            await session.commit()
+        except Exception as e:
+            await session.rollback()
+            logger.warning(
+                f"Failed to write new recommendations to DB for anilist user {anilist_id}: {e}"
+            )
+
+    @staticmethod
+    def is_recommendation_cache_fresh(rec_timestamp: datetime) -> bool:
+        cache_expire_limit_days = 5
+        if rec_timestamp is None:
+            return False
+
+        if (datetime.now() - rec_timestamp).days > cache_expire_limit_days:
+            return False
+
+        return True
+
+    @staticmethod
+    async def get_user_recommendation_count(
+        anilist_user_id: int,
+        media_type: MediaType,
+        session: AsyncSession,
+        genre: str = None,
+    ) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(Recommendation)
+            .where(Recommendation.anilist_user_id == anilist_user_id)
+            .where(Recommendation.is_manga == media_type.value)
+        )
+        if genre is not None:
+            stmt = stmt.where(Recommendation.genres.contains(genre))
+        total = await session.scalar(stmt)
+        return total
+
+    @staticmethod
+    async def get_user_ignored_count(
+        user_id: int, media_type: MediaType, session: AsyncSession
+    ) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(IgnoredRecommendation)
+            .where(IgnoredRecommendation.ignoring_user_id == user_id)
+            .where(IgnoredRecommendation.is_manga == media_type.value)
+        )
+        total = await session.scalar(stmt)
+        return total
+
+    @staticmethod
+    async def gen_rec_embed_page(
+        anilist_user_id: int,
+        anilist_username: str,
+        media_type: MediaType,
+        genre: str,
+        page: int,
+        session: AsyncSession,
+        max_page: Optional[int] = None,
+    ) -> tuple[Embed, int | None]:
         """
         Generate an embed with the recommended media.
 
         Args:
-            username (str): Discord display name
-            anilist_id (str): Anilist username to recommend for
+            anilist_user_id (int): User anilist ID
+            anilist_username (str): User anilist username
             media_type (str): Specify to recommend manga/anime
             genre (str): Limit recommendations to specified genre
             page (int): Which recommendation in user's rec list to display
-
+            session (AsyncSession): sqlalchemy async db session
+            max_page (int): Max page of the view, if it has been found yet.
         Returns:
             Embed: Embed displaying recommended media and corresponding information
         """
-        color = 0x3BAFEB
-        try:
-            if media_type == "manga":
-                color = 0x7CD553
-                recs = self.known_manga_recs[anilist_id]["recs"]
-            else:
-                recs = self.known_anime_recs[anilist_id]["recs"]
-            if genre:
-                recs = [rec for rec in recs if genre in rec.genres]
-        except KeyError:
-            recs = []
+        color = 0x7CD553 if media_type == MediaType.Manga else 0x3BAFEB
+
+        stmt = (
+            select(Recommendation)
+            .where(Recommendation.anilist_user_id == anilist_user_id)
+            .where(Recommendation.is_manga == media_type.value)
+            .order_by(Recommendation.score.desc())
+        )
+
+        if genre:
+            stmt = stmt.where(Recommendation.genres.contains(genre))
+
+        capped_max_page = min(20, max_page) if max_page else 20
+        page = page % capped_max_page if capped_max_page else 0
+
+        stmt = stmt.offset(page).limit(1)
+
+        result = await session.execute(stmt)
+        rec: Optional[Recommendation] = result.scalars().one_or_none()
 
         embed = Embed(
-            color=color, title=f"{username}'s Recommended {media_type.title()}"
+            color=color,
+            title=f"{anilist_username}'s Recommended {media_type.name.title()}",
         )
-        if not recs:
+        if not rec:
             embed.description = "I couldn't find any recommendations!"
             return embed, None
-
-        max_page = min(20, len(recs))
-        rec: MediaRec = recs[page % max_page]
 
         embed.description = f"""
     **{rec.title}** - https://anilist.co/{media_type}/{rec.media_id}/
@@ -576,78 +682,92 @@ class RecService:
     *Recommendation strength - {rec.score:.2f}%*
     """
         embed.set_thumbnail(url=rec.cover_url)
-        return embed, rec
+        return embed, rec.media_id
 
-    def ignore_media_rec(
-        self,
-        user_anilist_id: int,
+    @staticmethod
+    async def ignore_media_rec(
         user_discord_id: int,
-        media_rec: MediaRec,
-        media_type: str,
+        anilist_user_id: int,
+        media_id: int,
+        media_type: MediaType,
+        session: AsyncSession,
     ):
-        if user_discord_id not in self.ignored_recs:
-            self.ignored_recs[user_discord_id] = {"manga": [], "anime": []}
+        stmt = (
+            select(Recommendation)
+            .where(Recommendation.anilist_user_id == anilist_user_id)
+            .where(Recommendation.media_id == media_id)
+            .where(Recommendation.is_manga == media_type.value)
+        )
 
-        self.ignored_recs[user_discord_id][media_type].append(media_rec)
+        result = await session.execute(stmt)
+        rec: Optional[Recommendation] = result.scalars().one_or_none()
+        if rec is None:
+            return None
+
+        # Create ignore object with attributes from the recommendation object
+        ignoring_rec = IgnoredRecommendation(
+            media_id=media_id,
+            ignoring_user_id=user_discord_id,
+            is_manga=media_type.value,
+            title=rec.title,
+            genres=rec.genres,
+            cover_url=rec.cover_url,
+            mean_score=rec.mean_score,
+        )
+        session.add(ignoring_rec)
+        await session.delete(rec)
 
         try:
-            with open(f"{parent}/Data/ignored_recs.json", "w") as f:
-                dump(
-                    self.ignored_recs,
-                    f,
-                    separators=(",", ":"),
-                    default=lambda x: x.__dict__,
-                )
+            await session.commit()
         except Exception as e:
-            logger.warning(
-                f"Failed to update user {user_discord_id} ignored recs to {parent}/Data/ignored_recs.json: {e}"
-            )
+            logger.warning(f"Failed to update user {user_discord_id} ignored recs: {e}")
+        return None
 
-        if media_type == "manga":
-            self.known_manga_recs[user_anilist_id]["recs"].remove(media_rec)
-        else:
-            self.known_anime_recs[user_anilist_id]["recs"].remove(media_rec)
-
-    def get_ignored_rec_embed(
-        self, username: str, user_discord_id: int, media_type: str, page: int
-    ) -> tuple[Embed, MediaRec | None]:
+    @staticmethod
+    async def get_ignored_rec_embed_page(
+        username: str,
+        user_discord_id: int,
+        media_type: MediaType,
+        page: int,
+        session: AsyncSession,
+        max_page: Optional[int] = None,
+    ) -> tuple[Embed, int | None]:
         """
         Generate an embed with the ignored rec media.
 
         Args:
             username (str): Discord display name
             user_discord_id (int): User discord ID to show ignore list for
-            media_type (str): Specify anime/manga
+            media_type (MediaType): View either manga or anime ignore list
             page (int): Which recommendation in user's rec list to display
+            session (AsyncSession): sqlalchemy async db session
+            max_page (int): Max page of the view, if it has been found yet.
 
         Returns:
             Embed: Embed displaying recommended media and corresponding information
         """
-        color = 0x3BAFEB
-        try:
-            if media_type == "manga":
-                color = 0x7CD553
-                ignored_recs = [
-                    rec
-                    for rec in self.ignored_recs[user_discord_id]["manga"]
-                    if rec is not None
-                ]
-            else:
-                ignored_recs = [
-                    rec
-                    for rec in self.ignored_recs[user_discord_id]["anime"]
-                    if rec is not None
-                ]
-        except KeyError:
-            ignored_recs = []
+        stmt = (
+            select(IgnoredRecommendation)
+            .where(IgnoredRecommendation.ignoring_user_id == user_discord_id)
+            .where(IgnoredRecommendation.is_manga == media_type.value)
+        )
 
-        embed = Embed(color=color, title=f"{username}'s Ignored {media_type.title()}")
-        if not ignored_recs:
+        capped_max_page = min(20, max_page) if max_page else 20
+        page = page % capped_max_page if capped_max_page else 0
+
+        stmt = stmt.offset(page).limit(1)
+
+        result = await session.execute(stmt)
+        ignored_rec: Optional[IgnoredRecommendation] = result.scalars().one_or_none()
+
+        color = 0x7CD553 if media_type == MediaType.Manga else 0x3BAFEB
+
+        embed = Embed(
+            color=color, title=f"{username}'s Ignored {media_type.name.title()}"
+        )
+        if not ignored_rec:
             embed.description = "You have not ignored any recommendations!"
             return embed, None
-
-        max_page = max(1, len(ignored_recs))
-        ignored_rec: MediaRec = ignored_recs[page % max_page]
 
         embed.description = f"""
         **{ignored_rec.title}** - https://anilist.co/{media_type}/{ignored_rec.media_id}/
@@ -655,22 +775,25 @@ class RecService:
         *To get updated recommendations after modifying your ignore list, specify force = true.*
         """
         embed.set_thumbnail(url=ignored_rec.cover_url)
-        return embed, ignored_rec
+        return embed, ignored_rec.media_id
 
-    def restore_media_rec(
-        self, user_discord_id: int, ignored_media_rec: MediaRec, media_type: str
+    @staticmethod
+    async def restore_media_rec(
+        user_discord_id: int,
+        ignored_media_id: int,
+        media_type: MediaType,
+        session: AsyncSession,
     ):
-        self.ignored_recs[user_discord_id][media_type].remove(ignored_media_rec)
-
+        stmt = (
+            delete(IgnoredRecommendation)
+            .where(IgnoredRecommendation.ignoring_user_id == user_discord_id)
+            .where(IgnoredRecommendation.media_id == ignored_media_id)
+            .where(IgnoredRecommendation.is_manga == media_type.value)
+        )
         try:
-            with open(f"{parent}/Data/ignored_recs.json", "w") as f:
-                dump(
-                    self.ignored_recs,
-                    f,
-                    separators=(",", ":"),
-                    default=lambda x: x.__dict__,
-                )
+            await session.execute(stmt)
+            await session.commit()
         except Exception as e:
             logger.warning(
-                f"Failed to update user {user_discord_id} ignored recs to {parent}/Data/ignored_recs.json: {e}"
+                f"Failed to remove ignored rec for user {user_discord_id}, media ID {ignored_media_id}: {e}"
             )
