@@ -1,0 +1,16 @@
+from dataclasses import dataclass
+
+
+@dataclass
+class CachedGuildConfig:
+    def __init__(
+        self,
+        allow_phrases: bool,
+        limit_user_responses: bool,
+        restrict_response_deletion: bool,
+        max_user_responses: int,
+    ):
+        self.allow_phrases = allow_phrases
+        self.limit_user_responses = limit_user_responses
+        self.restrict_response_deletion = restrict_response_deletion
+        self.max_user_responses = max_user_responses
