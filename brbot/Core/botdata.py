@@ -34,7 +34,6 @@ FEATURES_DIRECTORY = Path("brbot/Features")
 
 # IF CHANGED, ALSO CHANGE IN alembic.ini
 DATA_DIRECTORY = Path("brbot/db")
-OLD_DATA_DIRECTORY = Path("brbot/Guilds")
 
 bot_id: int = 0
 bot_avatar_url: str = ""
