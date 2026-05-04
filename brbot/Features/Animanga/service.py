@@ -677,7 +677,7 @@ class AnimangaService:
             return embed, None
 
         embed.description = f"""
-    **{rec.title}** - https://anilist.co/{media_type}/{rec.media_id}/
+    **{rec.title}** - https://anilist.co/{media_type.name}/{rec.media_id}/
     {rec.mean_score}% | *{', '.join(rec.genres)}*
     *Recommendation strength - {rec.score:.2f}%*
     """
@@ -770,7 +770,7 @@ class AnimangaService:
             return embed, None
 
         embed.description = f"""
-        **{ignored_rec.title}** - https://anilist.co/{media_type}/{ignored_rec.media_id}/
+        **{ignored_rec.title}** - https://anilist.co/{media_type.name}/{ignored_rec.media_id}/
         {ignored_rec.mean_score}% | *{', '.join(ignored_rec.genres)}*
         *To get updated recommendations after modifying your ignore list, specify force = true.*
         """
