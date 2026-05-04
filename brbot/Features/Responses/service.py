@@ -157,11 +157,13 @@ class ResponseService:
                     )
                     member_id = member.id
                 if any(
-                    r.trigger == demojize(rsp["trig"].lower())
+                    r.guild_id == guild_id
+                    and r.trigger == demojize(rsp["trig"].lower())
                     and r.text == demojize(rsp["text"])
                     and r.is_exact == rsp["exact"]
                     for r in responses_to_add
                 ):
+                    logger.info("SKIPPING DUPLICATE")
                     continue
                 responses_to_add.append(
                     Response(
