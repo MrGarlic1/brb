@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError
 
 from brbot.db.models import Base, GuildConfig, Response, Guild
-from brbot.Core.botutils import load_fonts, load_anilist_caches
+from brbot.Core.botutils import load_fonts
 from brbot.Shared.Responses.models import CachedResponse
 from brbot.Shared.GuildConfig.models import CachedGuildConfig
 from typing import Sequence
@@ -77,7 +77,7 @@ class BrBot(commands.AutoShardedBot):
 
         # IF CHANGED, ALSO CHANGE IN alembic.ini
         self.engine = create_async_engine(
-            f"sqlite+aiosqlite:///{bd.DATA_DIRECTORY / "brb.db"}", echo=False
+            f"sqlite+aiosqlite:///{bd.DATA_DIRECTORY / 'brb.db'}", echo=False
         )
         self.session_generator = async_sessionmaker(self.engine, expire_on_commit=False)
 
@@ -250,7 +250,6 @@ class BrBot(commands.AutoShardedBot):
         bd.bot_id = self.user.id
         # await self.tree.sync()
 
-        load_anilist_caches()
         load_fonts(f"{bd.parent}/Shared")
 
         await self.init_guilds()

@@ -1,5 +1,3 @@
-import json
-from os import makedirs, path
 from shutil import rmtree
 from re import findall
 from discord import Member as DiscordMember
@@ -41,20 +39,6 @@ def del_game_files(guild_id: int, game_name: str, game_type: str):
         rmtree(f"{bd.parent}/Guilds/{guild_id}/{game_type}/{game_name}")
     except PermissionError:
         pass
-
-
-def load_anilist_caches() -> None:
-    """
-    Loads local cache of Anilist data
-    Returns:
-        None
-    """
-    if not path.exists(f"{bd.DATA_DIRECTORY}/linked_profiles.json"):
-        makedirs(f"{bd.DATA_DIRECTORY}", exist_ok=True)
-        with open(f"{bd.DATA_DIRECTORY}/linked_profiles.json", "w") as f:
-            json.dump({}, f, separators=(",", ":"))
-    with open(f"{bd.DATA_DIRECTORY}/linked_profiles.json", "r") as f:
-        bd.linked_profiles = {int(key): int(val) for key, val in json.load(f).items()}
 
 
 async def get_members_from_str(guild, txt: str) -> list[DiscordMember]:
