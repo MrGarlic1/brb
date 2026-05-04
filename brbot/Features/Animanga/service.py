@@ -388,7 +388,7 @@ class AnimangaService:
                         continue
                 except KeyError:
                     logger.debug(
-                        f'No related media found for {media_rec["title"]["romaji"]}'
+                        f"No related media found for {media_rec['title']['romaji']}"
                     )
 
                 rec_pop_factor = 1 - media_rec["popularity"] / max_popularity
@@ -417,7 +417,7 @@ class AnimangaService:
                         ) ** (1 / 2)
                     except (KeyError, ZeroDivisionError):
                         logger.debug(
-                            f'No user data for {genre} in {media_rec["title"]["romaji"]}, skipping genre score'
+                            f"No user data for {genre} in {media_rec['title']['romaji']}, skipping genre score"
                         )
 
                 rec_genre_score *= model.rec_genre_score_weight
@@ -678,7 +678,7 @@ class AnimangaService:
 
         embed.description = f"""
     **{rec.title}** - https://anilist.co/{media_type.name}/{rec.media_id}/
-    {rec.mean_score}% | *{', '.join(rec.genres)}*
+    {rec.mean_score}% | *{", ".join(rec.genres)}*
     *Recommendation strength - {rec.score:.2f}%*
     """
         embed.set_thumbnail(url=rec.cover_url)
@@ -771,7 +771,7 @@ class AnimangaService:
 
         embed.description = f"""
         **{ignored_rec.title}** - https://anilist.co/{media_type.name}/{ignored_rec.media_id}/
-        {ignored_rec.mean_score}% | *{', '.join(ignored_rec.genres)}*
+        {ignored_rec.mean_score}% | *{", ".join(ignored_rec.genres)}*
         *To get updated recommendations after modifying your ignore list, specify force = true.*
         """
         embed.set_thumbnail(url=ignored_rec.cover_url)
