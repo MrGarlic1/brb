@@ -1,6 +1,5 @@
 # File containing global variables for bot.
 from os import environ, path
-from alembic import context
 from pathlib import Path
 from dotenv import load_dotenv
 from brbot.db.models import GuildConfig
@@ -11,7 +10,6 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 pass_str: str = "✅\u200b"
 fail_str: str = "❌\u200b"
-config = context.config
 
 
 def default_config(guild_id: int) -> GuildConfig:
@@ -28,13 +26,6 @@ try:
     token: str = environ["TOKEN"]
 except KeyError:
     logger.critical("No token found in .env file, exiting")
-    exit(1)
-
-try:
-    db_url: str = environ["DATABASE_URL"]
-    config.set_main_option("sqlalchemy.url", db_url)
-except KeyError:
-    logger.critical("No database URL found in .env file, exiting")
     exit(1)
 
 parent: str = f"{path.dirname(path.realpath(__file__))}/.."
