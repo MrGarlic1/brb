@@ -142,7 +142,7 @@ class ResponseService:
             if x.is_file():
                 continue
             try:
-                with open(x, "r") as f:
+                with open(x / "responses.json", "r") as f:
                     try:
                         file_responses: list[dict] = json.load(f)
                     except ValueError:
