@@ -15,7 +15,7 @@ help_msgs = {
 }
 
 
-def gen_help_embed(category: str) -> (Embed, Select):
+def gen_help_embed(category: str) -> Embed:
     embed: Embed = Embed()
     embed.set_author(name="Response Bot Help", icon_url=bd.bot_avatar_url)
     embed.set_footer(text="")
