@@ -169,7 +169,7 @@ class ResponseService:
                     f"Staged {len(responses_to_add)} responses for migration in guild {guild_id}"
                 )
 
-        with session_generator() as session:
+        async with session_generator() as session:
             session.add_all(responses_to_add)
             await session.commit()
 
