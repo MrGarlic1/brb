@@ -107,7 +107,11 @@ class Response(Base):
         Index("ix_responses_member_id", "member_id"),
         Index("ix_responses_trigger", "trigger"),
         UniqueConstraint(
-            "guild_id", "trigger", "text", name="uq_response_guild_trigger_text"
+            "guild_id",
+            "trigger",
+            "text",
+            "is_exact",
+            name="uq_response_guild_trigger_text_exact",
         ),
     )
 
