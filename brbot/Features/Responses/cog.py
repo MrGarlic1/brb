@@ -55,6 +55,10 @@ class ResponsesCog(commands.GroupCog, name="response"):
                     session,
                 )
 
+        await self.response_service.migrate_responses(
+            bd.OLD_DATA_DIRECTORY, self.bot.session_generator
+        )
+
         if not error:
             await ctx.response.send_message(content=bd.pass_str)
             return False

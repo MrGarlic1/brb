@@ -5,6 +5,7 @@ from brbot.db.models import Response, Member
 from brbot.Shared.Responses.models import CachedResponse
 from brbot.Shared.GuildConfig.models import CachedGuildConfig
 from brbot.Shared.Members.repository import get_or_create_member
+from pathlib import Path
 import logging
 from discord import Guild, Embed, Message
 from random import choice
@@ -124,49 +125,56 @@ class ResponseService:
 
     @staticmethod
     async def migrate_responses(
-        file, guild_id: int, session_generator: async_sessionmaker
+        data_dir: Path, session_generator: async_sessionmaker
     ) -> None:
         """
         Temporary function ran once to migrate responses from old file/json schema to DB.
         Args:
-            file: file path
-            guild_id: discord guild ID
+            data_dir: file path
             session_generator: async session generator
 
         Returns:
 
         """
-        try:
-            with open(file, "r") as f:
-                try:
-                    file_responses: list[dict] = json.load(f)
-                except ValueError:
-                    file_responses: list[dict] = []
-        except FileNotFoundError:
-            return
-
         responses_to_add: list[Response] = []
-        for idx, rsp in enumerate(file_responses):
-            async with session_generator() as session:
-                member: Member = await get_or_create_member(
-                    rsp["user_id"], guild_id, session
+        for x in data_dir.iterdir():
+            guild_id = int(x.name)
+            if x.is_file():
+                continue
+            try:
+                with open(x, "r") as f:
+                    try:
+                        file_responses: list[dict] = json.load(f)
+                    except ValueError:
+                        file_responses: list[dict] = []
+            except FileNotFoundError:
+                return
+
+            for idx, rsp in enumerate(file_responses):
+                async with session_generator() as session:
+                    member: Member = await get_or_create_member(
+                        rsp["user_id"], guild_id, session
+                    )
+                    member_id = member.id
+                responses_to_add.append(
+                    Response(
+                        guild_id=guild_id,
+                        member_id=member_id,
+                        trigger=demojize(rsp["trig"].lower()),
+                        text=demojize(rsp["text"]),
+                        is_exact=rsp["exact"],
+                    )
                 )
-            responses_to_add.append(
-                Response(
-                    guild_id=member.guild_id,
-                    member_id=member.id,
-                    trigger=demojize(rsp["trig"].lower()),
-                    text=demojize(rsp["text"]),
-                    is_exact=rsp["exact"],
+                logger.info(
+                    f"Staged {len(responses_to_add)} responses for migration in guild {guild_id}"
                 )
-            )
 
         with session_generator() as session:
             session.add_all(responses_to_add)
             await session.commit()
 
         logger.info(
-            f"Successfully migrated {len(responses_to_add)} responses to guild {guild_id}"
+            f"Successfully migrated {len(responses_to_add)} responses in total."
         )
         return
 
