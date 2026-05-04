@@ -156,6 +156,13 @@ class ResponseService:
                         rsp["user_id"], guild_id, session
                     )
                     member_id = member.id
+                if any(
+                    r.trigger == demojize(rsp["trig"].lower())
+                    and r.text == demojize(rsp["text"])
+                    and r.is_exact == rsp["exact"]
+                    for r in responses_to_add
+                ):
+                    continue
                 responses_to_add.append(
                     Response(
                         guild_id=guild_id,
