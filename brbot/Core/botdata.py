@@ -40,8 +40,6 @@ bot_avatar_url: str = ""
 train_zones_url: str = "https://i.imgur.com/CRgbw7R.png"
 date_format: str = "%Y/%m/%d %H:%M:%S"
 
-responses, mentions, config = {}, {}, {}
 active_msgs: list = []
 active_trains: dict = {}
 active_bingos: dict = {}
-linked_profiles: dict = {}
