@@ -3,7 +3,7 @@ alembic==1.18.4
 discord-py==2.6.4
 emoji==2.11.1
 frozenlist==1.5.0
-greenlet=3.5.0
+greenlet==3.5.0
 httpx==0.28.1
 matplotlib==3.10.7
 numpy==2.3.4
