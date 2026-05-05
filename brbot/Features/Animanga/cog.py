@@ -1,7 +1,7 @@
 import brbot.Core.botdata as bd
 from brbot.Features.Animanga.service import AnimangaService
 from brbot.Features.Animanga.data import RecView, IgnoredRecView, MediaType
-from brbot.Core.anilist import query_user_id
+from brbot.Shared.Anilist.anilist import query_user_id
 from brbot.Core.bot import BrBot
 from brbot.db.models import User
 from brbot.Shared.Users.repository import get_or_create_user

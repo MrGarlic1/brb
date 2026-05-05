@@ -1,13 +1,14 @@
 # File containing global variables for bot.
-from os import environ, path
+from os import getenv, path
 from pathlib import Path
-from dotenv import load_dotenv
 from brbot.db.models import GuildConfig
 import logging
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-load_dotenv()
 pass_str: str = "✅\u200b"
 fail_str: str = "❌\u200b"
 upvote_emoji: str = "🔺"
@@ -26,19 +27,11 @@ def default_config(guild_id: int) -> GuildConfig:
 
 
 try:
-    token: str = environ["TOKEN"]
-    DATABASE_URL = environ["DATABASE_URL"]
+    token: str = getenv("TOKEN")
+    DATABASE_URL = getenv("DATABASE_URL")
 except KeyError:
     logger.critical("No token/db found in .env file, exiting")
     exit(1)
-
-try:
-    DEV_SERVER_ID = environ["DEV_SERVER_ID"]
-except KeyError:
-    logger.warning(
-        "DEV_SERVER_ID missing in .env; development commands will not be loaded."
-    )
-    DEV_SERVER_ID = None
 
 parent: str = f"{path.dirname(path.realpath(__file__))}/.."
 

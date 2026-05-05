@@ -246,10 +246,9 @@ class BrBot(commands.AutoShardedBot):
             logger.warning("No bot avatar found, using default")
             bd.bot_avatar_url = "https://i.imgur.com/4CW85RL.png"
         bd.bot_id = self.user.id
-        # await self.tree.sync()
 
         load_fonts(f"{bd.parent}/Shared")
-
+        await self.tree.sync()
         await self.init_guilds()
 
         await self.change_presence(
