@@ -1,5 +1,5 @@
 from discord import app_commands, Interaction, Attachment
-from brbot.Core.botdata import fail_str, pass_str
+from brbot.Core.botdata import pass_str
 from brbot.Features.Admin.service import AdminService
 from brbot.Features.Admin.data import NekoAdminView
 from brbot.db.models import Neko
@@ -31,16 +31,20 @@ class AdminCog(commands.GroupCog, name="admin"):
     )
     async def classify_neko_images(self, ctx: Interaction):
         async with self.bot.session_generator() as session:
+            remaining_count = await self.admin_service.get_remaining_neko_count(session)
             neko_info = await self.admin_service.get_neko_classification_info(session)
+            embed = await self.admin_service.gen_neko_classification_embed(
+                neko_info, remaining_count
+            )
             if neko_info is None:
-                await ctx.response.send_message(content=fail_str)
+                await ctx.response.send_message(embed=embed)
                 return
-            embed = await self.admin_service.gen_neko_classification_embed(neko_info)
 
         view = NekoAdminView(
             admin_service=self.admin_service,
             neko=neko_info,
             session_generator=self.bot.session_generator,
+            remaining_count=remaining_count,
         )
         await ctx.response.send_message(embed=embed, view=view)
 

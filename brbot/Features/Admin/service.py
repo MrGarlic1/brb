@@ -2,7 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from brbot.db.models import Neko
 from brbot.Features.Admin.data import NekoRarity, NekoClassificationInfo
 from discord import Embed
-from sqlalchemy import delete, select, or_
+from sqlalchemy import delete, select, or_, func
 from sqlalchemy.exc import IntegrityError
 import logging
 from typing import Optional
@@ -31,18 +31,18 @@ class AdminService:
         neko_id = neko.id
         img_url = neko.image_url
         rarity = NekoRarity.A
-        is_nsfw = False
+        nsfw = False
 
         return NekoClassificationInfo(
             neko_id=neko_id,
             image_url=img_url,
             rarity=rarity,
-            is_nsfw=is_nsfw,
+            nsfw=nsfw,
         )
 
     @staticmethod
     async def gen_neko_classification_embed(
-        neko: Optional[NekoClassificationInfo],
+        neko: Optional[NekoClassificationInfo], remaining: int
     ) -> Embed:
         embed = Embed(title="Neko Classification")
         if neko is None:
@@ -54,9 +54,20 @@ class AdminService:
 
         embed.set_image(url=neko.image_url)
         embed.set_footer(
-            text=f"Current Values: \nSFW: {'❌' if neko.is_nsfw else '✅'}\nRarity: {neko.rarity}"
+            text=f"Current Values - SFW: {'❌' if neko.nsfw else '✅'} Rarity: {neko.rarity.name}"
+            f"\n{remaining} unclassified images left."
         )
         return embed
+
+    @staticmethod
+    async def get_remaining_neko_count(session: AsyncSession) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(Neko)
+            .where(or_(Neko.nsfw.is_(None), Neko.rarity.is_(None)))
+        )
+        total = await session.scalar(stmt)
+        return total
 
     @staticmethod
     async def update_neko(neko: NekoClassificationInfo, session: AsyncSession) -> None:
@@ -68,7 +79,7 @@ class AdminService:
             return
 
         db_neko.rarity = neko.rarity.value
-        db_neko.is_nsfw = neko.is_nsfw
+        db_neko.nsfw = neko.nsfw
 
         try:
             await session.commit()

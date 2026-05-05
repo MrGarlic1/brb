@@ -19,11 +19,11 @@ class NekoRarity(Enum):
 
 
 class NekoClassificationInfo:
-    def __init__(self, neko_id: int, image_url: str, rarity: NekoRarity, is_nsfw: bool):
+    def __init__(self, neko_id: int, image_url: str, rarity: NekoRarity, nsfw: bool):
         self.neko_id = neko_id
         self.image_url = image_url
         self.rarity = rarity
-        self.is_nsfw = is_nsfw
+        self.nsfw = nsfw
 
 
 class ConfirmButton(Button):
@@ -87,6 +87,7 @@ class NekoAdminView(View):
         self,
         admin_service: AdminService,
         neko: NekoClassificationInfo,
+        remaining_count: int,
         session_generator: async_sessionmaker,
     ):
         super().__init__(timeout=300)
@@ -98,8 +99,8 @@ class NekoAdminView(View):
         self.add_item(ARarityButton())
         self.add_item(SRarityButton())
         self.add_item(ConfirmButton())
-        self.session_generator = session_generator
         self.neko = neko
+        self.remaining_count = remaining_count
 
     async def interaction_check(self, interaction: Interaction) -> bool:
         if interaction.data["custom_id"] == "s_rank":
@@ -109,22 +110,26 @@ class NekoAdminView(View):
         elif interaction.data["custom_id"] == "b_rank":
             self.neko.rarity = NekoRarity.B
         elif interaction.data["custom_id"] == "toggle_nsfw":
-            self.neko.is_nsfw = not self.neko.is_nsfw
+            self.neko.nsfw = not self.neko.nsfw
         elif interaction.data["custom_id"] == "delete_neko":
             async with self.session_generator() as session:
                 await self.admin_service.delete_neko(self.neko, session)
                 self.neko = await self.admin_service.get_neko_classification_info(
                     session
                 )
+                self.remaining_count -= 1
 
         elif interaction.data["custom_id"] == "confirm_changes":
             async with self.session_generator() as session:
-                await self.admin_service.delete_neko(self.neko, session)
+                await self.admin_service.update_neko(self.neko, session)
                 self.neko = await self.admin_service.get_neko_classification_info(
                     session
                 )
+                self.remaining_count -= 1
 
-        embed = await self.admin_service.gen_neko_classification_embed(self.neko)
+        embed = await self.admin_service.gen_neko_classification_embed(
+            self.neko, self.remaining_count
+        )
 
         await interaction.response.edit_message(embed=embed, view=self)
         return False
