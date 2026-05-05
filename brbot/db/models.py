@@ -15,6 +15,7 @@ from sqlalchemy import (
     Integer,
     Index,
     UniqueConstraint,
+    false,
 )
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import Mapped
@@ -72,6 +73,7 @@ class GuildConfig(Base):
     limit_user_responses: Mapped[bool] = mapped_column(Boolean)
     max_user_responses: Mapped[int] = mapped_column(Integer)
     restrict_response_deletion: Mapped[bool] = mapped_column(Boolean)
+    enable_nsfw: Mapped[bool] = mapped_column(Boolean, server_default=false())
 
     __table_args__ = (UniqueConstraint("guild_id", name="uq_guild_config_guild_id"),)
 
@@ -196,33 +198,7 @@ class BingoGame(Base):
         "BingoPlayer", back_populates="game", cascade="all, delete-orphan"
     )
 
-
-class BingoPlayer(Base):
-    __tablename__ = "bingo_players"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    game_id: Mapped[int] = mapped_column(ForeignKey("bingo_games.id"))
-    member_id: Mapped[int] = mapped_column(ForeignKey("members.id"))
-    starting_anilist: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    done: Mapped[bool] = mapped_column(Boolean)
-    donetime: Mapped[Optional[DateTime]] = mapped_column(DateTime, nullable=True)
-    shots = relationship(
-        "BingoShot", back_populates="player", cascade="all, delete-orphan"
-    )
-    game = relationship("BingoGame", back_populates="players")
-    tiles = relationship(
-        "BingoTile", back_populates="player", cascade="all, delete-orphan"
-    )
-    member = relationship("Member")
-
-    __table_args__ = (Index("ix_bingo_player_game_id", "game_id"),)
-
-    @property
-    def anilist_id(self) -> Optional[int]:
-        return self.member.user.anilist_id
-
-    @property
-    def dmchannel(self) -> Optional[DMChannel]:
-        return self.member.user.dmchannel
+    __table_args__ = Index("ix_bingo_game_guild_id", "guild_id")
 
 
 class BingoTile(Base):
@@ -248,6 +224,10 @@ class BingoTile(Base):
         ),
     )
 
+    @property
+    def coordinates(self) -> tuple[int, int]:
+        return self.column, self.row
+
 
 class BingoShot(Base):
     __tablename__ = "bingo_shots"
@@ -264,6 +244,39 @@ class BingoShot(Base):
         Index("ix_bingo_shot_player_id", "player_id"),
         UniqueConstraint("player_id", "tag", name="uq_bingoshot_player_tag"),
     )
+
+
+class BingoPlayer(Base):
+    __tablename__ = "bingo_players"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    game_id: Mapped[int] = mapped_column(ForeignKey("bingo_games.id"))
+    member_id: Mapped[int] = mapped_column(ForeignKey("members.id"))
+    starting_anilist: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    done: Mapped[bool] = mapped_column(Boolean)
+    donetime: Mapped[Optional[DateTime]] = mapped_column(DateTime, nullable=True)
+    shots: list[BingoShot] = relationship(
+        "BingoShot", back_populates="player", cascade="all, delete-orphan"
+    )
+    game = relationship("BingoGame", back_populates="players")
+    tiles: list[BingoTile] = relationship(
+        "BingoTile", back_populates="player", cascade="all, delete-orphan"
+    )
+    member: Member = relationship("Member")
+
+    __table_args__ = (
+        Index("ix_bingo_player_game_id", "game_id"),
+        UniqueConstraint(
+            "game_id", "member_id", name="uq_bingo_player_game_id_member_id"
+        ),
+    )
+
+    @property
+    def anilist_id(self) -> Optional[int]:
+        return self.member.user.anilist_id
+
+    @property
+    def dmchannel(self) -> Optional[DMChannel]:
+        return self.member.user.dmchannel
 
 
 ## TRAINS

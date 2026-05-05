@@ -10,6 +10,8 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 pass_str: str = "✅\u200b"
 fail_str: str = "❌\u200b"
+upvote_emoji: str = "🔺"
+downvote_emoji: str = "🔻"
 
 
 def default_config(guild_id: int) -> GuildConfig:
@@ -19,6 +21,7 @@ def default_config(guild_id: int) -> GuildConfig:
         limit_user_responses=False,
         max_user_responses=10,
         restrict_response_deletion=False,
+        enable_nsfw=False,
     )
 
 

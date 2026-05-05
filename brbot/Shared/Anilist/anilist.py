@@ -137,7 +137,7 @@ async def query_user_id(username: str) -> int | None:
     return None
 
 
-async def query_user_animelist(anilist_user_id: int) -> list | None:
+async def query_user_animelist(anilist_user_id: int) -> list:
     """
     Retrieves user anime list data used in anime games
     Args:
@@ -194,7 +194,9 @@ async def query_user_animelist(anilist_user_id: int) -> list | None:
     logger.error(
         f"Failed to retrieve list data for anilist user {anilist_user_id} after {max_attempts} attempts"
     )
-    return None
+    raise httpx.RequestError(
+        f"Failed to retrieve list data for anilist user {anilist_user_id} after {max_attempts} attempts"
+    )
 
 
 async def query_user_genres(anilist_user_id: int) -> str | None:

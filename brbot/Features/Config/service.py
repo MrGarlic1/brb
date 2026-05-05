@@ -40,6 +40,8 @@ class ConfigService:
                 db_guild_config.max_user_responses = max(0, min(9999, int(value)))
             case ConfigKeys.ALLOW_PHRASES:
                 db_guild_config.allow_phrases = bool(value)
+            case ConfigKeys.ENABLE_NSFW:
+                db_guild_config.enable_nsfw = bool(value)
 
         try:
             await session.commit()
