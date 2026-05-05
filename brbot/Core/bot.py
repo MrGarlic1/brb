@@ -12,7 +12,7 @@ from os import makedirs
 from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError
 
-from brbot.db.models import Base, GuildConfig, Response, Guild
+from brbot.db.models import GuildConfig, Response, Guild
 from brbot.Core.botutils import load_fonts
 from brbot.Shared.Responses.models import CachedResponse
 from brbot.Shared.GuildConfig.models import CachedGuildConfig
@@ -75,14 +75,10 @@ class BrBot(commands.AutoShardedBot):
             )
             makedirs(bd.DATA_DIRECTORY, exist_ok=True)
 
-        # IF CHANGED, ALSO CHANGE IN alembic.ini
         self.engine = create_async_engine(
             f"sqlite+aiosqlite:///{bd.DATA_DIRECTORY / 'brb.db'}", echo=False
         )
         self.session_generator = async_sessionmaker(self.engine, expire_on_commit=False)
-
-        async with self.engine.connect() as conn:
-            await conn.run_sync(Base.metadata.create_all)
 
     async def init_guilds(self) -> None:
         """
@@ -134,6 +130,7 @@ class BrBot(commands.AutoShardedBot):
                         limit_user_responses=new_config.limit_user_responses,
                         restrict_response_deletion=new_config.restrict_response_deletion,
                         max_user_responses=new_config.max_user_responses,
+                        enable_nsfw=new_config.enable_nsfw,
                     )
                 else:
                     self.guild_configs[guild.id] = CachedGuildConfig(
@@ -141,6 +138,7 @@ class BrBot(commands.AutoShardedBot):
                         limit_user_responses=guild.config.limit_user_responses,
                         restrict_response_deletion=guild.config.restrict_response_deletion,
                         max_user_responses=guild.config.max_user_responses,
+                        enable_nsfw=guild.config.enable_nsfw,
                     )
 
             if new_guilds or new_configs:

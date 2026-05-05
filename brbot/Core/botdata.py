@@ -27,6 +27,7 @@ def default_config(guild_id: int) -> GuildConfig:
 
 try:
     token: str = environ["TOKEN"]
+    DATABASE_URL = environ["DATABASE_URL"]
 except KeyError:
     logger.critical("No token found in .env file, exiting")
     exit(1)

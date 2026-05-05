@@ -198,7 +198,7 @@ class BingoGame(Base):
         "BingoPlayer", back_populates="game", cascade="all, delete-orphan"
     )
 
-    __table_args__ = Index("ix_bingo_game_guild_id", "guild_id")
+    __table_args__ = (Index("ix_bingo_game_guild_id", "guild_id"),)
 
 
 class BingoTile(Base):
@@ -254,14 +254,14 @@ class BingoPlayer(Base):
     starting_anilist: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     done: Mapped[bool] = mapped_column(Boolean)
     donetime: Mapped[Optional[DateTime]] = mapped_column(DateTime, nullable=True)
-    shots: list[BingoShot] = relationship(
+    shots: Mapped[list[BingoShot]] = relationship(
         "BingoShot", back_populates="player", cascade="all, delete-orphan"
     )
     game = relationship("BingoGame", back_populates="players")
-    tiles: list[BingoTile] = relationship(
+    tiles: Mapped[list[BingoTile]] = relationship(
         "BingoTile", back_populates="player", cascade="all, delete-orphan"
     )
-    member: Member = relationship("Member")
+    member: Mapped[Member] = relationship("Member")
 
     __table_args__ = (
         Index("ix_bingo_player_game_id", "game_id"),

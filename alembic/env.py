@@ -5,6 +5,7 @@ from sqlalchemy import pool
 from dotenv import load_dotenv
 from os import environ
 from brbot.db.models import Base
+from pathlib import Path
 
 from alembic import context
 
@@ -12,12 +13,13 @@ from alembic import context
 # access to the values within the .ini file in use.
 config = context.config
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parents[1] / "brbot" / ".env")
+
 try:
     db_url: str = environ["DATABASE_URL"]
     config.set_main_option("sqlalchemy.url", db_url)
 except KeyError:
-    exit(1)
+    pass
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
