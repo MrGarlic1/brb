@@ -5,7 +5,6 @@ from sqlalchemy import pool
 from dotenv import load_dotenv
 from os import environ
 from brbot.db.models import Base
-from pathlib import Path
 
 from alembic import context
 
@@ -13,7 +12,7 @@ from alembic import context
 # access to the values within the .ini file in use.
 config = context.config
 
-load_dotenv(Path(__file__).resolve().parents[1] / "brbot" / ".env")
+load_dotenv()
 
 try:
     db_url: str = environ["DATABASE_URL"]

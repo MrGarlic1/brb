@@ -29,8 +29,16 @@ try:
     token: str = environ["TOKEN"]
     DATABASE_URL = environ["DATABASE_URL"]
 except KeyError:
-    logger.critical("No token found in .env file, exiting")
+    logger.critical("No token/db found in .env file, exiting")
     exit(1)
+
+try:
+    DEV_SERVER_ID = environ["DEV_SERVER_ID"]
+except KeyError:
+    logger.warning(
+        "DEV_SERVER_ID missing in .env; development commands will not be loaded."
+    )
+    DEV_SERVER_ID = None
 
 parent: str = f"{path.dirname(path.realpath(__file__))}/.."
 
