@@ -1,5 +1,5 @@
 import brbot.Features.Bingo.data as bi
-import brbot.Core.anilist as al
+import brbot.Shared.Anilist.anilist as al
 import brbot.Core.botdata as bd
 import asyncio
 from os import path, listdir, mkdir
