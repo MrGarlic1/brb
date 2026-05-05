@@ -20,6 +20,14 @@ class NekoCog(commands.GroupCog, name="neko"):
         description="Send a picture of a random catgirl",
     )
     async def neko(self, ctx: Interaction):
+        if (
+            self.bot.guild_configs[ctx.guild.id].enable_nsfw
+            and not ctx.channel.is_nsfw()
+        ):
+            await ctx.response.send_message(
+                content="⛔Since NSFW content is enabled, this command is restricted to NSFW channels.\n"
+                "To turn off NSFW content, a server admin can use `/config set ENABLE_NSFW False`"
+            )
         if ctx.user.id == self.last_userid_by_guild.get(ctx.guild.id):
             embed = Embed(title="⛔⛔ NOT Neko")
             embed.set_image(url="https://i.imgur.com/YD1cOub.png")
