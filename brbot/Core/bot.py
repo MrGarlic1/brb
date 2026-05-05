@@ -248,7 +248,6 @@ class BrBot(commands.AutoShardedBot):
         bd.bot_id = self.user.id
 
         load_fonts(f"{bd.parent}/Shared")
-        await self.tree.sync()
         await self.init_guilds()
 
         await self.change_presence(
