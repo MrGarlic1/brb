@@ -441,3 +441,17 @@ class TrainShot(Base):
     @property
     def coords(self) -> tuple[int, int]:
         return self.row, self.column
+
+
+class Neko(Base):
+    __tablename__ = "nekos"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    image_url: Mapped[str] = mapped_column(String(400))
+    nsfw: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    rarity: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    source: Mapped[Optional[str]] = mapped_column(String(400), nullable=True)
+
+    __table_args__ = (
+        Index("ix_neko_rarity", "rarity"),
+        UniqueConstraint("image_url", name="uq_neko_image_url"),
+    )
