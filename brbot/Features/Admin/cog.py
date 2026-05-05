@@ -75,6 +75,8 @@ class AdminCog(commands.GroupCog, name="admin"):
             await session.execute(stmt)
             await session.commit()
 
+        logger.info(f"Successfully processed {len(entries)} neko entries to add to DB.")
+
         await ctx.response.send_message(content=pass_str)
 
 
