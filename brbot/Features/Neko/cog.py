@@ -1,9 +1,8 @@
 from brbot.Core.bot import BrBot
 from discord import app_commands, Interaction, Embed
 from brbot.db.models import Neko
-from sqlalchemy import select
+from sqlalchemy import select, func
 from discord.ext import commands
-from random import choice
 import logging
 
 logger = logging.getLogger(__name__)
@@ -35,8 +34,9 @@ class NekoCog(commands.GroupCog, name="neko"):
             stmt = select(Neko.image_url)
             if not self.bot.guild_configs[ctx.guild.id].enable_nsfw:
                 stmt = stmt.where(Neko.nsfw.is_not(True))
+            stmt = stmt.order_by(func.random()).limit(1)
             result = await session.execute(stmt)
-            neko_urls = result.scalars().all()
+            neko_url = result.scalar_one()
 
         if ctx.user.id == self.last_userid_by_guild.get(ctx.guild.id):
             embed = Embed(title="⛔⛔ NOT Neko")
@@ -46,7 +46,7 @@ class NekoCog(commands.GroupCog, name="neko"):
             )
         else:
             embed = Embed(title="🖼️🐱Neko")
-            embed.set_image(url=choice(neko_urls))
+            embed.set_image(url=neko_url)
             self.last_userid_by_guild[ctx.guild.id] = ctx.user.id
             embed.set_footer(text="Provided by Mr.Garlic")
 
