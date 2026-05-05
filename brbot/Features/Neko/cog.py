@@ -1,6 +1,7 @@
 from brbot.Core.bot import BrBot
 from discord import app_commands, Interaction, Embed
-from brbot.Features.Neko.data import neko_urls
+from brbot.db.models import Neko
+from sqlalchemy import select
 from discord.ext import commands
 from random import choice
 import logging
@@ -29,6 +30,14 @@ class NekoCog(commands.GroupCog, name="neko"):
                 "To turn off NSFW content, a server admin can use `/config set ENABLE_NSFW False`"
             )
             return
+
+        async with self.bot.session_generator() as session:
+            stmt = select(Neko.image_url)
+            if not self.bot.guild_configs[ctx.guild.id].enable_nsfw:
+                stmt = stmt.where(Neko.nsfw.is_not(True))
+            result = await session.execute(stmt)
+            neko_urls = result.scalars().all()
+
         if ctx.user.id == self.last_userid_by_guild.get(ctx.guild.id):
             embed = Embed(title="⛔⛔ NOT Neko")
             embed.set_image(url="https://i.imgur.com/YD1cOub.png")
