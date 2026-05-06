@@ -19,7 +19,7 @@ class NekoCog(commands.GroupCog, name="neko"):
         description="Send a picture of a random catgirl",
     )
     async def neko(self, ctx: Interaction):
-        await ctx.defer()
+        await ctx.response.defer()
         enable_nsfw = self.bot.guild_configs[ctx.guild.id].enable_nsfw
         if enable_nsfw and not ctx.channel.is_nsfw():
             await ctx.response.send_message(
