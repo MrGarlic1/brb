@@ -22,7 +22,7 @@ class NekoCog(commands.GroupCog, name="neko"):
         await ctx.response.defer()
         enable_nsfw = self.bot.guild_configs[ctx.guild.id].enable_nsfw
         if enable_nsfw and not ctx.channel.is_nsfw():
-            await ctx.response.send_message(
+            await ctx.followup.send(
                 content="⛔Since NSFW content is enabled, this command is restricted to NSFW channels.\n"
                 "To turn off NSFW content, a server admin can use `/config set ENABLE_NSFW False`"
             )
@@ -52,7 +52,7 @@ class NekoCog(commands.GroupCog, name="neko"):
             source_link = f" | ([Source]({source_url}))" if source_url else ""
             embed.set_footer(text=f"Provided by Mr.Garlic{source_link}")
 
-        await ctx.followup.send_message(embed=embed)
+        await ctx.followup.send(embed=embed)
 
 
 async def setup(bot: BrBot):
