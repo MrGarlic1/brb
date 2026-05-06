@@ -99,6 +99,7 @@ class NekoAdminView(View):
         self.add_item(BRarityButton())
         self.add_item(ARarityButton())
         self.add_item(SRarityButton())
+        self.add_item(SSRarityButton())
         self.add_item(ConfirmButton())
         self.neko = neko
         self.remaining_count = remaining_count
