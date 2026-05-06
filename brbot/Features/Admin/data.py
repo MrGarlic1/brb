@@ -1,7 +1,7 @@
 import logging
 from discord.ui import View, Button
 from discord import Interaction, ButtonStyle
-from enum import Enum
+from brbot.Shared.Neko.models import NekoRarity
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from typing import TYPE_CHECKING
 
@@ -10,12 +10,6 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
-
-
-class NekoRarity(Enum):
-    S = 5  # 0xFFF27A
-    A = 4  # 0xC666E3
-    B = 3  # 0x3B49D1
 
 
 class NekoClassificationInfo:
@@ -32,6 +26,13 @@ class ConfirmButton(Button):
             style=ButtonStyle.success,
             label="Confirm",
             custom_id="confirm_changes",
+        )
+
+
+class SSRarityButton(Button):
+    def __init__(self):
+        super().__init__(
+            style=ButtonStyle.secondary, label=NekoRarity.SS.name, custom_id="ss_rank"
         )
 
 
@@ -103,6 +104,8 @@ class NekoAdminView(View):
         self.remaining_count = remaining_count
 
     async def interaction_check(self, interaction: Interaction) -> bool:
+        if interaction.data["custom_id"] == "ss_rank":
+            self.neko.rarity = NekoRarity.SS
         if interaction.data["custom_id"] == "s_rank":
             self.neko.rarity = NekoRarity.S
         elif interaction.data["custom_id"] == "a_rank":
