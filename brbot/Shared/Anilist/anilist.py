@@ -43,6 +43,12 @@ async def query_media(*, media_id: int):
       Media(id: $mediaId) {
         episodes
         genres
+        status
+        airingSchedule {
+          nodes {
+            episode
+          }
+        }
         format
         meanScore
         popularity

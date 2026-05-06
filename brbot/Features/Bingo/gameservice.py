@@ -101,6 +101,15 @@ class BingoGameService:
                     return True
             return False
         if shot_type == ShotType.EPISODE:
+            # Get airing show episode count from schedule
+            if shot_anilist_info["status"] == "RELEASING":
+                shot_anilist_info["episodes"] = shot_anilist_info["airingSchedule"][
+                    "nodes"
+                ][-1]["episode"]
+
+            if shot_anilist_info["episodes"] is None:
+                return False
+
             return (
                 episode_tags[shot_tag][0]
                 <= shot_anilist_info["episodes"]
@@ -155,7 +164,7 @@ class BingoGameService:
                 active=True,
                 guild_id=guild_id,
                 date=datetime.now(),
-                mode=mode,
+                mode=mode.value,
             )
             session.add(game)
             await session.flush()
@@ -168,7 +177,7 @@ class BingoGameService:
                     done=False,
                 )
                 await BingoGameService.generate_player_tiles(player, game.id)
-                game.players.append(player)
+                session.add(player)
 
             await session.commit()
 
@@ -188,7 +197,7 @@ class BingoGameService:
             stmt = stmt.options(
                 selectinload(BingoGame.players).selectinload(BingoPlayer.member),
                 selectinload(BingoGame.players).selectinload(BingoPlayer.shots),
-                selectinload(BingoGame.players).selectinload(BingoPlayer.shots),
+                selectinload(BingoGame.players).selectinload(BingoPlayer.tiles),
             )
 
         result = await session.execute(stmt)
@@ -215,7 +224,7 @@ class BingoGameService:
     async def check_and_mark_game_finished(
         game_id: int, player_id: int, session: AsyncSession
     ) -> bool:
-        stmt = select(BingoGame).where(BingoGame.guild_id == game_id)
+        stmt = select(BingoGame).where(BingoGame.id == game_id)
         result = await session.execute(stmt)
         game: BingoGame = result.scalars().one()
         stmt = select(BingoPlayer).where(BingoPlayer.id == player_id)
@@ -239,7 +248,7 @@ class BingoGameService:
         return True
 
     @staticmethod
-    async def is_bingo(board: Sequence[BingoTile]):
+    def is_bingo(board: Sequence[BingoTile]):
         tiles_by_coordinate = {tile.coordinates: tile for tile in board}
 
         row_bingos = {i: [] for i in range(1, BOARD_SIZE + 1)}
@@ -285,7 +294,7 @@ class BingoGameService:
         return result.scalars().one_or_none()
 
     @staticmethod
-    def create_frozen_player_list(
+    async def create_frozen_player_list(
         players: Sequence[BingoPlayer],
     ) -> list[FrozenBingoPlayer]:
         frozen_players = []

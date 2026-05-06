@@ -48,11 +48,11 @@ class BingoCog(commands.GroupCog, name="bingo"):
                 ctx.guild.id, session
             )
 
-        if existing_game is not None:
-            await ctx.followup.send(
-                content=f"The game {existing_game.name} is already active in this server."
-            )
-            return
+            if existing_game is not None:
+                await ctx.followup.send(
+                    content=f"The game {existing_game.name} is already active in this server."
+                )
+                return
 
         # Get valid game players
         players = await bu.get_members_from_str(ctx.guild, players)
@@ -199,7 +199,7 @@ class BingoCog(commands.GroupCog, name="bingo"):
                 await ctx.followup.send(
                     content=f"🟩{col_emojis[hit_tile.column - 1]}{row_emojis[hit_tile.row - 1]}"
                 )
-                if self.game_service.check_and_mark_game_finished(
+                if await self.game_service.check_and_mark_game_finished(
                     game_id=game.id, player_id=player_id, session=session
                 ):
                     await ctx.channel.send("Game's done! (Placeholder)")
@@ -228,24 +228,24 @@ class BingoCog(commands.GroupCog, name="bingo"):
         name="board", description="View the bingo boards for the active game."
     )
     async def show_bingo_board(self, ctx: Interaction):
+        await ctx.response.defer(ephemeral=True)
         async with self.bot.session_generator() as session:
             game = await self.game_service.get_guild_active_bingo_game(
                 ctx.guild_id, session=session, load_players=True
             )
 
             if game is None:
-                await ctx.response.send_message(
-                    content="No active game found.", ephemeral=True
-                )
-            frozen_players = self.game_service.create_frozen_player_list(
+                await ctx.followup.send(content="No active game found.", ephemeral=True)
+                return
+            frozen_players = await self.game_service.create_frozen_player_list(
                 players=game.players
             )
 
-        player_discord_ids = [p.member.user_id for p in game.players]
+        player_discord_ids = [p.discord_user_id for p in frozen_players]
         try:
             page = player_discord_ids.index(ctx.user.id)
         except ValueError:
-            await ctx.response.send_message(
+            await ctx.followup.send(
                 content="You are not a player in this game.", ephemeral=True
             )
             return
@@ -256,9 +256,7 @@ class BingoCog(commands.GroupCog, name="bingo"):
         view = GameBoardView(
             render_service=self.render_service, players=frozen_players, page=page
         )
-        await ctx.response.send_message(
-            embed=embed, file=image, view=view, ephemeral=True
-        )
+        await ctx.followup.send(embed=embed, file=image, view=view, ephemeral=True)
         return
 
     @app_commands.command(
@@ -269,7 +267,7 @@ class BingoCog(commands.GroupCog, name="bingo"):
     )
     async def delete(self, ctx: Interaction, keep_files: bool):
         if not ctx.user.guild_permissions.administrator:
-            await ctx.response.send_message(
+            await ctx.followup.send(
                 content="You must be an administrator to use this command!",
                 ephemeral=True,
             )

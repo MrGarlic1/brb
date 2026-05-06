@@ -24,9 +24,11 @@ class BingoRenderService:
         # Adjustments
         label_offset: int = 1
         label_font_size: int = 72
+
         font = ImageFont.truetype(
-            f"{bd.parent}/Shared/ggsans/ggsans-Bold.ttf", label_font_size
+            bd.STATIC_DIRECTORY / "ggsans" / "ggsans-Bold.ttf", label_font_size
         )
+
         tile_pixels: int = 150
         border_color: tuple[int, int, int] = (190, 190, 190)
         font_color: tuple[int, int, int] = (0, 0, 0)
@@ -100,7 +102,7 @@ class BingoRenderService:
         default_font_size: int = 24
         font_size = default_font_size
         font = ImageFont.truetype(
-            f"{bd.parent}/Shared/ggsans/ggsans-Bold.ttf", font_size
+            bd.STATIC_DIRECTORY / "ggsans" / "ggsans-Bold.ttf", font_size
         )
         board = {tile.coordinates: tile for tile in player.tiles}
 
@@ -168,9 +170,8 @@ class BingoRenderService:
         embed: Embed = Embed()
         embed.set_author(name="Anime Bingo", icon_url=bd.bot_avatar_url)
 
-        player = players[page]
-
         page: int = 1 + (page % len(players))  # Loop back through pages both ways
+        player = players[page - 1]
         embed.set_footer(text=f"Page {page}/{len(players)}")
 
         # Player stats page

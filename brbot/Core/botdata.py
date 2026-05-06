@@ -37,6 +37,7 @@ parent: str = f"{path.dirname(path.realpath(__file__))}/.."
 
 FEATURES_DIRECTORY = Path("brbot/Features")
 DATA_DIRECTORY = Path("brbot/db")
+STATIC_DIRECTORY = Path("brbot/Static")
 
 bot_id: int = 0
 bot_avatar_url: str = ""
