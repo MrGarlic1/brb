@@ -36,8 +36,6 @@ except KeyError:
 parent: str = f"{path.dirname(path.realpath(__file__))}/.."
 
 FEATURES_DIRECTORY = Path("brbot/Features")
-
-# IF CHANGED, ALSO CHANGE IN alembic.ini
 DATA_DIRECTORY = Path("brbot/db")
 
 bot_id: int = 0

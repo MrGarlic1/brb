@@ -34,6 +34,10 @@ class BrBot(commands.AutoShardedBot):
         self.responses: dict[int, list[CachedResponse]] = {}
         self.mentions: dict[int, list[CachedResponse]] = {}
         self.guild_configs: dict[int, CachedGuildConfig] = {}
+
+        self.cached_al_characters: dict[int, dict] = {}
+        self.cached_al_media: dict[int, dict] = {}
+
         intents = Intents.default()
         intents.message_content = True
         self.engine = None

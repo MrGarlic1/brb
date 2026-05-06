@@ -51,7 +51,7 @@ async def get_members_from_str(guild, txt: str) -> list[DiscordMember]:
     Returns:
         List of discord members
     """
-    mention_pattern = r"<@(\d+)>"
+    mention_pattern = r"<@(?:!)?(\d+)>"
     mentions = set(findall(mention_pattern, txt))
 
     # Check for invalid player IDs

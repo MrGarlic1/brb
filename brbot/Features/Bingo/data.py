@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from brbot.Shared.Discord.buttons import PrevPgButton, NextPgButton
 from discord.ui import View
-from discord import Interaction, Embed, Message
+from discord import Interaction, Embed
 from enum import Enum
 from datetime import datetime
 
@@ -120,98 +120,8 @@ class FrozenBingoPlayer:
     tiles: list[FrozenBingoTile]
 
 
-@dataclass
-class BingoShot:
-    def __init__(
-        self, anilist_id: int, tag: str, time: str, info: str, hit: bool = False
-    ):
-        self.anilist_id = anilist_id
-        self.tag = tag
-        self.time = time
-        self.hit = hit
-        self.info = info
-
-    def get_shot_type(self) -> str | None:
-        if self.tag in character_tags:
-            return "character"
-        elif self.tag in episode_tags:
-            return "episode"
-        elif self.tag == "Source Not Manga":
-            return "source"
-        elif self.tag in season_tags:
-            return "season"
-        elif self.tag == "Gloppy":
-            return "free"
-        elif self.tag == "Rewatch an Anime":
-            return "rewatch"
-        elif self.tag == "Not TV":
-            return "not_tv"
-        elif self.tag == "95%":
-            return "95%"
-        elif self.tag in bingo_tags:
-            return "tag"
-        else:
-            return None
-
-    async def is_valid(
-        self, starting_anilist: dict, anilist_info: dict, poll_msg: Message = None
-    ) -> bool:
-        shot_type = self.get_shot_type()
-        if shot_type == "not_tv":
-            return anilist_info["format"] != "TV"
-        if shot_type == "free":
-            return True
-        if shot_type == "source":
-            return anilist_info["source"] != "MANGA"
-        if shot_type == "season":
-            return self.tag.upper() == anilist_info["season"]
-        if shot_type == "95%":
-            return any(tag["rank"] > 95 for tag in anilist_info["tags"])
-        if shot_type == "tag":
-            return any(
-                tag["name"].upper() == self.tag.upper() and tag["rank"] > 40
-                for tag in anilist_info["tags"]
-            ) or any(
-                genre.upper() == self.tag.upper() for genre in anilist_info["genres"]
-            )
-        if shot_type == "character":
-            yes_votes = 1
-            no_votes = 1
-            for reaction in poll_msg.reactions:
-                if reaction.emoji == "🔺":
-                    yes_votes = reaction.count
-                elif reaction.emoji == "🔻":
-                    no_votes = reaction.count
-
-            return yes_votes / (no_votes + yes_votes) > 0.5
-        if shot_type == "rewatch":
-            for show in starting_anilist:
-                if show["mediaId"] != self.anilist_id:
-                    continue
-                if show["status"] in ("REWATCHING", "COMPLETED"):
-                    return True
-            return False
-        if shot_type == "episode":
-            return (
-                episode_tags[self.tag][0]
-                <= anilist_info["episodes"]
-                <= episode_tags[self.tag][1]
-            )
-        return False
-
-
-@dataclass
-class BingoTile:
-    def __init__(self, tag: str = "", hit: bool = False):
-        self.tag = tag
-        self.hit = hit
-
-    def asdict(self) -> dict:
-        return {"tag": self.tag, "hit": self.hit}
-
-
 def bingo_game_embed(
-    ctx: Interaction, game_name: int, game_date: datetime, player_mentions: list[str]
+    ctx: Interaction, game_name: str, game_date: datetime, player_mentions: list[str]
 ) -> Embed:
     embed = Embed()
     embed.set_author(name="Anime Bingo", icon_url=bd.bot_avatar_url)
@@ -258,12 +168,15 @@ class GameBoardView(View):
     """
 
     def __init__(
-        self, render_service: BingoRenderService, players: list[FrozenBingoPlayer]
+        self,
+        render_service: BingoRenderService,
+        players: list[FrozenBingoPlayer],
+        page: int = 0,
     ):
         super().__init__(timeout=60)
         self.add_item(PrevPgButton())
         self.add_item(NextPgButton())
-        self.page = 0
+        self.page = page
         self.players = players
         self.render_service = render_service
 

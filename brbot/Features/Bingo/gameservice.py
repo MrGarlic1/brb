@@ -1,7 +1,9 @@
+from sqlalchemy.orm import selectinload
+
 import brbot.Shared.Anilist.anilist as al
 import brbot.Core.botdata as bd
 from datetime import datetime
-from discord import Interaction, Message
+from discord import Message, Member as DiscordMember
 from brbot.Features.Bingo.data import ShotType
 from brbot.Features.Bingo.data import (
     character_tags,
@@ -10,14 +12,16 @@ from brbot.Features.Bingo.data import (
     episode_tags,
     BingoMode,
     BOARD_SIZE,
+    FrozenBingoPlayer,
+    FrozenBingoTile,
 )
 from brbot.Shared.Users.repository import get_or_create_users
 from brbot.Shared.Members.repository import get_or_create_members
-from brbot.db.models import BingoTile, BingoPlayer, BingoGame, BingoShot
+from brbot.db.models import BingoTile, BingoPlayer, BingoGame
 from random import sample
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from typing import Sequence
+from typing import Sequence, Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -61,17 +65,17 @@ class BingoGameService:
         poll_msg: Message = None,
     ) -> bool:
         shot_type = BingoGameService.get_shot_type(shot_tag)
-        if shot_type == "not_tv":
+        if shot_type == ShotType.NOT_TV:
             return shot_anilist_info["format"] != "TV"
-        if shot_type == "free":
+        if shot_type == ShotType.FREE:
             return True
-        if shot_type == "source":
+        if shot_type == ShotType.SOURCE:
             return shot_anilist_info["source"] != "MANGA"
-        if shot_type == "season":
+        if shot_type == ShotType.SEASON:
             return shot_tag.upper() == shot_anilist_info["season"]
-        if shot_type == "95%":
+        if shot_type == ShotType.NINETY_FIVE_PERCENT:
             return any(tag["rank"] > 95 for tag in shot_anilist_info["tags"])
-        if shot_type == "tag":
+        if shot_type == ShotType.TAG:
             return any(
                 tag["name"].upper() == shot_tag.upper() and tag["rank"] > 40
                 for tag in shot_anilist_info["tags"]
@@ -79,7 +83,7 @@ class BingoGameService:
                 genre.upper() == shot_tag.upper()
                 for genre in shot_anilist_info["genres"]
             )
-        if shot_type == "character":
+        if shot_type == ShotType.CHARACTER:
             yes_votes = 1
             no_votes = 1
             for reaction in poll_msg.reactions:
@@ -89,14 +93,14 @@ class BingoGameService:
                     no_votes = reaction.count
 
             return yes_votes / (no_votes + yes_votes) > 0.5
-        if shot_type == "rewatch":
+        if shot_type == ShotType.REWATCH:
             for show in player_starting_anilist:
                 if show["mediaId"] != shot_anilist_id:
                     continue
                 if show["status"] in ("REWATCHING", "COMPLETED"):
                     return True
             return False
-        if shot_type == "episode":
+        if shot_type == ShotType.EPISODE:
             return (
                 episode_tags[shot_tag][0]
                 <= shot_anilist_info["episodes"]
@@ -110,11 +114,13 @@ class BingoGameService:
     async def create_bingo_game(
         guild_id: int,
         name: str,
-        discord_ids: list[int],
-        discord_usernames: list[str],
+        players: list[DiscordMember],
         session_generator: async_sessionmaker,
         mode: BingoMode = BingoMode.STANDARD,
     ) -> str | None:
+        discord_ids = [m.id for m in players]
+        discord_usernames = [m.name for m in players]
+
         async with session_generator() as session:
             users = await get_or_create_users(discord_ids, discord_usernames, session)
 
@@ -169,36 +175,24 @@ class BingoGameService:
         return None
 
     @staticmethod
-    def game_is_done(game: BingoGame) -> bool:
-        done = False
-        for player in game.players:
-            if player.done:
-                done = True
-                break
-        return done
+    async def get_guild_active_bingo_game(
+        guild_id: int, session: AsyncSession, load_players: bool = False
+    ) -> Optional[BingoGame]:
+        stmt = (
+            select(BingoGame)
+            .where(BingoGame.guild_id == guild_id)
+            .where(BingoGame.active.is_(True))
+            .order_by(BingoGame.date.desc())
+        )
+        if load_players:
+            stmt = stmt.options(
+                selectinload(BingoGame.players).selectinload(BingoPlayer.member),
+                selectinload(BingoGame.players).selectinload(BingoPlayer.shots),
+                selectinload(BingoGame.players).selectinload(BingoPlayer.shots),
+            )
 
-    @staticmethod
-    def update_game_after_shot(
-        game: BingoGame,
-        ctx: Interaction,
-        shot: BingoShot,
-        player_idx: int,
-        hit_tile: tuple[int, int] = None,
-    ) -> None:
-        # Push updates to player boards, check if game is finished
-        """
-        if self.active:
-            bd.active_bingos[ctx.guild_id] = self
-        else:
-            del bd.active_bingos[ctx.guild_id]
-
-        self.players[player_idx].shots.append(shot)
-        if hit_tile:
-            self.players[player_idx].board[hit_tile].hit = True
-
-        self.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Bingo/{self.name}")
-        """
-        return None
+        result = await session.execute(stmt)
+        return result.scalars().first()
 
     @staticmethod
     async def generate_player_tiles(player: BingoPlayer, game_id: int) -> None:
@@ -218,8 +212,35 @@ class BingoGameService:
         return None
 
     @staticmethod
-    def has_bingo(player_board: list[BingoTile], mode: BingoMode) -> bool:
-        tiles_by_coordinate = {tile.coordinates: tile for tile in player_board}
+    async def check_and_mark_game_finished(
+        game_id: int, player_id: int, session: AsyncSession
+    ) -> bool:
+        stmt = select(BingoGame).where(BingoGame.guild_id == game_id)
+        result = await session.execute(stmt)
+        game: BingoGame = result.scalars().one()
+        stmt = select(BingoPlayer).where(BingoPlayer.id == player_id)
+        result = await session.execute(stmt)
+        player: BingoPlayer = result.scalars().one()
+
+        stmt = (
+            select(BingoTile)
+            .where(BingoTile.game_id == game_id)
+            .where(BingoTile.player_id == player_id)
+        )
+        result = await session.execute(stmt)
+        player_board: Sequence[BingoTile] = result.scalars().all()
+
+        if not BingoGameService.is_bingo(player_board):
+            return False
+
+        player.done = True
+        game.active = False
+        await session.flush()
+        return True
+
+    @staticmethod
+    async def is_bingo(board: Sequence[BingoTile]):
+        tiles_by_coordinate = {tile.coordinates: tile for tile in board}
 
         row_bingos = {i: [] for i in range(1, BOARD_SIZE + 1)}
 
@@ -252,28 +273,50 @@ class BingoGameService:
     # PLAYER METHODS
 
     @staticmethod
-    async def find_tag_in_board(
-        game_id: int, player_id: int, tag, session: AsyncSession
-    ) -> int | None:
-        """
-        Finds a tag within a player's bingo tiles for a given game.
-        Args:
-            game_id: bingo game id
-            player_id: bingo player id
-            tag: bingo tile tag
-            session: sqlalchemy async session
-        Returns:
-            Tile ID of hit tile, or None if tag is not on the board.
-        """
+    async def get_hit_tile(
+        tag, player_id: int, session: AsyncSession
+    ) -> BingoTile | None:
         stmt = (
             select(BingoTile)
-            .where(BingoTile.game_id == game_id)
             .where(BingoTile.player_id == player_id)
+            .where(BingoTile.tag == tag)
         )
         result = await session.execute(stmt)
-        player_tiles: Sequence[BingoTile] = result.scalars().all()
+        return result.scalars().one_or_none()
 
-        for tile in player_tiles:
-            if tile.tag == tag:
-                return tile.id
-        return None
+    @staticmethod
+    def create_frozen_player_list(
+        players: Sequence[BingoPlayer],
+    ) -> list[FrozenBingoPlayer]:
+        frozen_players = []
+        for player in players:
+            tiles = []
+            for tile in player.tiles:
+                tiles.append(
+                    FrozenBingoTile(
+                        coordinates=tile.coordinates,
+                        hit=tile.hit,
+                        tag=tile.tag,
+                    )
+                )
+            frozen_players.append(
+                FrozenBingoPlayer(
+                    discord_user_id=player.member.user_id,
+                    total_shots=len(player.shots),
+                    total_hit_shots=len([shot for shot in player.shots if shot.hit]),
+                    tiles=tiles,
+                )
+            )
+
+        return frozen_players
+
+    @staticmethod
+    async def delete_bingo_game(
+        game: BingoGame, keep_files: bool, session: AsyncSession
+    ) -> None:
+        if keep_files:
+            game.active = False
+            await session.flush()
+        else:
+            stmt = delete(BingoGame).where(BingoGame.id == game.id)
+            await session.execute(stmt)

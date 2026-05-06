@@ -1,19 +1,40 @@
-import brbot.Features.Bingo.data as bi
+from brbot.Features.Bingo.data import (
+    bingo_game_embed,
+    gen_rules_embed,
+    ShotType,
+    GameBoardView,
+    GameRulesView,
+)
+from brbot.Features.Bingo.data import (
+    col_emojis,
+    row_emojis,
+    bingo_tags,
+    character_tags,
+    episode_tags,
+    season_tags,
+)
 import brbot.Shared.Anilist.anilist as al
 import brbot.Core.botdata as bd
 import asyncio
-from os import path, listdir, mkdir
 import brbot.Core.botutils as bu
 from brbot.Core.bot import BrBot
-from shutil import copytree, ignore_patterns
+from brbot.db.models import BingoShot, BingoPlayer
 from datetime import datetime
-from discord import app_commands, Interaction, Member
+from discord import app_commands, Interaction
 from discord.ext import commands
+
+from brbot.Features.Bingo.gameservice import BingoGameService
+from brbot.Features.Bingo.renderservice import BingoRenderService
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class BingoCog(commands.GroupCog, name="bingo"):
     def __init__(self, bot: BrBot):
         self.bot = bot
+        self.game_service = BingoGameService()
+        self.render_service = BingoRenderService()
 
     @app_commands.command(name="newgame", description="Create a new bingo game")
     @app_commands.describe(
@@ -22,71 +43,38 @@ class BingoCog(commands.GroupCog, name="bingo"):
     async def newgame(self, ctx: Interaction, name: str, players: str):
         await ctx.response.defer()
 
-        # Return errors if game is active or invalid name
-        if ctx.guild_id in bd.active_bingos:
+        async with self.bot.session_generator() as session:
+            existing_game = await self.game_service.get_guild_active_bingo_game(
+                ctx.guild.id, session
+            )
+
+        if existing_game is not None:
             await ctx.followup.send(
-                content=f'The game "{bd.active_bingos[ctx.guild_id].name}" is already active in this server.'
+                content=f"The game {existing_game.name} is already active in this server."
             )
-            return True
-        if path.exists(f"{bd.parent}/Guilds/{ctx.guild_id}/Bingo/{name}"):
-            await ctx.followup.send(content="Name already exists!")
-            return True
+            return
 
-        async def add_bingo_player(m: Member):
-            starting_anilist = await al.query_user_animelist(bd.linked_profiles[m.id])
-            dm_channel = await m.create_dm() if m.dm_channel is None else m.dm_channel
-            players.append(
-                bi.BingoPlayer(
-                    member=m,
-                    dmchannel=dm_channel,
-                    starting_anilist=starting_anilist,
-                )
-            )
-
-        # Create player list and tags
-        members = await bu.get_members_from_str(ctx.guild, players)
-        players: list = []
-
-        tasks: list = []
-        for member in members:
-            if member.id not in bd.linked_profiles:
-                await ctx.followup.send(
-                    content=f"Could not create game, <@{member.id}> must link their anilist profile! (/animanga link)"
-                )
-                return True
-
-            tasks.append(asyncio.create_task(add_bingo_player(m=member)))
-        await asyncio.gather(*tasks)
-
-        # Return error if player list is empty
+        # Get valid game players
+        players = await bu.get_members_from_str(ctx.guild, players)
         if not players:
             await ctx.followup.send(content="No valid players specified.")
-            return True
+            return
 
-        # Create game object and set parameters
-        date = datetime.now().strftime(bd.date_format)
-        gameid = int(datetime.now().strftime("%Y%m%d%H%M%S"))
-
-        game = bi.BingoGame(
-            name=name,
-            date=date,
-            players=players,
-            gameid=gameid,
-            active=True,
+        await self.game_service.create_bingo_game(
+            ctx.guild.id, name, players, self.bot.session_generator
         )
 
-        try:
-            mkdir(f"{bd.parent}/Guilds/{ctx.guild_id}/Bingo/{name}")
-        except OSError:
-            await ctx.followup.send(
-                content="Invalid name! Game must not contain the following characters: / \\ : * ? < > |"
+        # Send game information embed
+        mention_strs = [p.mention for p in players]
+        await ctx.followup.send(
+            embed=bingo_game_embed(
+                ctx=ctx,
+                game_name=name,
+                game_date=datetime.now(),
+                player_mentions=mention_strs,
             )
-            return True
-
-        # Push updates to player boards
-        await ctx.followup.send(embed=bi.bingo_game_embed(ctx=ctx, game=game))
-        game.update_boards_after_create(ctx=ctx)
-        return False
+        )
+        return
 
     @app_commands.command(name="shot", description="Make a bingo shot.")
     @app_commands.describe(
@@ -96,87 +84,97 @@ class BingoCog(commands.GroupCog, name="bingo"):
     )
     async def shot(self, ctx: Interaction, link: str, info: str, tag: str):
         await ctx.response.defer(ephemeral=False)
-        if ctx.guild_id not in bd.active_bingos:
-            await ctx.followup.send(
-                content="There is no active game! To make one, use /bingo newgame",
-                ephemeral=True,
+        async with self.bot.session_generator() as session:
+            game = await self.game_service.get_guild_active_bingo_game(
+                ctx.guild.id, session, load_players=True
             )
-            return True
 
-        game = bd.active_bingos[ctx.guild_id]
+            if game is None:
+                await ctx.followup.send(
+                    content="There is no active game! To make one, use /bingo newgame",
+                    ephemeral=True,
+                )
+                return
 
-        # This is bad and needs to be reworked
-        copytree(
-            f"{bd.parent}/Guilds/{ctx.guild_id}/Bingo/{game.name}",
-            f"{bd.parent}/Guilds/{ctx.guild_id}/BingoBackups/[BACKUP] {game.name}",
-            dirs_exist_ok=True,
-            ignore=ignore_patterns("*.png"),
-        )
-        # Get player, validate shot
+            players: list[BingoPlayer] = list(game.players)
+            player = next((p for p in players if p.member.user_id == ctx.user.id), None)
 
-        sender_idx, player = game.get_player(int(ctx.user.id))
+            if player is None:
+                await ctx.followup.send("You are not in a player in this bingo game!")
+                return
 
-        if player is None:
-            await ctx.followup.send("You are not in this bingo game!")
-            return True
+            player_id = player.id
+            player_starting_anilist: dict = player.starting_anilist
+            existing_shot_tags = [shot.tag for shot in player.shots]
+            mention_str = ", ".join([f"<@{p.member.user_id}>" for p in players])
 
-        if any(shot.tag == tag for shot in player.shots):
+        if tag in existing_shot_tags:
             await ctx.followup.send(
                 "You have already shot for this tag. Please select a different tag and try again."
             )
-            return True
+            return
 
-        shot = bi.BingoShot(
-            anilist_id=0,
+        shot = BingoShot(
+            player_id=player_id,
+            anilist_entry_id=0,
             tag=tag,
-            time=datetime.now().strftime(bd.date_format),
+            time=datetime.now(),
+            hit=False,
             info=info,
         )
-        shot_type = shot.get_shot_type()
-        if not shot_type:
+        shot_type = self.game_service.get_shot_type(tag)
+        if shot_type == ShotType.OTHER:
             await ctx.followup.send(
                 content="Invalid tag specified. Please check the tag and try again."
             )
-            return True
+            return
 
-        if shot_type == "character":
-            anilist_id = al.anilist_id_from_url(url=link, is_character=True)
-        else:
-            anilist_id = al.anilist_id_from_url(url=link)
+        anilist_id = al.anilist_id_from_url(
+            url=link, is_character=shot_type == ShotType.CHARACTER
+        )
         if anilist_id is None:
             await ctx.followup.send(
-                content="Could not find show, please check anilist URL!"
+                content="Could not find show/character, please check anilist URL!"
             )
-            return True
+            return
 
-        # Fetch anilist information if it isn't already cached
-        if anilist_id not in game.known_entries:
-            if shot_type == "character":
-                anilist_info = await al.query_character(character_id=anilist_id)
-            else:
-                anilist_info = await al.query_media(media_id=anilist_id)
+        is_character = shot_type == ShotType.CHARACTER
+        cache = (
+            self.bot.cached_al_characters if is_character else self.bot.cached_al_media
+        )
 
-            if anilist_info is None:
-                await ctx.followup.send(
-                    content="Error connecting to anilist, please check URL and try again."
-                )
-                return True
-            game.known_entries[anilist_id] = anilist_info
+        anilist_info = cache.get(anilist_id)
+        if anilist_info is None:
+            anilist_info = (
+                await al.query_character(character_id=anilist_id)
+                if is_character
+                else await al.query_media(media_id=anilist_id)
+            )
+
+        if anilist_info is None:
+            await ctx.followup.send(
+                content="Error connecting to anilist, please check URL and try again."
+            )
+            return
+
+        cache[anilist_id] = anilist_info
 
         poll_msg = None
 
-        if shot_type == "character":
+        if is_character:
             await ctx.followup.send(content="Sending poll.", ephemeral=True)
             poll_msg = await ctx.channel.send(
-                content=f"Does this character fill the tag [{shot.tag}]?\n\n*(Poll open for 2 hours)*"
+                content=f"{mention_str}\nDoes this character fill the tag [{shot.tag}]?\n\n*(Poll open for 2 hours)*"
             )
             await poll_msg.add_reaction("🔺")
             await poll_msg.add_reaction("🔻")
             await asyncio.sleep(7200)
 
-        valid = await shot.is_valid(
-            anilist_info=game.known_entries[anilist_id],
-            starting_anilist=player.starting_anilist,
+        valid = await self.game_service.is_shot_valid(
+            shot_anilist_id=anilist_id,
+            shot_tag=tag,
+            player_starting_anilist=player_starting_anilist,
+            shot_anilist_info=anilist_info,
             poll_msg=poll_msg,
         )
 
@@ -185,37 +183,41 @@ class BingoCog(commands.GroupCog, name="bingo"):
                 "Show/Character does not meet requirements! Please choose a different tag.",
                 ephemeral=True,
             )
-            return True
+            return
 
         # Update board, player rails
+        async with self.bot.session_generator() as session:
+            try:
+                hit_tile = await self.game_service.get_hit_tile(tag, player_id, session)
+                if hit_tile is None:
+                    await ctx.followup.send(content="🟥")
+                    return
 
-        hit_tile = player.find_tag(tag)
+                hit_tile.hit = True
+                shot.hit = True
+                session.add(shot)
+                await ctx.followup.send(
+                    content=f"🟩{col_emojis[hit_tile.column - 1]}{row_emojis[hit_tile.row - 1]}"
+                )
+                if self.game_service.check_and_mark_game_finished(
+                    game_id=game.id, player_id=player_id, session=session
+                ):
+                    await ctx.channel.send("Game's done! (Placeholder)")
+                await session.commit()
 
-        if hit_tile:
-            shot.hit = True
-            player.board[hit_tile].hit = True
-            await ctx.followup.send(
-                content=f"🟩{bi.col_emojis[hit_tile[0] - 1]}{bi.row_emojis[hit_tile[1] - 1]}"
-            )
-            if player.has_bingo():
-                player.done = True
-                game.active = False
-        else:
-            await ctx.followup.send(content="🟥")
-
-        game.update_game_after_shot(
-            ctx=ctx, shot=shot, player_idx=sender_idx, hit_tile=hit_tile
-        )
-        return False
+            except Exception as e:
+                await session.rollback()
+                await ctx.channel.send(
+                    "A transient error occurred while adding this shot. Please try again!"
+                )
+                logger.error(
+                    f"An error occurred while adding shot in game {game.id}: {e}"
+                )
+        return
 
     @shot.autocomplete("tag")
     async def shot_autocomplete(self, _: Interaction, current: str):
-        tags = (
-            bi.bingo_tags
-            + bi.character_tags
-            + bi.season_tags
-            + tuple(bi.episode_tags.keys())
-        )
+        tags = bingo_tags + character_tags + season_tags + tuple(episode_tags.keys())
         tags = [tag for tag in tags if current.lower() in tag.lower()]
         choices = list(map(bu.autocomplete_filter, tags))
         if len(choices) > 25:
@@ -226,27 +228,38 @@ class BingoCog(commands.GroupCog, name="bingo"):
         name="board", description="View the bingo boards for the active game."
     )
     async def show_bingo_board(self, ctx: Interaction):
-        if ctx.guild_id not in bd.active_bingos:
-            await ctx.response.send_message(
-                content="No active game found.", ephemeral=True
+        async with self.bot.session_generator() as session:
+            game = await self.game_service.get_guild_active_bingo_game(
+                ctx.guild_id, session=session, load_players=True
             )
-            return True
 
-        game = bd.active_bingos[ctx.guild_id]
-        player_idx, player = game.get_player(ctx.user.id)
+            if game is None:
+                await ctx.response.send_message(
+                    content="No active game found.", ephemeral=True
+                )
+            frozen_players = self.game_service.create_frozen_player_list(
+                players=game.players
+            )
 
-        if not player:
+        player_discord_ids = [p.member.user_id for p in game.players]
+        try:
+            page = player_discord_ids.index(ctx.user.id)
+        except ValueError:
             await ctx.response.send_message(
                 content="You are not a player in this game.", ephemeral=True
             )
-            return True
+            return
 
-        embed, image = game.gen_board_embed(page=0, sender_idx=player_idx)
-        view = bi.GameBoardView(game=game, sender_idx=player_idx)
+        embed, image = self.render_service.gen_board_embed(
+            players=frozen_players, discord_member=ctx.user, page=page
+        )
+        view = GameBoardView(
+            render_service=self.render_service, players=frozen_players, page=page
+        )
         await ctx.response.send_message(
             embed=embed, file=image, view=view, ephemeral=True
         )
-        return False
+        return
 
     @app_commands.command(
         name="delete", description="Remove the active bingo game. (admin only)"
@@ -260,27 +273,34 @@ class BingoCog(commands.GroupCog, name="bingo"):
                 content="You must be an administrator to use this command!",
                 ephemeral=True,
             )
-            return True
+            return
+
         await ctx.response.defer()
-        if ctx.guild_id not in bd.active_bingos:
-            ctx.followup.send(
-                content="There is no active game! To make one, use /bingo newgame",
-                ephemeral=True,
+        async with self.bot.session_generator() as session:
+            game = await self.game_service.get_guild_active_bingo_game(
+                ctx.guild_id, session=session
             )
-            return True
+            if game is None:
+                ctx.followup.send(
+                    content="There is no active game! To make one, use /bingo newgame",
+                    ephemeral=True,
+                )
+                return
 
-        game = bd.active_bingos[ctx.guild_id]
+            try:
+                await self.game_service.delete_bingo_game(
+                    game, keep_files=keep_files, session=session
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Error when deleting bingo game in guild {ctx.guild.id}: {e}"
+                )
+                await ctx.followup.send(
+                    content="A transient error occurred while deleting. Please try again!"
+                )
 
-        if keep_files:
-            game.active = False
-            game.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Bingo/{game.name}")
-        else:
-            bu.del_game_files(
-                guild_id=ctx.guild_id, game_name=game.name, game_type="Bingo"
-            )
-        del bd.active_bingos[ctx.guild_id]
         await ctx.followup.send(content=bd.pass_str)
-        return False
+        return
 
     @app_commands.command(
         name="restore",
@@ -288,45 +308,47 @@ class BingoCog(commands.GroupCog, name="bingo"):
     )
     @app_commands.describe(name="Name of game to be restored")
     async def restore(self, ctx: Interaction, name: str):
-        if not ctx.user.guild_permissions.administrator:
-            await ctx.response.send_message(
-                content="You must be an administrator to use this command!",
-                ephemeral=True,
-            )
-            return True
-        if ctx.guild_id in bd.active_bingos:
-            await ctx.response.send_message(
-                "There is already an active game in this server!"
-            )
-            return True
-        try:
-            test_game = await bi.load_bingo_game(
-                filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Bingo/{name}",
-                guild=ctx.guild,
-            )
-        except FileNotFoundError:
-            await ctx.response.send_message(content="Game name does not exist.")
-            return True
-        if any(player.done is True for player in test_game.players):
-            await ctx.response.send_message(
-                "You can not restore a completed game to active status."
-            )
-            return True
+        """
+            if not ctx.user.guild_permissions.administrator:
+                await ctx.response.send_message(
+                    content="You must be an administrator to use this command!",
+                    ephemeral=True,
+                )
+                return True
+            if ctx.guild_id in bd.active_bingos:
+                await ctx.response.send_message(
+                    "There is already an active game in this server!"
+                )
+                return True
+            try:
+                test_game = await bi.load_bingo_game(
+                    filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Bingo/{name}",
+                    guild=ctx.guild,
+                )
+            except FileNotFoundError:
+                await ctx.response.send_message(content="Game name does not exist.")
+                return True
+            if any(player.done is True for player in test_game.players):
+                await ctx.response.send_message(
+                    "You can not restore a completed game to active status."
+                )
+                return True
 
-        test_game.active = True
-        test_game.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Bingo/{test_game.name}")
-        bd.active_bingos[ctx.guild_id] = test_game
-        await ctx.response.send_message(content=bd.pass_str)
-        return False
+            test_game.active = True
+            test_game.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Bingo/{test_game.name}")
+            bd.active_bingos[ctx.guild_id] = test_game
+            await ctx.response.send_message(content=bd.pass_str)
+            return False
 
-    @restore.autocomplete("name")
-    async def restore_autocomplete(self, ctx: Interaction, current: str):
-        games = listdir(f"{bd.parent}/Guilds/{ctx.guild_id}/Bingo")
-        games = [gamename for gamename in games if current in gamename]
-        choices = list(map(bu.autocomplete_filter, games))
-        if len(choices) > 25:
-            choices = choices[:24]
-        return choices
+        @restore.autocomplete("name")
+        async def restore_autocomplete(self, ctx: Interaction, current: str):
+            games = listdir(f"{bd.parent}/Guilds/{ctx.guild_id}/Bingo")
+            games = [gamename for gamename in games if current in gamename]
+            choices = list(map(bu.autocomplete_filter, games))
+            if len(choices) > 25:
+                choices = choices[:24]
+            return choices
+        """
 
     @app_commands.command(
         name="rules", description="Display the rules for playing bingo"
@@ -334,8 +356,8 @@ class BingoCog(commands.GroupCog, name="bingo"):
     @app_commands.describe(page="Specify which page of the rules to view.")
     async def send_rules(self, ctx: Interaction, page: int = 1):
         await ctx.response.send_message(
-            embed=bi.gen_rules_embed(page=page - 1),
-            view=bi.GameRulesView(page=page - 1),
+            embed=gen_rules_embed(page=page - 1),
+            view=GameRulesView(page=page - 1),
         )
         return False
 

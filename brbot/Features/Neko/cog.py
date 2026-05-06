@@ -19,6 +19,7 @@ class NekoCog(commands.GroupCog, name="neko"):
         description="Send a picture of a random catgirl",
     )
     async def neko(self, ctx: Interaction):
+        await ctx.defer()
         enable_nsfw = self.bot.guild_configs[ctx.guild.id].enable_nsfw
         if enable_nsfw and not ctx.channel.is_nsfw():
             await ctx.response.send_message(
@@ -51,7 +52,7 @@ class NekoCog(commands.GroupCog, name="neko"):
             source_link = f" | ([Source]({source_url}))" if source_url else ""
             embed.set_footer(text=f"Provided by Mr.Garlic{source_link}")
 
-        await ctx.response.send_message(embed=embed)
+        await ctx.followup.send_message(embed=embed)
 
 
 async def setup(bot: BrBot):

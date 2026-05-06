@@ -184,23 +184,6 @@ class IgnoredRecommendation(Base):
 ## BINGO
 
 
-class BingoGame(Base):
-    __tablename__ = "bingo_games"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(400))
-    date: Mapped[DateTime] = mapped_column(DateTime)
-    active: Mapped[bool] = mapped_column(Boolean)
-    guild_id: Mapped[int] = mapped_column(ForeignKey("guilds.id"))
-    mode: Mapped[int] = mapped_column(Integer)
-    known_entries: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    guild = relationship("Guild", back_populates="bingo_games")
-    players = relationship(
-        "BingoPlayer", back_populates="game", cascade="all, delete-orphan"
-    )
-
-    __table_args__ = (Index("ix_bingo_game_guild_id", "guild_id"),)
-
-
 class BingoTile(Base):
     __tablename__ = "bingo_tiles"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -233,7 +216,7 @@ class BingoShot(Base):
     __tablename__ = "bingo_shots"
     id: Mapped[int] = mapped_column(primary_key=True)
     player_id: Mapped[int] = mapped_column(ForeignKey("bingo_players.id"))
-    anilist_media_id: Mapped[int] = mapped_column(Integer)
+    anilist_entry_id: Mapped[int] = mapped_column(Integer)
     tag: Mapped[str] = mapped_column(String(400))
     time: Mapped[DateTime] = mapped_column(DateTime)
     hit: Mapped[bool] = mapped_column(Boolean)
@@ -277,6 +260,23 @@ class BingoPlayer(Base):
     @property
     def dmchannel(self) -> Optional[DMChannel]:
         return self.member.user.dmchannel
+
+
+class BingoGame(Base):
+    __tablename__ = "bingo_games"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(400))
+    date: Mapped[DateTime] = mapped_column(DateTime)
+    active: Mapped[bool] = mapped_column(Boolean)
+    guild_id: Mapped[int] = mapped_column(ForeignKey("guilds.id"))
+    mode: Mapped[int] = mapped_column(Integer)
+    known_entries: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    guild = relationship("Guild", back_populates="bingo_games")
+    players: Mapped[List[BingoPlayer]] = relationship(
+        "BingoPlayer", back_populates="game", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (Index("ix_bingo_game_guild_id", "guild_id"),)
 
 
 ## TRAINS
