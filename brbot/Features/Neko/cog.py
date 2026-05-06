@@ -1,7 +1,7 @@
 from brbot.Core.bot import BrBot
 from discord import app_commands, Interaction, Embed
 from brbot.Features.Neko.service import NekoService
-from brbot.Features.Neko.data import NEKO_COLORS
+from brbot.Features.Neko.data import NEKO_COLORS, NekoRarity
 from discord.ext import commands
 import logging
 
@@ -35,13 +35,16 @@ class NekoCog(commands.GroupCog, name="neko"):
             )
         else:
             rarity = self.neko_service.roll_rarity()
+            rarity_int: int = rarity.value
 
             async with self.bot.session_generator() as session:
                 neko_url, source_url = await self.neko_service.roll_and_get_neko_info(
                     include_nsfw=enable_nsfw, rarity=rarity, session=session
                 )
+            rarity_str = "✨🌟✨" if rarity == NekoRarity.SS else "⭐" * rarity_int
 
-            embed = Embed(title="🖼️🐱Neko")
+            embed = Embed(title="Neko🐱🖼️")
+            embed.set_author(name=rarity_str)
             embed.colour = NEKO_COLORS[rarity]
             embed.set_image(url=neko_url)
             self.last_userid_by_guild[ctx.guild.id] = ctx.user.id
