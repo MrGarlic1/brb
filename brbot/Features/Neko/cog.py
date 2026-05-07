@@ -35,7 +35,6 @@ class NekoCog(commands.GroupCog, name="neko"):
         remaining_rolls = await self.neko_service.check_remaining_hourly_rolls(
             ctx.guild.id, ctx.user.id
         )
-        print(remaining_rolls)
         if remaining_rolls < 1:
             embed = Embed(title="⛔⛔ NOT Neko")
             embed.set_image(
