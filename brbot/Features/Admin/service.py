@@ -29,8 +29,16 @@ class AdminService:
             return None
 
         neko_id = neko.id
-        img_url = neko.image_url
         rarity = NekoRarity.A
+
+        if not neko.image_url.startswith("https://"):
+            if neko.image_url.startswith("http://"):
+                neko.image_url = neko.image_url.replace("http://", "https://")
+            neko.image_url = "https://" + neko.image_url
+            img_url = neko.image_url
+            await session.commit()
+        else:
+            img_url = neko.image_url
         nsfw = False
 
         return NekoClassificationInfo(
