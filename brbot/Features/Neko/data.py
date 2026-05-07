@@ -13,3 +13,5 @@ NEKO_COLORS = {
     NekoRarity.A: 0xC666E3,
     NekoRarity.B: 0x3B49D1,
 }
+
+NEKO_HOURLY_ROLLS = 5

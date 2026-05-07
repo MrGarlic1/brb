@@ -1,14 +1,16 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from brbot.Shared.Neko.models import NekoRarity
-from brbot.Features.Neko.data import NEKO_ROLL_CHANCES
+from brbot.Features.Neko.data import NEKO_ROLL_CHANCES, NEKO_HOURLY_ROLLS
 from random import uniform
 from sqlalchemy import select, func
 from brbot.db.models import Neko
+from datetime import datetime
 
 
 class NekoService:
     def __init__(self):
-        pass
+        self.guild_user_hourly_rolls: dict[int, dict[int, int]] = {}
+        self.current_hour = datetime.now().hour
 
     @staticmethod
     def roll_rarity() -> NekoRarity:
@@ -37,3 +39,15 @@ class NekoService:
         neko: Neko = result.scalars().one()
 
         return neko.image_url, neko.source
+
+    async def check_remaining_hourly_rolls(self, guild_id, user_id) -> int:
+        if datetime.now().hour != self.current_hour:
+            self.guild_user_hourly_rolls = {}
+            self.current_hour = datetime.now().hour
+
+        if guild_id not in self.guild_user_hourly_rolls:
+            self.guild_user_hourly_rolls[guild_id] = {}
+        if user_id not in self.guild_user_hourly_rolls[guild_id]:
+            self.guild_user_hourly_rolls[guild_id][user_id] = NEKO_HOURLY_ROLLS
+
+        return self.guild_user_hourly_rolls[guild_id][user_id]

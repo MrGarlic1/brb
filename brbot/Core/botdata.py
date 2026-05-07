@@ -33,6 +33,11 @@ except KeyError:
     logger.critical("No token/db found in .env file, exiting")
     exit(1)
 
+try:
+    DEV_SERVER_ID: int | None = int(getenv("DEV_SERVER_ID"))
+except KeyError or ValueError:
+    DEV_SERVER_ID = None
+
 parent: str = f"{path.dirname(path.realpath(__file__))}/.."
 
 FEATURES_DIRECTORY = Path("brbot/Features")
