@@ -429,17 +429,6 @@ class AnimangaService:
                     * favorite_weight
                     * progress_weight
                 )
-                """
-                    id: Mapped[int] = mapped_column(primary_key=True)
-                    media_id: Mapped[int] = mapped_column(Integer)
-                    anilist_user_id: Mapped[int] = mapped_column(Integer)
-                    is_manga: Mapped[bool] = mapped_column(Boolean)
-                    title: Mapped[str] = mapped_column(String(400))
-                    score: Mapped[float] = mapped_column(Float)
-                    genres: Mapped[List[str]] = mapped_column(JSON)
-                    cover_url: Mapped[str] = mapped_column(String(400))
-                    mean_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-                """
 
                 if media_rec["id"] not in recommendation_scores:
                     recommendation_scores[media_rec["id"]] = Recommendation(
@@ -463,15 +452,17 @@ class AnimangaService:
         for rec in recommendation_scores_list:
             rec.score *= uniform(1 + model.score_variation, 1 - model.score_variation)
 
-        recommendation_scores_list = [
-            rec for rec in recommendation_scores_list if rec.score >= 0
-        ]
-        recommendation_scores_list.sort(reverse=True)
+        min_score = min(rec.score for rec in recommendation_scores_list)
+        if min_score < 0:
+            for rec in recommendation_scores_list:
+                rec.score -= min_score
 
-        # Normalize scores and apply filter for logical percentages
-        max_score = recommendation_scores_list[0].score
+        max_score = max(rec.score for rec in recommendation_scores_list)
+
         for rec in recommendation_scores_list:
-            rec.score = (rec.score / max_score) ** model.global_scale_exp * 100
+            rec.score = (
+                max((rec.score / max_score), 1e-8) ** model.global_scale_exp * 100
+            )
 
         return recommendation_scores_list
 
@@ -654,14 +645,17 @@ class AnimangaService:
             select(Recommendation)
             .where(Recommendation.anilist_user_id == anilist_user_id)
             .where(Recommendation.is_manga == media_type.value)
-            .order_by(Recommendation.score.desc())
         )
 
         if genre:
             stmt = stmt.where(Recommendation.genres.contains(genre))
 
-        capped_max_page = min(20, max_page) if max_page else 20
-        page = page % capped_max_page if capped_max_page else 0
+        stmt = stmt.order_by(Recommendation.score.desc())
+
+        if max_page is None:
+            max_page = 20
+
+        page = page % max_page if max_page else 0
 
         stmt = stmt.offset(page).limit(1)
 
