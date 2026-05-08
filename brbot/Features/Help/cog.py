@@ -20,13 +20,17 @@ class HelpCog(commands.Cog):
     async def about(self, ctx: Interaction):
         embed = Embed(title="Response Bot", description="Statistics")
         embed.set_author(
-            name=f"Requested by {ctx.user.mention}", icon_url=ctx.user.avatar.url
+            name=f"Requested by {ctx.user.name}", icon_url=ctx.user.avatar.url
         )
         embed.add_field(
-            name="\u200b", value=f"Currently in **{len(self.bot.guilds)}** guilds"
+            name="\u200b",
+            value=f"📣 Currently in **{len(self.bot.guilds)}** guilds",
+            inline=True,
         )
         embed.add_field(
-            name="\u200b", value=f"Latency: {(1000 * self.bot.latency):.1f} ms"
+            name="\u200b",
+            value=f"📶 Latency: **{(1000 * self.bot.latency):.1f}ms**",
+            inline=True,
         )
         embed.set_thumbnail(url=bot_avatar_url)
         embed.set_footer(
