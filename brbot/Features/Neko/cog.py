@@ -1,8 +1,8 @@
 from brbot.Core.bot import BrBot
-from discord import app_commands, Interaction, Embed
+from discord import app_commands, Interaction, Embed, HTTPException
 from brbot.Features.Neko.service import NekoService
 from brbot.Features.Neko.data import NEKO_COLORS, NekoRarity
-from brbot.Core.botdata import DEV_SERVER_ID
+from brbot.Core.botdata import DEV_SERVER_ID, fail_str
 from discord.ext import commands
 from datetime import datetime
 import logging
@@ -75,7 +75,11 @@ class NekoCog(commands.GroupCog, name="neko"):
         embed.set_image(url=neko_url)
         embed.set_footer(text=footer_text)
 
-        await ctx.followup.send(embed=embed)
+        try:
+            await ctx.followup.send(embed=embed)
+        except HTTPException:
+            logger.warning(f"Could not send image: URL {neko_url}")
+            await ctx.followup.send(content=fail_str)
 
 
 async def setup(bot: BrBot):
