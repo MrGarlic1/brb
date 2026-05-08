@@ -35,7 +35,7 @@ except KeyError:
 
 try:
     DEV_SERVER_ID: int | None = int(getenv("DEV_SERVER_ID"))
-except KeyError or ValueError:
+except (KeyError, ValueError, TypeError):
     DEV_SERVER_ID = None
 
 parent: str = f"{path.dirname(path.realpath(__file__))}/.."
