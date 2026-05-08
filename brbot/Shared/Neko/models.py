@@ -6,3 +6,4 @@ class NekoRarity(Enum):
     S = 5  # 0xFFF27A
     A = 4  # 0xC666E3
     B = 3  # 0x3B49D1
+    NONE = None

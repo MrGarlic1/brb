@@ -7,6 +7,13 @@ NEKO_ROLL_CHANCES = {
     NekoRarity.B: 0.75,
 }
 
+NEKO_NSFW_LOSS_CHANCES = {
+    NekoRarity.SS: 0,
+    NekoRarity.S: 0.5,
+    NekoRarity.A: 0.5,
+    NekoRarity.B: 1,
+}
+
 NEKO_COLORS = {
     NekoRarity.SS: 0xFF2462,
     NekoRarity.S: 0xFFF27A,

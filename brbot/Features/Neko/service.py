@@ -1,6 +1,10 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from brbot.Shared.Neko.models import NekoRarity
-from brbot.Features.Neko.data import NEKO_ROLL_CHANCES, NEKO_HOURLY_ROLLS
+from brbot.Features.Neko.data import (
+    NEKO_ROLL_CHANCES,
+    NEKO_HOURLY_ROLLS,
+    NEKO_NSFW_LOSS_CHANCES,
+)
 from random import uniform
 from sqlalchemy import select, func
 from brbot.db.models import Neko
@@ -28,12 +32,18 @@ class NekoService:
     async def roll_and_get_neko_info(
         include_nsfw: bool, rarity: NekoRarity, session: AsyncSession
     ) -> tuple[str, str]:
-        stmt = select(Neko).where(Neko.nsfw.is_not(None))
-        if not include_nsfw:
-            stmt = stmt.where(Neko.nsfw.is_(False))
+        if include_nsfw:
+            nsfw_roll = uniform(0, 1)
+            if nsfw_roll >= NEKO_NSFW_LOSS_CHANCES[rarity]:
+                include_nsfw = False
 
-        stmt = stmt.where(Neko.rarity.is_(rarity.value))
-        stmt = stmt.order_by(func.random()).limit(1)
+        stmt = (
+            select(Neko)
+            .where(Neko.nsfw.is_(include_nsfw))
+            .where(Neko.rarity.is_(rarity.value))
+            .order_by(func.random())
+            .limit(1)
+        )
 
         result = await session.execute(stmt)
         neko: Neko = result.scalars().one()
