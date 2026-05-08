@@ -2,6 +2,8 @@ from discord import app_commands, Interaction, Attachment
 from brbot.Core.botdata import pass_str
 from brbot.Features.Admin.service import AdminService
 from brbot.Features.Admin.data import NekoAdminView
+from brbot.Shared.Neko.models import NekoRarity
+from copy import deepcopy
 from brbot.db.models import Neko
 from sqlalchemy import insert
 from discord.ext import commands
@@ -29,10 +31,25 @@ class AdminCog(commands.GroupCog, name="admin"):
         name="classify_nekos",
         description="Categorize un-classified images within the Neko DB.",
     )
-    async def classify_neko_images(self, ctx: Interaction):
+    @app_commands.choices(
+        rarity=[
+            app_commands.Choice(name=NekoRarity.SS.name, value=NekoRarity.SS.value),
+            app_commands.Choice(name=NekoRarity.S.name, value=NekoRarity.S.value),
+            app_commands.Choice(name=NekoRarity.A.name, value=NekoRarity.A.value),
+            app_commands.Choice(name=NekoRarity.B.name, value=NekoRarity.B.value),
+        ],
+    )
+    async def classify_neko_images(
+        self, ctx: Interaction, rarity: int = None, nsfw: bool = None
+    ):
+        rarity = NekoRarity(rarity)
         async with self.bot.session_generator() as session:
-            remaining_count = await self.admin_service.get_remaining_neko_count(session)
-            neko_info = await self.admin_service.get_neko_classification_info(session)
+            remaining_count = await self.admin_service.get_remaining_neko_count(
+                rarity, session, nsfw
+            )
+            neko_info = await self.admin_service.get_neko_classification_info(
+                rarity, session, nsfw
+            )
             embed = await self.admin_service.gen_neko_classification_embed(
                 neko_info, remaining_count
             )
@@ -43,6 +60,7 @@ class AdminCog(commands.GroupCog, name="admin"):
         view = NekoAdminView(
             admin_service=self.admin_service,
             neko=neko_info,
+            original_neko=deepcopy(neko_info),
             session_generator=self.bot.session_generator,
             remaining_count=remaining_count,
         )

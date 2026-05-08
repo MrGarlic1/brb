@@ -3,7 +3,7 @@ from discord.ui import View, Button
 from discord import Interaction, ButtonStyle
 from brbot.Shared.Neko.models import NekoRarity
 from sqlalchemy.ext.asyncio import async_sessionmaker
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from brbot.Features.Admin.service import AdminService
@@ -13,7 +13,13 @@ logger = logging.getLogger(__name__)
 
 
 class NekoClassificationInfo:
-    def __init__(self, neko_id: int, image_url: str, rarity: NekoRarity, nsfw: bool):
+    def __init__(
+        self,
+        neko_id: int,
+        image_url: str,
+        rarity: NekoRarity,
+        nsfw: Optional[bool] = None,
+    ):
         self.neko_id = neko_id
         self.image_url = image_url
         self.rarity = rarity
@@ -88,6 +94,7 @@ class NekoAdminView(View):
         self,
         admin_service: AdminService,
         neko: NekoClassificationInfo,
+        original_neko: NekoClassificationInfo,
         remaining_count: int,
         session_generator: async_sessionmaker,
     ):
@@ -102,6 +109,8 @@ class NekoAdminView(View):
         self.add_item(SSRarityButton())
         self.add_item(ConfirmButton())
         self.neko = neko
+        self.original_neko = original_neko
+        self.offset = 0
         self.remaining_count = remaining_count
 
     async def interaction_check(self, interaction: Interaction) -> bool:
@@ -114,22 +123,37 @@ class NekoAdminView(View):
         elif interaction.data["custom_id"] == "b_rank":
             self.neko.rarity = NekoRarity.B
         elif interaction.data["custom_id"] == "toggle_nsfw":
-            self.neko.nsfw = not self.neko.nsfw
+            self.neko.nsfw = True if self.neko.nsfw is None else not self.neko.nsfw
         elif interaction.data["custom_id"] == "delete_neko":
             async with self.session_generator() as session:
                 await self.admin_service.delete_neko(self.neko, session)
                 self.neko = await self.admin_service.get_neko_classification_info(
-                    session
+                    rarity=self.original_neko.rarity,
+                    nsfw=self.original_neko.nsfw,
+                    session=session,
+                    offset=self.offset,
                 )
                 self.remaining_count -= 1
 
         elif interaction.data["custom_id"] == "confirm_changes":
             async with self.session_generator() as session:
                 await self.admin_service.update_neko(self.neko, session)
-                self.neko = await self.admin_service.get_neko_classification_info(
-                    session
-                )
+                # Increment offset to get the next from DB if classification does not change
+                if (
+                    self.neko.rarity == self.original_neko.rarity
+                    and self.neko.nsfw == self.original_neko.nsfw
+                ):
+                    self.offset += 1
+
                 self.remaining_count -= 1
+
+                # Fetch new entry with the same classification as the original request
+                self.neko = await self.admin_service.get_neko_classification_info(
+                    self.original_neko.rarity,
+                    session,
+                    self.original_neko.nsfw,
+                    self.offset,
+                )
 
         embed = await self.admin_service.gen_neko_classification_embed(
             self.neko, self.remaining_count
