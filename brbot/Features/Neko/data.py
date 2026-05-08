@@ -9,7 +9,7 @@ NEKO_ROLL_CHANCES = {
 
 NEKO_NSFW_LOSS_CHANCES = {
     NekoRarity.SS: 0,
-    NekoRarity.S: 0.5,
+    NekoRarity.S: 0.25,
     NekoRarity.A: 0.5,
     NekoRarity.B: 1,
 }
