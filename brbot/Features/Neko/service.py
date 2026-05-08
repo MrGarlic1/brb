@@ -34,7 +34,7 @@ class NekoService:
     ) -> tuple[str, str]:
         if include_nsfw:
             nsfw_roll = uniform(0, 1)
-            if nsfw_roll >= NEKO_NSFW_LOSS_CHANCES[rarity]:
+            if nsfw_roll <= NEKO_NSFW_LOSS_CHANCES[rarity]:
                 include_nsfw = False
 
         stmt = (
