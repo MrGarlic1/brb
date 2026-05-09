@@ -25,6 +25,8 @@ class AdminCog(commands.GroupCog, name="admin"):
     @app_commands.command(name="sync", description="Syncs the bot's command tree.")
     async def tree_sync(self, ctx: Interaction) -> None:
         await self.bot.tree.sync()
+        for guild in self.bot.guilds:
+            await self.bot.tree.sync(guild=guild)
         await ctx.response.send_message(content=pass_str)
 
     @app_commands.command(
