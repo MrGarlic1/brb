@@ -58,7 +58,6 @@ class NekoCog(commands.GroupCog, name="neko"):
             neko_url, source_url = await self.neko_service.roll_and_get_neko_info(
                 include_nsfw=enable_nsfw, rarity=rarity, session=session
             )
-        self.neko_service.guild_user_hourly_rolls[ctx.guild.id][ctx.user.id] -= 1
         remaining_rolls -= 1
 
         rarity_str = "✨🌟✨" if rarity == NekoRarity.SS else "⭐" * rarity_int
@@ -80,6 +79,9 @@ class NekoCog(commands.GroupCog, name="neko"):
         except HTTPException:
             logger.warning(f"Could not send image: URL {neko_url}")
             await ctx.followup.send(content=fail_str)
+            return
+
+        self.neko_service.guild_user_hourly_rolls[ctx.guild.id][ctx.user.id] -= 1
 
 
 async def setup(bot: BrBot):
