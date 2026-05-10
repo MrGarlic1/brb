@@ -7,3 +7,4 @@ class ConfigKeys(Enum):
     MAX_USER_RESPONSES = "Maximum # of User Responses"
     RESTRICT_RESPONSE_DELETION = "Responses Editable only by Author"
     ENABLE_NSFW = "Enable NSFW Content (limits some commands to NSFW channels)"
+    UPDATE_CHANNEL = "Set the current channel as the daily update channel."

@@ -23,6 +23,7 @@ def default_config(guild_id: int) -> GuildConfig:
         max_user_responses=10,
         restrict_response_deletion=False,
         enable_nsfw=False,
+        update_channel=None,
     )
 
 

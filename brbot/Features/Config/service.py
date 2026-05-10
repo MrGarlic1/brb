@@ -42,6 +42,8 @@ class ConfigService:
                 db_guild_config.allow_phrases = bool(value)
             case ConfigKeys.ENABLE_NSFW:
                 db_guild_config.enable_nsfw = bool(value)
+            case ConfigKeys.UPDATE_CHANNEL:
+                db_guild_config.update_channel = value
 
         try:
             await session.commit()

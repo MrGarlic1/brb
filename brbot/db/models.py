@@ -74,6 +74,7 @@ class GuildConfig(Base):
     max_user_responses: Mapped[int] = mapped_column(Integer)
     restrict_response_deletion: Mapped[bool] = mapped_column(Boolean)
     enable_nsfw: Mapped[bool] = mapped_column(Boolean, server_default=false())
+    update_channel: Mapped[int] = mapped_column(Integer, nullable=True)
 
     __table_args__ = (UniqueConstraint("guild_id", name="uq_guild_config_guild_id"),)
 
