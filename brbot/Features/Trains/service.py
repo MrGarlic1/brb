@@ -1,6 +1,5 @@
 import asyncio
 import io
-import json
 from datetime import datetime, timedelta
 from math import log
 from os import path
@@ -14,16 +13,32 @@ import matplotlib.pyplot as plt
 from PIL import Image, ImageFont, ImageDraw
 from pilmoji import Pilmoji
 
-from discord import Interaction, Guild, Embed, File
+from discord import Interaction, Embed, File, Member as DiscordMember
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from typing import Optional
+from brbot.db.models import (
+    TrainTile,
+    TrainShot,
+    TrainPlayer,
+    TrainGame,
+    TrainPlayerTile,
+)
+from brbot.Shared.Members.repository import get_or_create_members
+from brbot.Shared.Users.repository import get_or_create_users
 
-import brbot.Core.anilist as al
+
+import brbot.Shared.Anilist.anilist as al
 import brbot.Core.botdata as bd
 from brbot.Features.Trains.data import (
-    TrainTile,
-    TrainItem,
-    TrainPlayer,
-    TrainShot,
-    game_emoji,
+    #    TrainTile,
+    #    TrainItem,
+    #    TrainPlayer,
+    #    TrainShot,
+    RIVER_RING,
+    RiverDirection,
+    GameEmoji,
     genre_colors,
     default_shop,
     find_anilist_changes,
@@ -32,125 +47,186 @@ from brbot.Features.Trains.data import (
 logger = logging.getLogger(__name__)
 
 
-class TrainGame:
-    def __init__(
-        self,
-        name: str = None,
-        date: str = None,
-        players: list[TrainPlayer] = None,
-        board: dict[tuple[int, int], TrainTile] = None,
-        gameid: int = None,
-        active: bool = True,
-        size: tuple = None,
-        shop: dict[str, TrainItem] = None,
-        known_shows: dict[int, dict] = None,
-    ):
-        if players is None:
-            players: list[TrainPlayer] = []
-        if shop is None:
-            shop = default_shop()
-        if known_shows is None:
-            known_shows = {}
-        self.name = name
-        self.date = date
-        self.players = players
-        self.gameid = gameid
-        self.active = active
-        self.size = size
-        self.board = board
-        self.shop = shop
-        self.known_shows = known_shows
-
-    def asdict(self) -> dict:
-        player_list = []
-        for player in self.players:
-            player_list.append(player.asdict())
-        board_dict = {}
-        for coord, tile in self.board.items():
-            board_dict[str(coord)] = tile.__dict__
-        item_dict = {}
-        for name, item in self.shop.items():
-            item_dict[name] = item.__dict__
-        return {
-            "name": self.name,
-            "date": self.date,
-            "players": player_list,
-            "gameid": self.gameid,
-            "active": self.active,
-            "size": self.size,
-            "board": board_dict,
-            "shop": item_dict,
-            "known_shows": self.known_shows,
-        }
-
-    def __repr__(self) -> str:
-        return (
-            f"<name={self.name}> <date={self.date}> <players={self.players}> <gameid={self.gameid}> "
-            f"<active={self.active}> <size={self.size}> <board={self.board}> "
-        )
-
-    class BoardGenError(Exception):
+class TrainService:
+    def __init__(self):
         pass
 
-    def is_done(self) -> bool:
-        done = True
-        for player in self.players:
-            if not player.done:
-                done = False
-                break
-        return done
+    @staticmethod
+    async def get_guild_active_train_game(
+        guild_id: int, session: AsyncSession, load_players: bool = False
+    ) -> Optional[TrainGame]:
+        stmt = (
+            select(TrainGame)
+            .where(TrainGame.guild_id == guild_id)
+            .where(TrainGame.active.is_(True))
+        )
+        if load_players:
+            stmt = stmt.options(
+                selectinload(TrainGame.players).selectinload(TrainPlayer.member),
+                selectinload(TrainGame.players).selectinload(TrainPlayer.shots),
+                selectinload(TrainGame.players).selectinload(TrainPlayer.player_tiles),
+            )
 
-    def in_bounds(self, row: int, col: int) -> bool:
-        if row < 1 or col < 1 or row > self.size[1] or col > self.size[0]:
-            return False
-        else:
-            return True
+        result = await session.execute(stmt)
+        return result.scalars().first()
 
-    def get_player(
-        self, player_id: int
-    ) -> Union[tuple[None, None], tuple[int, TrainPlayer]]:
-        player = None
-        player_idx = None
-        for idx, p in enumerate(self.players):
-            if p.member.id == player_id:
-                player = p
-                player_idx = idx
-        return player_idx, player
+    @staticmethod
+    async def create_train_game(
+        guild_id: int,
+        name: str,
+        players: list[DiscordMember],
+        height: int,
+        width: int,
+        session_generator: async_sessionmaker,
+    ) -> str | None:
+        discord_ids = [m.id for m in players]
+        discord_usernames = [m.name for m in players]
 
-    def save_game(self, filepath: str) -> None:
-        with open(f"{filepath}/gamedata.json", "w") as f:
-            json.dump(self.asdict(), f, separators=(",", ":"))
+        async with session_generator() as session:
+            users = await get_or_create_users(discord_ids, discord_usernames, session)
 
-    def gen_trains_board(
-        self, play_area_size: tuple[int, int] = (16, 16), river_ring: int = 0
-    ) -> None:
-        width = self.size[0]
-        height = self.size[1]
-        play_width, play_height = play_area_size
-        logger.info(f"Generating {width}x{height} board for {self.name}")
+            for u in users:
+                if u.anilist_id is None:
+                    return f"Could not create game, {u.mention_str} must link their anilist profile! (/animanga link)"
 
-        def next_to_resource(tilepos, resource) -> bool:
+            members = await get_or_create_members(discord_ids, guild_id, session)
+            member_ids_by_discord_id: dict[int, int] = {
+                m.user_id: m.id for m in members
+            }
+
+            anilist_id_by_discord_id: dict[int, int] = {
+                u.user_id: u.anilist_id for u in users
+            }
+            await session.commit()
+
+        try:
+            anilist_info_by_discord_id: dict[int, list] = {
+                discord_id: await al.query_user_animelist(anilist_id)
+                for discord_id, anilist_id in anilist_id_by_discord_id.items()
+            }
+        except Exception as e:
+            logger.error(
+                f"Could not find anilist information for players(s) in guild {guild_id}, aborting game creation: {e}"
+            )
+            return "Error connecting to anilist, please try again later."
+
+        tags_by_discord_id = await TrainService.get_player_tags(players)
+
+        async with session_generator() as session:
+            # Add board/game
+            game = TrainGame(
+                guild_id=guild_id,
+                name=name,
+                date=datetime.now(),
+                board_height=height,
+                board_width=width,
+                active=True,
+            )
+            session.add(game)
+            await session.flush()
+            game_id: int = game.id
+            board = await TrainService.gen_trains_board(
+                game_id=game_id, play_width=width, play_height=height
+            )
+            session.add_all(board.values())
+
+            # Add players
+            train_players = []
+            for discord_id in anilist_id_by_discord_id.keys():
+                train_players.append(
+                    TrainPlayer(
+                        game_id=game_id,
+                        member_id=member_ids_by_discord_id[discord_id],
+                        starting_anilist=anilist_info_by_discord_id[discord_id],
+                        tag=tags_by_discord_id[discord_id],
+                        rails=0,
+                        done=False,
+                    )
+                )
+
+            train_players = await TrainService.add_player_locations(
+                train_players, board, width, height, session
+            )
+            session.add_all(train_players)
+            await session.flush()
+
+            # Add start/end to rendered tiles
+            for player in train_players:
+                await session.refresh(player, ["player_tiles"])
+
+            for player in train_players:
+                await TrainService.add_vis_tiles(
+                    player,
+                    (player.start_col, player.start_row),
+                    (width, height),
+                    board,
+                    session,
+                    render_dist=0,
+                )
+                await TrainService.add_vis_tiles(
+                    player,
+                    (player.end_col, player.end_row),
+                    (width, height),
+                    board,
+                    session,
+                    render_dist=0,
+                )
+
+            await session.commit()
+
+        return None
+
+    @staticmethod
+    async def get_player_tags(players: list[DiscordMember]) -> dict[int, str]:
+        """
+        Update game players with unique short names for  to be represented on the board
+
+        Returns:
+            Dictionary of tags, keyed by discord user ID
+        """
+        tags_by_discord_id: dict[int, str] = {}
+        used_tags: list = []
+        for player in players:
+            done = False
+            for idx, letter in enumerate(player.global_name):
+                tag = player.global_name[0 : idx + 1].upper()
+                if tag not in used_tags:
+                    used_tags.append(tag)
+                    tags_by_discord_id[player.id] = tag
+                    done = True
+                    break
+            if not done:
+                used_tags.append(player.global_name.upper())
+                tags_by_discord_id[player.id] = player.global_name.upper()
+        return tags_by_discord_id
+
+    @staticmethod
+    async def gen_trains_board(
+        game_id: int, play_width: int, play_height: int
+    ) -> dict[tuple[int, int], TrainTile]:
+        width = play_height + 2 * RIVER_RING
+        height = play_width + 2 * RIVER_RING
+
+        logger.info(f"Generating {width}x{height} board for game {game_id}")
+
+        board: dict[tuple[int, int], TrainTile] = {}
+
+        def next_to_resource(tilepos: tuple[int, int], resource: str) -> bool:
             # Returns true if the grid tile is directly adjacent to the specified resource
             x = tilepos[0]
             y = tilepos[1]
 
             for x_new in (x - 1, x + 1):
-                try:
-                    if self.board[(x_new, y)].resource == resource:
-                        return True
-                except KeyError:
-                    pass
+                if board.get((x_new, y)).resource == resource:
+                    return True
 
             for y_new in (y - 1, y + 1):
-                try:
-                    if self.board[(x, y_new)].resource == resource:
-                        return True
-                except KeyError:
-                    pass
+                if board.get((x, y_new)).resource == resource:
+                    return True
 
             return False
 
-        def near_resource(tilepos, resource, spread) -> bool:
+        def near_resource(tilepos: tuple[int, int], resource: str, spread: int) -> bool:
             # Returns true if the grid tile is within {spread} tiles of the specified resource
             # Tilepos is (x, y)
             x = tilepos[0]
@@ -158,11 +234,8 @@ class TrainGame:
 
             for x_new in range(x - spread, x + spread):
                 for y_new in range(y - spread, y + spread):
-                    try:
-                        if self.board[(x_new, y_new)].resource == resource:
-                            return True
-                    except KeyError:
-                        pass
+                    if board.get((x_new, y_new)).resource == resource:
+                        return True
 
             return False
 
@@ -180,56 +253,56 @@ class TrainGame:
             house_chance: int = 70
             house_near_chance: int = 35
 
-            if self.board[tilepos].resource is not None:
-                return self.board[tilepos].resource
+            if board[tilepos].resource is not None:
+                return board[tilepos].resource
 
-            if self.board[tilepos].terrain is not None:
+            if board[tilepos].terrain is not None:
                 return None
 
             # Wheat
-            if near_resource(tilepos, game_emoji["wheat"], 3):
+            if near_resource(tilepos, GameEmoji.WHEAT.name, 3):
                 if randint(1, 1000) <= wheat_near_chance:
-                    return game_emoji["wheat"]
+                    return GameEmoji.WHEAT.name
             else:
                 if randint(1, 1000) <= wheat_chance:
-                    return game_emoji["wheat"]
+                    return GameEmoji.WHEAT.name
 
             # Wood
-            if near_resource(tilepos, game_emoji["wood"], 2):
+            if near_resource(tilepos, GameEmoji.WOOD.name, 2):
                 if randint(1, 1000) <= wood_near_chance:
-                    return game_emoji["wood"]
+                    return GameEmoji.WOOD.name
             else:
                 if randint(1, 1000) <= wood_chance:
-                    return game_emoji["wood"]
+                    return GameEmoji.WOOD.name
 
             # Houses
-            if next_to_resource(tilepos, game_emoji["house"]):
+            if next_to_resource(tilepos, GameEmoji.HOUSE.name):
                 if randint(1, 1000) <= house_near_chance:
-                    return game_emoji["house"]
+                    return GameEmoji.WOOD.HOUSE.name
             else:
                 if randint(1, 1000) <= house_chance:
-                    return game_emoji["house"]
+                    return GameEmoji.WOOD.HOUSE.name
 
             return None
 
         def generate_count_resource(
-            count, resource, min_spread=0
-        ) -> dict[tuple[int, int] : TrainTile]:
-            # Grid Size is (x, y), or (row, col)
+            count: int, resource: str, min_spread: int = 0
+        ) -> None:
+            # Grid Size is (x, y), or (col, row)
             added = 0
             attempts = 0
             while added < count:
                 attempts += 1
 
-                y = randint(1, width)
-                x = randint(1, height)
+                x = randint(1, width)
+                y = randint(1, height)
                 # Add resource if tile is empty and meets the minimum spread requirement
                 if (
-                    self.board[(x, y)].resource is None
-                    and self.board[(x, y)].terrain is None
+                    board[(x, y)].resource is None
+                    and board[(x, y)].terrain is None
                     and not near_resource((x, y), resource, min_spread)
                 ):
-                    self.board[(x, y)].resource = resource
+                    board[(x, y)].resource = resource
                     added += 1
                     attempts = 0
                 # Reduces minimum spread requirement at 15 attempts and tries again
@@ -240,22 +313,22 @@ class TrainGame:
                 if min_spread <= 0:
                     logger.warning(f"Failed to add {resource}, skipped")
                     break
-            return self.board
+            return None
 
-        def generate_zones() -> dict[tuple[int, int] : TrainTile]:
+        def generate_zones() -> None:
             # Adds genre zones in randomized order to grid. Both dimensions of the grid must be divisible by 4 to allow
             # for 16 zones.
 
             def add_zone(z_width, z_height, start_pos, genre) -> None:
                 for row in range(start_pos[0], start_pos[0] + z_height):
                     for col in range(start_pos[1], start_pos[1] + z_width):
-                        self.board[(row, col)].zone = genre
+                        board[(row, col)].zone = genre
 
             if play_width % 4 != 0 or play_height % 4 != 0:
                 logger.error(
                     f"Invalid board dimensions ({play_width} x {play_height}) tiles, generation aborted"
                 )
-                raise self.BoardGenError("Width and height must be divisible by 4.")
+                raise AttributeError("Width and height must be divisible by 4.")
 
             zone_width: int = play_width // 4
             zone_height: int = play_height // 4
@@ -264,13 +337,13 @@ class TrainGame:
 
             for i in range(16):
                 zone_pos = (
-                    zone_height * (i // 4) + river_ring + 1,
-                    zone_width * (i % 4) + river_ring + 1,
+                    zone_height * (i // 4) + RIVER_RING + 1,
+                    zone_width * (i % 4) + RIVER_RING + 1,
                 )
                 add_zone(zone_width, zone_height, zone_pos, zone_order[i])
-            return self.board
+            return None
 
-        def generate_river(direction: str = "") -> dict[tuple[int, int] : TrainTile]:
+        def generate_river(direction: RiverDirection) -> None:
             # Chance of river ending: [0, 1]
             base_chance: float = 0.9
 
@@ -280,7 +353,7 @@ class TrainGame:
 
             river_tiles: list[tuple[int, int]] = []
 
-            if direction == "Right":
+            if direction == RiverDirection.RIGHT:
                 river_start = (
                     randint(round(width * 0.25), round(width * 0.75)),
                     randint(1, round(width * 0.25)),
@@ -299,7 +372,7 @@ class TrainGame:
                         if randint(1, 1000) <= chance:
                             river_tiles.append((row, col))
 
-            elif direction == "DownRight":
+            elif direction == RiverDirection.DOWN_RIGHT:
                 river_start = (
                     randint(1, round(width * 0.25)),
                     randint(1, round(width * 0.25)),
@@ -318,7 +391,7 @@ class TrainGame:
                         if randint(1, 1000) <= chance:
                             river_tiles.append((row, col))
 
-            elif direction == "Down":
+            elif direction == RiverDirection.DOWN:
                 river_start = (
                     randint(1, round(width * 0.25)),
                     randint(round(width * 0.25), round(width * 0.75)),
@@ -337,7 +410,7 @@ class TrainGame:
                         if randint(1, 1000) <= chance:
                             river_tiles.append((row, col))
 
-            elif direction == "DownLeft":
+            elif direction == RiverDirection.DOWN_LEFT:
                 river_start = (
                     randint(round(height * 0.75), height),
                     randint(1, round(width * 0.25)),
@@ -359,30 +432,33 @@ class TrainGame:
                 pass
 
             for pos in river_tiles:
-                self.board[pos].terrain = "river"
-            return self.board
+                board[pos].terrain = "river"
+            return None
 
         # For zones to generate, both board dimensions must be divisible by 4
 
         # Generate empty board
-        self.board = {}
-        for r in range(height):
-            for c in range(width):
-                if r + 1 <= river_ring or r + 1 > height - river_ring:
+        for c in range(width):
+            for r in range(height):
+                if c + 1 <= RIVER_RING or c + 1 > height - RIVER_RING:
                     terrain = "river"
-                elif c + 1 <= river_ring or c + 1 > width - river_ring:
+                elif r + 1 <= RIVER_RING or r + 1 > width - RIVER_RING:
                     terrain = "river"
                 else:
                     terrain = None
-                self.board[(r + 1, c + 1)] = TrainTile(terrain=terrain)
+                board[(c + 1, r + 1)] = TrainTile(
+                    column=c,
+                    row=r,
+                    game_id=game_id,
+                    terrain=terrain,
+                )
 
         # Add terrain (chance out of 1000)
         river_chance = 900
         if randint(1, 1000) <= river_chance:
-            river_dir = ("Down", "DownLeft", "DownRight", "Right")
-            river_dir = choice(river_dir)
-            logger.debug(f"Generating river tiles in {river_dir} for {self.name}")
-            self.board = generate_river(river_dir)
+            river_dir = choice(list(RiverDirection))
+            logger.debug(f"Generating river tiles in {river_dir} for game {game_id}")
+            generate_river(river_dir)
 
         # Add count-based resources
         city_count: int = 4
@@ -390,66 +466,43 @@ class TrainGame:
         gem_count: int = 2
         shop_count: int = 4
 
-        self.board = generate_count_resource(
-            count=city_count, resource=game_emoji["city"], min_spread=4
+        generate_count_resource(
+            count=city_count, resource=GameEmoji.CITY.name, min_spread=4
         )
-        self.board = generate_count_resource(
-            count=prison_count, resource=game_emoji["prison"], min_spread=6
+        generate_count_resource(
+            count=prison_count, resource=GameEmoji.PRISON.name, min_spread=6
         )
-        self.board = generate_count_resource(
-            count=gem_count, resource=game_emoji["gems"], min_spread=8
+        generate_count_resource(
+            count=gem_count, resource=GameEmoji.GEMS.name, min_spread=8
         )
-        self.board = generate_count_resource(
-            count=shop_count, resource=game_emoji["shop"], min_spread=8
+        generate_count_resource(
+            count=shop_count, resource=GameEmoji.SHOP.name, min_spread=8
         )
 
         # Add random resources
         for c in range(width):
             for r in range(height):
-                self.board[(r + 1, c + 1)].resource = generate_random_resources(
+                board[(c + 1, r + 1)].resource = generate_random_resources(
                     (r + 1, c + 1)
                 )
 
         # Add genre zones
-        self.board = generate_zones()
-        return None
+        generate_zones()
+        return board
 
-    def update_vis_tiles(
-        self,
-        player_idx: int,
-        shot_row: int,
-        shot_col: int,
-        remove: bool = False,
-        render_dist: int = 4,
-    ):
-        if "Telescope" in self.players[player_idx].inventory:
-            render_dist += self.players[player_idx].inventory["Telescope"].amount
-
-        for row in range(shot_row - render_dist, shot_row + render_dist + 1):
-            for col in range(shot_col - render_dist, shot_col + render_dist + 1):
-                if (row, col) in self.players[
-                    player_idx
-                ].vis_tiles:  # Already rendered tiles
-                    if remove:
-                        if not any(
-                            (
-                                abs(player_shot.row - row) <= render_dist
-                                and abs(player_shot.col - col) <= render_dist
-                                for player_shot in self.players[player_idx].shots
-                            )
-                        ):
-                            self.players[player_idx].vis_tiles.remove((row, col))
-                    else:
-                        continue
-                elif self.in_bounds(row, col):
-                    self.players[player_idx].vis_tiles.append((row, col))
-
-    def gen_player_locations(self, river_ring: int) -> None:
-        row_bounds: tuple[int, int] = (1 + river_ring, self.size[1] - river_ring)
-        col_bounds: tuple[int, int] = (1 + river_ring, self.size[0] - river_ring)
+    @staticmethod
+    async def add_player_locations(
+        players: list[TrainPlayer],
+        board: dict[tuple[int, int], TrainTile],
+        width: int,
+        height: int,
+        session: AsyncSession,
+    ) -> list[TrainPlayer]:
+        row_bounds = (1 + RIVER_RING, height - RIVER_RING)
+        col_bounds = (1 + RIVER_RING, width - RIVER_RING)
         taken_spaces: list = []
 
-        for player_idx, player in enumerate(self.players):
+        for player_idx, player in enumerate(players):
             quadrant: str = choice(("Left", "Top"))
 
             # Generate start locations (NOTE: game.size is (width, height) while coordinates are in (row, col)
@@ -462,8 +515,8 @@ class TrainGame:
                     start_loc = (row_bounds[0], randint(col_bounds[0], col_bounds[1]))
 
                 if (
-                    self.board[start_loc].terrain is None
-                    and self.board[start_loc].resource is None
+                    board[start_loc].terrain is None
+                    and board[start_loc].resource is None
                     and start_loc not in taken_spaces
                 ):
                     player.start = start_loc
@@ -472,13 +525,12 @@ class TrainGame:
                 attempts += 1
             if start_loc is None or attempts > 40:  # Error catch
                 logger.error(
-                    f"Unable to generate {player.member.name} starting location in game "
-                    f"{self.name} after {attempts}, aborting."
+                    f"Unable to generate player {player_idx}'s starting location in game "
+                    f" after {attempts}, aborting."
                 )
-                raise self.BoardGenError(
+                raise Exception(
                     "Failed generating board. Try increasing the board size?"
                 )
-            self.update_vis_tiles(player_idx, start_loc[0], start_loc[1])
 
             # Generate end locations
             attempts = 0
@@ -490,8 +542,8 @@ class TrainGame:
                     end_loc = (row_bounds[1], randint(col_bounds[0], col_bounds[1]))
 
                 if (
-                    self.board[end_loc].terrain is None
-                    and self.board[end_loc].resource is None
+                    board[end_loc].terrain is None
+                    and board[end_loc].resource is None
                     and end_loc not in taken_spaces
                 ):
                     player.end = end_loc
@@ -500,35 +552,79 @@ class TrainGame:
                 attempts += 1
             if end_loc is None or attempts > 40:  # Error catch
                 logger.error(
-                    f"Unable to generate {player.member.name} ending location in game "
-                    f"{self.name} after {attempts}, aborting."
+                    f"Unable to generate player {player_idx}'s ending location in game "
+                    f" after {attempts}, aborting."
                 )
-                raise self.BoardGenError(
+                raise Exception(
                     "Failed generating board. Try increasing the board size?"
                 )
-            self.update_vis_tiles(player_idx, end_loc[0], end_loc[1], render_dist=0)
 
-    def get_player_tags(self) -> None:
-        """
-        Update game players with unique short names for  to be represented on the board
+        return players
 
-        Returns:
-            None
-        """
-        used_tags: list = []
+    @staticmethod
+    async def add_vis_tiles(
+        player: TrainPlayer,
+        root_position: tuple[int, int],
+        board_size: tuple[int, int],
+        board: dict[tuple[int, int], TrainTile],
+        session: AsyncSession,
+        telescope_count: int = 0,
+        render_dist: int = 4,
+    ) -> None:
+        shot_col = root_position[0]
+        shot_row = root_position[1]
+        render_dist += telescope_count
+
+        vis_tiles_by_coordinate = {
+            (tile.column, tile.row): tile for tile in player.player_tiles
+        }
+
+        new_vis_tiles: list[TrainPlayerTile] = []
+
+        for col in range(shot_col - render_dist, shot_col + render_dist + 1):
+            for row in range(shot_row - render_dist, shot_row + render_dist + 1):
+                if (col, row) in vis_tiles_by_coordinate:  # Already rendered tiles
+                    continue
+                elif TrainService.in_bounds(col, row, size=board_size):
+                    new_vis_tiles.append(
+                        TrainPlayerTile(
+                            tile_id=board[(col, row)].id,
+                            column=col,
+                            row=row,
+                            player_id=player.id,
+                            has_rail=shot_col == col and shot_row == row,
+                        )
+                    )
+
+        session.add_all(new_vis_tiles)
+
+    @staticmethod
+    def in_bounds(row: int, col: int, size: tuple[int, int]) -> bool:
+        if row < 1 or col < 1 or row > size[1] or col > size[0]:
+            return False
+        else:
+            return True
+
+    ### ### ### ###
+
+    def is_done(self) -> bool:
+        done = True
         for player in self.players:
-            done = False
-            for idx, letter in enumerate(player.member.global_name):
-                tag = player.member.global_name[0 : idx + 1].upper()
-                if tag not in used_tags:
-                    used_tags.append(tag)
-                    player.tag = tag
-                    done = True
-                    break
-            if not done:
-                used_tags.append(player.member.global_name.upper())
-                player.tag = player.member.global_name.upper()
-        return None
+            if not player.done:
+                done = False
+                break
+        return done
+
+    def get_player(
+        self, player_id: int
+    ) -> Union[tuple[None, None], tuple[int, TrainPlayer]]:
+        player = None
+        player_idx = None
+        for idx, p in enumerate(self.players):
+            if p.member.id == player_id:
+                player = p
+                player_idx = idx
+        return player_idx, player
 
     def is_valid_shot(self, player: TrainPlayer, shot_row: int, shot_col: int) -> bool:
         if player is None:  # Player not in game
@@ -1447,110 +1543,3 @@ class TrainGame:
             embed.add_field(name=category.title(), value=score)
 
         return embed, None
-
-
-async def load_trains_game(
-    filepath: str, guild: Guild, active_only: bool = False
-) -> TrainGame | None:
-    with open(f"{filepath}/gamedata.json", "r") as f:
-        game_dict = json.load(f)
-    if (
-        active_only and not game_dict["active"]
-    ):  # Skip loading inactive games if specified for faster loads
-        return TrainGame(active=False)
-
-    # Convert str/list keys back into tuple for use in game
-    board: dict = {}
-    for key, val in game_dict["board"].items():
-        coords = key[1:-1].split(",")
-        coords[0] = int(coords[0])
-        coords[1] = int(coords[1])
-        coords = tuple(coords)
-        board[coords] = TrainTile(
-            resource=game_dict["board"][key]["resource"],
-            zone=game_dict["board"][key]["zone"],
-            rails=game_dict["board"][key]["rails"],
-            terrain=game_dict["board"][key]["terrain"],
-        )
-
-    shop: dict = {}
-
-    for item in game_dict["shop"].values():
-        shop[item["name"]] = TrainItem(
-            name=item["name"],
-            emoji=item["emoji"],
-            description=item["description"],
-            amount=item["amount"],
-            cost=item["cost"],
-            showinfo=item["showinfo"],
-            uses=item["uses"],
-        )
-
-    # Convert player dicts back into player classes
-    player_list: list = []
-    for player in game_dict["players"]:
-        shot_list: list = []
-        for shot in player["shots"]:
-            shot_list.append(
-                TrainShot(
-                    row=shot["row"],
-                    col=shot["col"],
-                    show_id=shot["show_id"],
-                    info=shot["info"],
-                    time=shot["time"],
-                )
-            )
-
-        item_dict: dict = {}
-        for name, item in player["inventory"].items():
-            if "showinfo" not in item:
-                item["showinfo"] = ""
-            item_dict[name] = TrainItem(
-                name=item["name"],
-                emoji=item["emoji"],
-                description=item["description"],
-                amount=item["amount"],
-                cost=item["cost"],
-                showinfo=item["showinfo"],
-                uses=item["showinfo"],
-            )
-
-        member = await guild.fetch_member(player["member_id"])
-        dm_channel = (
-            await member.create_dm() if not member.dm_channel else member.dm_channel
-        )
-        player_list.append(
-            TrainPlayer(
-                member=member,
-                tag=player["tag"],
-                done=player["done"],
-                rails=player["rails"],
-                dmchannel=dm_channel,
-                start=tuple(player["start"]),
-                end=tuple(player["end"]),
-                score=player["score"],
-                shots=shot_list,
-                vis_tiles=[tuple(tile) for tile in player["vis_tiles"]],
-                donetime=player["donetime"],
-                inventory=item_dict,
-                starting_anilist=player["starting_anilist"],
-                anilist_id=player["anilist_id"],
-                least_watched_genre=player["least_watched_genre"],
-            )
-        )
-
-    game = TrainGame(
-        name=game_dict["name"],
-        date=game_dict["date"],
-        players=player_list,
-        board=board,
-        gameid=game_dict["gameid"],
-        active=game_dict["active"],
-        size=tuple(game_dict["size"]),
-        shop=shop,
-        known_shows={
-            int(show_id): show_info
-            for show_id, show_info in game_dict["known_shows"].items()
-        },
-    )
-    return game

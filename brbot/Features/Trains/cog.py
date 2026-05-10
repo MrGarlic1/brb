@@ -1,18 +1,18 @@
 from brbot.Core.bot import BrBot
-from brbot.Features.Trains.service import TrainGame, load_trains_game
+from brbot.Features.Trains.service import TrainGame, TrainService
 from brbot.Features.Trains.data import (
-    TrainShot,
-    TrainPlayer,
+    DEFAULT_HEIGHT,
+    DEFAULT_WIDTH,
     default_shop,
     train_game_embed,
     GameStatsView,
     GameRulesView,
     gen_rules_embed,
 )
-import brbot.Core.anilist as al
+import brbot.Shared.Anilist.anilist as al
 import brbot.Core.botdata as bd
 import asyncio
-from os import path, listdir, mkdir
+from os import listdir, mkdir
 import brbot.Core.botutils as bu
 from shutil import copytree, ignore_patterns
 from datetime import datetime
@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 class TrainsCog(commands.GroupCog, name="trains"):
     def __init__(self, bot: BrBot):
         self.bot = bot
+        self.game_service = TrainService()
 
     @app_commands.command(name="newgame", description="Create a new trains game")
     @app_commands.describe(
@@ -40,23 +41,32 @@ class TrainsCog(commands.GroupCog, name="trains"):
         ctx: Interaction,
         name: str,
         players: str,
-        width: int = 16,
-        height: int = 16,
+        width: int = DEFAULT_WIDTH,
+        height: int = DEFAULT_HEIGHT,
     ):
         await ctx.response.defer()
-        river_ring: int = 1
 
         # Return errors if game is active or invalid name/width/height
-        if ctx.guild_id in bd.active_trains:
-            await ctx.followup.send(
-                content=f'The game "{bd.active_trains[ctx.guild_id].name}" is already active in this server.'
+        async with self.bot.session_generator() as session:
+            existing_game = await self.game_service.get_guild_active_train_game(
+                ctx.guild.id, session
             )
-            return True
-        if path.exists(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{name}"):
-            await ctx.followup.send(content="Name already exists!")
-            return True
 
-        logger.info(f"Creating new trains game {name} in {ctx.guild.name}")
+            if existing_game is not None:
+                await ctx.followup.send(
+                    content=f"The game {existing_game.name} is already active in this server."
+                )
+                return
+
+        # Get valid game players
+        players = await bu.get_members_from_str(ctx.guild, players)
+        if not players:
+            await ctx.followup.send(content="No valid players specified.")
+            return
+
+        await self.game_service.create_train_game(
+            ctx.guild.id, name, players, self.bot.session_generator
+        )
 
         async def add_trains_player(m: Member):
             dm_channel = await m.create_dm() if m.dm_channel is None else m.dm_channel

@@ -1,38 +1,19 @@
-from dataclasses import dataclass
-from discord import Member, DMChannel, Interaction, Embed
+from discord import Interaction, Embed
 from discord.ui import View
-from brbot.Core.botdata import linked_profiles, bot_avatar_url, train_zones_url
-from brbot.Shared.buttons import NextPgButton, PrevPgButton
+from brbot.Core.botdata import bot_avatar_url, train_zones_url
+from brbot.Shared.Discord.buttons import NextPgButton, PrevPgButton
+from enum import Enum
+
+DEFAULT_WIDTH = 16
+DEFAULT_HEIGHT = 16
+RIVER_RING = 1
 
 
-@dataclass
-class TrainShot:
-    def __init__(self, row: int, col: int, show_id: int, info: str, time: str):
-        self.row = row
-        self.col = col
-        self.show_id = show_id
-        self.info = info
-        self.time = time
-
-    def coords(self) -> tuple[int, int]:
-        return self.row, self.col
-
-
-@dataclass
-class TrainTile:
-    def __init__(
-        self,
-        resource: str = None,
-        terrain: str = None,
-        zone: str = None,
-        rails: list[str] = None,
-    ):
-        self.resource = resource
-        self.terrain = terrain
-        self.zone = zone
-        self.rails = rails
-        if self.rails is None:
-            self.rails = []
+class RiverDirection(Enum):
+    RIGHT = 0
+    DOWN_RIGHT = (1,)
+    DOWN = 2
+    DOWN_LEFT = 3
 
 
 class TrainItem:
@@ -54,6 +35,7 @@ class TrainItem:
         self.showinfo = showinfo
         self.uses = uses
 
+    """
     def inv_entry(self):
         return f"{self.emoji}: (x{self.amount})"
 
@@ -62,92 +44,7 @@ class TrainItem:
 
     def __repr__(self):
         return f"{self.name} {self.emoji} {self.description} {self.amount} {self.cost} {self.showinfo}"
-
-
-@dataclass
-class TrainPlayer:
-    def __init__(
-        self,
-        member: Member = None,
-        tag: str = None,
-        dmchannel: DMChannel = None,
-        rails: int = 0,
-        shots: list[TrainShot] = None,
-        vis_tiles: list[tuple] = None,
-        score: dict[str, int] = None,
-        start: tuple = None,
-        end: tuple = None,
-        done: bool = False,
-        donetime: str = None,
-        inventory: dict = None,
-        shops_used: list[tuple[int, int]] = None,
-        anilist_id: int = None,
-        least_watched_genre: str = None,
-        starting_anilist: list = None,
-    ):
-        if vis_tiles is None:
-            vis_tiles = []
-        if score is None:
-            score = {}
-        if shots is None:
-            shots = []
-        if inventory is None:
-            inventory = {}
-        if shops_used is None:
-            shops_used = []
-        if anilist_id is None:
-            anilist_id = linked_profiles[member.id]
-
-        self.member = member
-        self.tag = tag
-        self.done = done
-        self.rails = rails
-        self.dmchannel = dmchannel
-        self.start = start
-        self.end = end
-        self.score: dict[str, int] = score
-        self.shots = shots
-        self.donetime = donetime
-        self.vis_tiles = vis_tiles
-        self.inventory = inventory
-        self.shops_used: list[tuple[int, int]] = shops_used
-        self.anilist_id = anilist_id
-        self.least_watched_genre = least_watched_genre
-        self.starting_anilist = starting_anilist
-
-    def asdict(self) -> dict:
-        shot_list = []
-        for shot in self.shots:
-            shot_list.append(shot.__dict__)
-        item_dict = {}
-        for name, item in self.inventory.items():
-            item_dict[name] = item.__dict__
-        return {
-            "member_id": self.member.id,
-            "tag": self.tag,
-            "done": self.done,
-            "rails": self.rails,
-            "dmchannel": self.dmchannel.id,
-            "start": self.start,
-            "end": self.end,
-            "score": self.score,
-            "shots": shot_list,
-            "donetime": self.donetime,
-            "vis_tiles": self.vis_tiles,
-            "inventory": item_dict,
-            "anilist_id": self.anilist_id,
-            "starting_anilist": self.starting_anilist,
-            "least_watched_genre": self.least_watched_genre,
-        }
-
-    def update_item_count(self, itemname) -> None:
-        self.inventory[itemname].uses -= 1
-
-        if self.inventory[itemname].uses == 0:
-            self.inventory[itemname].amount -= 1
-
-        if self.inventory[itemname].amount == 0:
-            self.inventory.pop(itemname)
+    """
 
 
 def find_anilist_changes(
@@ -267,26 +164,26 @@ genre_colors: dict = {
     "Thriller": (161, 77, 202),
 }
 
-game_emoji: dict = {
-    "wheat": "🌾",
-    "wood": "🌳",
-    "gems": "💎",
-    "city": "🌃",
-    "prison": "🔒",
-    "house": "🏠",
-    "river": "🏞",
-    "telescope": "🔭",
-    "gun": "🔫",
-    "bucket": "🪣",
-    "bridge": "🌉",
-    "axe": "🪓",
-    "coin": "🪙",
-    "maglev": "🚄",
-    "shop": "🛒",
-    "first": "🥇",
-    "second": "🥈",
-    "third": "🥉",
-}
+
+class GameEmoji(Enum):
+    WHEAT = "🌾"
+    WOOD = "🌳"
+    GEMS = "💎"
+    CITY = "🌃"
+    PRISON = "🔒"
+    HOUSE = "🏠"
+    RIVER = "🏞"
+    TELESCOPE = "🔭"
+    GUN = "🔫"
+    BUCKET = "🪣"
+    BRIDGE = "🌉"
+    AXE = "🪓"
+    COIN = "🪙"
+    MAGLEV = "🚄"
+    SHOP = "🛒"
+    FIRST = "🥇"
+    SECOND = "🥈"
+    THIRD = "🥉"
 
 
 def train_game_embed(ctx: Interaction, game) -> Embed:

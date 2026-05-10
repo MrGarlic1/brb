@@ -270,7 +270,6 @@ class BingoGame(Base):
     active: Mapped[bool] = mapped_column(Boolean)
     guild_id: Mapped[int] = mapped_column(ForeignKey("guilds.id"))
     mode: Mapped[int] = mapped_column(Integer)
-    known_entries: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     guild = relationship("Guild", back_populates="bingo_games")
     players: Mapped[List[BingoPlayer]] = relationship(
         "BingoPlayer", back_populates="game", cascade="all, delete-orphan"
@@ -288,10 +287,10 @@ class TrainGame(Base):
     guild_id: Mapped[int] = mapped_column(ForeignKey("guilds.id"))
     guild = relationship("Guild", back_populates="train_games")
     name: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
-    board_length: Mapped[int] = mapped_column(Integer)
+    date: Mapped[datetime] = mapped_column(DateTime)
+    board_height: Mapped[int] = mapped_column(Integer)
     board_width: Mapped[int] = mapped_column(Integer)
     active: Mapped[bool] = mapped_column(Boolean)
-    known_entries: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     tiles = relationship(
         "TrainTile", back_populates="game", cascade="all, delete-orphan"
     )
@@ -305,7 +304,7 @@ class TrainGame(Base):
 
     @property
     def size(self) -> tuple[int, int]:
-        return self.board_length, self.board_width
+        return self.board_height, self.board_width
 
 
 class TrainItem(Base):
@@ -336,12 +335,11 @@ class TrainPlayer(Base):
     rails: Mapped[int] = mapped_column(Integer)
     starting_anilist: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     score: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    start_tile_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("train_tiles.id"), nullable=True
-    )
-    end_tile_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("train_tiles.id"), nullable=True
-    )
+    start_col: Mapped[int] = mapped_column(Integer)
+    start_row: Mapped[int] = mapped_column(Integer)
+    end_col: Mapped[int] = mapped_column(Integer)
+    end_row: Mapped[int] = mapped_column(Integer)
+
     current_tile_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("player_tiles.id"), nullable=True
     )
@@ -403,6 +401,8 @@ class TrainPlayerTile(Base):
     __tablename__ = "player_tiles"
     id: Mapped[int] = mapped_column(primary_key=True)
     tile_id: Mapped[int] = mapped_column(ForeignKey("train_tiles.id"))
+    row: Mapped[int] = mapped_column(Integer)
+    column: Mapped[int] = mapped_column(Integer)
     player_id: Mapped[int] = mapped_column(ForeignKey("train_players.id"))
     player = relationship(
         "TrainPlayer", back_populates="player_tiles", foreign_keys=[player_id]
@@ -419,10 +419,6 @@ class TrainPlayerTile(Base):
             "player_id", "tile_id", name="uq_train_player_tile_player_tile_id"
         ),
     )
-
-    @property
-    def position(self) -> tuple[int, int]:
-        return self.tile.row, self.tile.column
 
 
 class TrainShot(Base):
