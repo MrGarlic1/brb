@@ -1,5 +1,5 @@
 from brbot.Core.bot import BrBot
-from brbot.Features.Trains.service import TrainGame, TrainService
+from brbot.Features.Trains.service import TrainService
 from brbot.Features.Trains.data import (
     DEFAULT_HEIGHT,
     DEFAULT_WIDTH,
@@ -11,13 +11,12 @@ from brbot.Features.Trains.data import (
 )
 import brbot.Shared.Anilist.anilist as al
 import brbot.Core.botdata as bd
-import asyncio
-from os import listdir, mkdir
+from os import listdir
 import brbot.Core.botutils as bu
 from shutil import copytree, ignore_patterns
 from datetime import datetime
 from io import BytesIO
-from discord import app_commands, Interaction, File, Member
+from discord import app_commands, Interaction, File
 from discord.ext import commands
 import logging
 
@@ -83,7 +82,9 @@ class TrainsCog(commands.GroupCog, name="trains"):
                 ctx=ctx, name=name, width=width, height=height, members=players
             )
         )
-        await TrainService.update_boards_after_create(ctx=ctx, session_generator=self.bot.session_generator)
+        await TrainService.update_boards_after_create(
+            ctx=ctx, session_generator=self.bot.session_generator
+        )
         return
 
     @app_commands.command(

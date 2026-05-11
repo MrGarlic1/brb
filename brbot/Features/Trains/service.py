@@ -13,7 +13,13 @@ import matplotlib.pyplot as plt
 from PIL import Image, ImageFont, ImageDraw
 from pilmoji import Pilmoji
 
-from discord import Interaction, Embed, File, Member as DiscordMember, Guild as DiscordGuild
+from discord import (
+    Interaction,
+    Embed,
+    File,
+    Member as DiscordMember,
+    Guild as DiscordGuild,
+)
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -170,7 +176,9 @@ class TrainService:
 
             await session.commit()
 
-        await TrainService.update_boards_after_create(guild, session_generator=session_generator)
+        await TrainService.update_boards_after_create(
+            guild, session_generator=session_generator
+        )
         return None
 
     @staticmethod
@@ -706,7 +714,6 @@ class TrainService:
             content=f'## Train board update for "{game.name}" in {guild.name}!',
         )
 
-
     @staticmethod
     async def update_boards_after_shot(
         guild: DiscordGuild, row: int, column: int
@@ -736,13 +743,22 @@ class TrainService:
         return None
 
     @staticmethod
-    async def update_boards_after_create(guild: DiscordGuild, session_generator: async_sessionmaker) -> None:
-
+    async def update_boards_after_create(
+        guild: DiscordGuild, session_generator: async_sessionmaker
+    ) -> None:
         async with session_generator() as session:
             stmt = (
-                select(TrainGame).where(TrainGame.guild_id == guild.id).where(TrainGame.active)
-                .options(selectinload(TrainGame.players).selectinload(TrainPlayer.player_tiles))
-                .options(selectinload(TrainGame.players).selectinload(TrainPlayer.member))
+                select(TrainGame)
+                .where(TrainGame.guild_id == guild.id)
+                .where(TrainGame.active)
+                .options(
+                    selectinload(TrainGame.players).selectinload(
+                        TrainPlayer.player_tiles
+                    )
+                )
+                .options(
+                    selectinload(TrainGame.players).selectinload(TrainPlayer.member)
+                )
                 .options(selectinload(TrainGame.tiles))
             )
             result = await session.execute(stmt)
@@ -760,7 +776,9 @@ class TrainService:
                 f"{player.member.name} for game {game.name} in {guild.name}"
             )
             tasks.append(
-                asyncio.create_task(TrainService.push_player_update(guild, game, player))
+                asyncio.create_task(
+                    TrainService.push_player_update(guild, game, player)
+                )
             )
         await asyncio.gather(*tasks)
         return None
@@ -1145,9 +1163,7 @@ class TrainService:
             if board[coords].terrain == "river":
                 draw_hatch_pattern(row, col)
 
-            resource_text = (
-                board[coords].resource if board[coords].resource else ""
-            )
+            resource_text = board[coords].resource if board[coords].resource else ""
 
             # Draw start/end text
             if coords == player_start and not vis_tiles[coords].has_rail:
