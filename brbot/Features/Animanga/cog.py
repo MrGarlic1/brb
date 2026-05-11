@@ -1,14 +1,23 @@
 import brbot.Core.botdata as bd
-from brbot.Features.Animanga.service import AnimangaService
-from brbot.Features.Animanga.data import RecView, IgnoredRecView, MediaType
+from brbot.Features.Animanga.recservice import RecommendationService
+from brbot.Features.Animanga.statservice import AnimangaStatService
+from brbot.Features.Animanga.data import (
+    RecView,
+    IgnoredRecView,
+    MediaType,
+    DAILY_UPDATE_HOUR_UTC,
+)
 from brbot.Shared.Anilist.anilist import query_user_id
 from brbot.Core.bot import BrBot
-from brbot.db.models import User
+from brbot.Shared.Members.repository import get_or_create_member
+from brbot.db.models import User, Member, AnimangaListEntry
 from brbot.Shared.Users.repository import get_or_create_user
 from httpx import RequestError
+from datetime import datetime, timezone, time
 from discord import app_commands, Interaction
-from discord.ext import commands
+from discord.ext import commands, tasks
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import delete
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,8 +25,10 @@ logger = logging.getLogger(__name__)
 
 class AnimangaCog(commands.GroupCog, name="animanga"):
     def __init__(self, bot: BrBot):
-        self.animanga_service = AnimangaService()
+        self.rec_service = RecommendationService()
+        self.stat_service = AnimangaStatService()
         self.bot = bot
+        self.send_daily_stat_update.start()
 
     @app_commands.command(
         name="link", description="Link your discord profile to an anilist profile"
@@ -107,7 +118,7 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
                 await ctx.response.send_message(
                     content="Your anilist profile isn't linked! (/animanga link)"
                 )
-                return True
+                return
 
             medium: MediaType = (
                 MediaType.Anime if medium == MediaType.Anime.name else MediaType.Manga
@@ -115,7 +126,7 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
             await ctx.response.defer()
 
             try:
-                await self.animanga_service.check_or_update_recommendation_cache(
+                await self.rec_service.check_or_update_recommendation_cache(
                     user=user,
                     media_type=medium,
                     session=session,
@@ -125,9 +136,9 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
                 await ctx.followup.send(
                     "An error occurred connecting to Anilist. Please try again later."
                 )
-                return True
+                return
 
-            embed, media_id = await self.animanga_service.gen_rec_embed_page(
+            embed, media_id = await self.rec_service.gen_rec_embed_page(
                 anilist_user_id=user_anilist_id,
                 anilist_username=anilist_username,
                 media_type=medium,
@@ -136,7 +147,7 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
                 session=session,
             )
         view = RecView(
-            animanga_service=self.animanga_service,
+            rec_service=self.rec_service,
             user_id=user.user_id,
             anilist_user_id=user_anilist_id,
             anilist_username=anilist_username,
@@ -146,7 +157,7 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
             session_generator=self.bot.session_generator,
         )
         await ctx.followup.send(embed=embed, view=view)
-        return False
+        return
 
     @app_commands.command(
         name="listignored", description="Show your ignored animanga recommendations."
@@ -178,7 +189,7 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
             (
                 embed,
                 ignored_media_id,
-            ) = await self.animanga_service.get_ignored_rec_embed_page(
+            ) = await self.rec_service.get_ignored_rec_embed_page(
                 username=ctx.user.name,
                 user_discord_id=ctx.user.id,
                 page=0,
@@ -186,7 +197,7 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
                 media_type=medium,
             )
         view = IgnoredRecView(
-            animanga_service=self.animanga_service,
+            rec_service=self.rec_service,
             user_id=ctx.user.id,
             media_type=medium,
             discord_username=ctx.user.name,
@@ -195,6 +206,105 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
         )
         await ctx.followup.send(embed=embed, view=view)
         return False
+
+    @app_commands.command(
+        name="track_daily",
+        description="Add yourself to Anilist stat tracking for the daily leaderboard.",
+    )
+    async def add_tracking(self, ctx: Interaction):
+        await ctx.response.defer()
+
+        async with self.bot.session_generator() as session:
+            user: User = await get_or_create_user(ctx.user.id, ctx.user.name, session)
+
+            if user.anilist_id is None:
+                await ctx.followup.send(
+                    content="Your anilist profile isn't linked! (/animanga link)"
+                )
+                return
+
+            user_id = user.user_id
+            anilist_id = user.anilist_id
+
+        initial_list_entries = await self.stat_service.get_user_list_entries(
+            user_id, anilist_id
+        )
+
+        if initial_list_entries is None:
+            await ctx.followup.send(
+                "An error occurred connecting to Anilist. Please try again later."
+            )
+            return
+
+        async with self.bot.session_generator() as session:
+            session.add_all(initial_list_entries)
+            member: Member = await get_or_create_member(
+                ctx.user.id, ctx.guild.id, session
+            )
+            if member.stat_tracking_enabled:
+                await ctx.followup.send("Stat tracking is already enabled.")
+                return
+            member.stat_tracking_enabled = True
+            await session.commit()
+            logger.info(
+                f"Added tracking for user {ctx.user.name} in guild {ctx.guild.id}"
+            )
+
+        await ctx.followup.send(content=bd.pass_str)
+        return
+
+    @app_commands.command(
+        name="untrack_daily",
+        description="Remove yourself from Anilist stat tracking for the daily leaderboard.",
+    )
+    async def remove_tracking(self, ctx: Interaction):
+        async with self.bot.session_generator() as session:
+            member: Member = await get_or_create_member(
+                ctx.user.id, ctx.guild.id, session
+            )
+
+            if not member.stat_tracking_enabled:
+                await ctx.response.send_message(
+                    content="Stat tracking is already disabled!"
+                )
+                return
+            member.stat_tracking_enabled = False
+            stmt = delete(AnimangaListEntry).where(
+                AnimangaListEntry.user_id == ctx.user.id
+            )
+            await session.execute(stmt)
+            await session.commit()
+
+        await ctx.response.send_message(content=bd.pass_str)
+        return
+
+    @tasks.loop(time=time(hour=DAILY_UPDATE_HOUR_UTC, tzinfo=timezone.utc))
+    async def send_daily_stat_update(self):
+        logger.info(f"Sending daily stat updates to {len(self.bot.guilds)} guilds.")
+        for guild in self.bot.guilds:
+            if self.bot.guild_configs[guild.id].update_channel is None:
+                continue
+            channel = self.bot.get_channel(
+                self.bot.guild_configs[guild.id].update_channel
+            )
+            if channel is None:
+                logger.warning(f"Update channel not found for guild {guild.id}")
+                continue
+            try:
+                daily_stats = await self.stat_service.fetch_daily_activities(
+                    guild_id=guild.id, session_generator=self.bot.session_generator
+                )
+                if daily_stats is None:
+                    continue
+
+                leaderboard_embed = await self.stat_service.create_leaderboard_embed(
+                    guild, datetime.now(timezone.utc), daily_stats
+                )
+                await channel.send(embed=leaderboard_embed)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to send daily stats leaderboard in guild {guild.id}: {e}"
+                )
 
 
 async def setup(bot: BrBot):

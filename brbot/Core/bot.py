@@ -135,6 +135,7 @@ class BrBot(commands.AutoShardedBot):
                         restrict_response_deletion=new_config.restrict_response_deletion,
                         max_user_responses=new_config.max_user_responses,
                         enable_nsfw=new_config.enable_nsfw,
+                        update_channel=new_config.update_channel,
                     )
                 else:
                     self.guild_configs[guild.id] = CachedGuildConfig(
@@ -143,6 +144,7 @@ class BrBot(commands.AutoShardedBot):
                         restrict_response_deletion=guild.config.restrict_response_deletion,
                         max_user_responses=guild.config.max_user_responses,
                         enable_nsfw=guild.config.enable_nsfw,
+                        update_channel=guild.config.update_channel,
                     )
 
             if new_guilds or new_configs:

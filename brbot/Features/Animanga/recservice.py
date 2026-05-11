@@ -14,7 +14,7 @@ from discord import Embed
 logger = logging.getLogger(__name__)
 
 
-class AnimangaService:
+class RecommendationService:
     def __init__(self):
         self.known_manga_recs = {}
         self.known_anime_recs = {}
@@ -228,7 +228,7 @@ class AnimangaService:
         Raises:
             RequestError if either user statistics or list data is empty
         """
-        user_data = await AnimangaService.query_user_statistics(
+        user_data = await RecommendationService.query_user_statistics(
             anilist_id=anilist_id, media_type=media_type
         )
         media_type_str = media_type.name.lower()
@@ -237,7 +237,7 @@ class AnimangaService:
         user_stats = user_data["statistics"][media_type_str]
         user_favorites = user_data["favourites"][media_type_str]
 
-        list_data = await AnimangaService.query_media_recs(
+        list_data = await RecommendationService.query_media_recs(
             anilist_id=anilist_id,
             media_type=media_type,
             watched_count=user_stats["count"],
@@ -300,15 +300,17 @@ class AnimangaService:
                 genre_z_score = (genre["meanScore"] - user_stats["meanScore"]) / max(
                     user_stats["standardDeviation"], 1
                 )
-                user_genre_scores[genre_name] = AnimangaService._signed_power_floor(
-                    x=genre_z_score
-                    / max(max_genre_z_score, 0.001)
-                    * model.genre_user_score_weight,
-                    p=1,
-                    f=model.genre_user_score_max,
+                user_genre_scores[genre_name] = (
+                    RecommendationService._signed_power_floor(
+                        x=genre_z_score
+                        / max(max_genre_z_score, 0.001)
+                        * model.genre_user_score_weight,
+                        p=1,
+                        f=model.genre_user_score_max,
+                    )
                 )
                 user_genre_scores[genre_name] += (
-                    AnimangaService._signed_power_floor(
+                    RecommendationService._signed_power_floor(
                         x=(genre["count"] - 0.40 * len(seen_show_ids))
                         / len(seen_show_ids),
                         p=0.6,
@@ -497,7 +499,7 @@ class AnimangaService:
         # Use cached data unless cached data does not exist or is outdated
 
         use_cached = (
-            AnimangaService.is_recommendation_cache_fresh(rec_timestamp)
+            RecommendationService.is_recommendation_cache_fresh(rec_timestamp)
             and not force_update
         )
         if use_cached:
@@ -541,7 +543,7 @@ class AnimangaService:
             media_type=media_type,
         )
 
-        await AnimangaService.update_db_recommendations(
+        await RecommendationService.update_db_recommendations(
             recommendations, anilist_id, media_type, session
         )
         logger.info(

@@ -1,5 +1,6 @@
 import logging
 from brbot.Shared.Discord.buttons import NextPgButton, PrevPgButton
+from dataclasses import dataclass
 from discord.ui import View, Button
 from discord import Interaction, ButtonStyle
 from enum import Enum
@@ -7,6 +8,20 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+
+DAILY_UPDATE_HOUR_UTC = 4
+
+
+@dataclass(frozen=True)
+class DailyStatSnapshot:
+    user_discord_id: int
+    placement: int
+    minutes_watched: int
+    manga_chapters: int
+    episodes: int
+    ln_chapters: int
+    movies: int
 
 
 class IgnoreRecButton(Button):
@@ -35,7 +50,7 @@ class RecView(View):
     Discord UI View for handling animanga recommendation interactions.
 
     Attributes:
-        animanga_service (AnimangaService): Animanga service
+        rec_service (AnimangaService): Animanga service
         user_id (int): discord user ID
         anilist_user_id (int): anilist user ID recommending to
         anilist_username (str): anilist username recommending to
@@ -47,7 +62,7 @@ class RecView(View):
 
     def __init__(
         self,
-        animanga_service,
+        rec_service,
         user_id: int,
         anilist_user_id: int,
         anilist_username: str,
@@ -58,7 +73,7 @@ class RecView(View):
         max_page: Optional[int] = None,
     ):
         super().__init__(timeout=60)
-        self.animanga_service = animanga_service
+        self.rec_service = rec_service
         self.add_item(PrevPgButton())
         self.add_item(NextPgButton())
         self.add_item(IgnoreRecButton())
@@ -85,7 +100,7 @@ class RecView(View):
             return True
         elif interaction.data["custom_id"] == "ignore_rec":
             async with self.session_generator() as session:
-                await self.animanga_service.ignore_media_rec(
+                await self.rec_service.ignore_media_rec(
                     user_discord_id=self.user_id,
                     anilist_user_id=self.anilist_user_id,
                     media_id=self.current_media_id,
@@ -97,13 +112,13 @@ class RecView(View):
 
         if self.max_page is None:
             async with self.session_generator() as session:
-                max_page = await self.animanga_service.get_user_recommendation_count(
+                max_page = await self.rec_service.get_user_recommendation_count(
                     self.anilist_user_id, self.media_type, session, self.genre
                 )
                 self.max_page = max_page
 
         async with self.session_generator() as session:
-            embed, media_id = await self.animanga_service.gen_rec_embed_page(
+            embed, media_id = await self.rec_service.gen_rec_embed_page(
                 anilist_user_id=self.anilist_user_id,
                 anilist_username=self.anilist_username,
                 media_type=self.media_type,
@@ -123,7 +138,7 @@ class IgnoredRecView(View):
     Discord UI View for handling animanga recommendation interactions.
 
     Attributes:
-        animanga_service (AnimangaService): Animanga service
+        rec_service (AnimangaService): Animanga service
         user_id (int): discord user ID
         current_media_id (int): current displying rec media id
         media_type (str): Specify to recommend manga/anime
@@ -133,7 +148,7 @@ class IgnoredRecView(View):
 
     def __init__(
         self,
-        animanga_service,
+        rec_service,
         user_id: int,
         discord_username: str,
         current_media_id: int,
@@ -142,7 +157,7 @@ class IgnoredRecView(View):
         max_page: Optional[int] = None,
     ):
         super().__init__(timeout=60)
-        self.animanga_service = animanga_service
+        self.rec_service = rec_service
         self.add_item(PrevPgButton())
         self.add_item(NextPgButton())
         self.add_item(RestoreRecButton())
@@ -167,7 +182,7 @@ class IgnoredRecView(View):
             return True
         elif interaction.data["custom_id"] == "restore_rec":
             async with self.session_generator() as session:
-                await self.animanga_service.restore_media_rec(
+                await self.rec_service.restore_media_rec(
                     user_discord_id=self.user_id,
                     ignored_media_id=self.current_media_id,
                     media_type=self.media_type,
@@ -178,7 +193,7 @@ class IgnoredRecView(View):
 
         if self.max_page is None:
             async with self.session_generator() as session:
-                max_page = await self.animanga_service.get_user_ignored_count(
+                max_page = await self.rec_service.get_user_ignored_count(
                     self.user_id, self.media_type, session
                 )
                 self.max_page = max_page
@@ -187,7 +202,7 @@ class IgnoredRecView(View):
             (
                 embed,
                 ignored_media_id,
-            ) = await self.animanga_service.get_ignored_rec_embed_page(
+            ) = await self.rec_service.get_ignored_rec_embed_page(
                 username=self.discord_username,
                 media_type=self.media_type,
                 page=self.page,

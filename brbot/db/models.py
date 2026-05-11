@@ -43,6 +43,7 @@ class User(Base):
     )
     memberships = relationship("Member", back_populates="user")
     ignored_recommendations = relationship("IgnoredRecommendation")
+    animanga_entries = relationship("AnimangaListEntry", back_populates="user")
 
     discord_user: ClassVar[Optional[DiscordUser]] = None
     dmchannel: ClassVar[Optional[DMChannel]] = None
@@ -59,7 +60,6 @@ class Guild(Base):
     config = relationship("GuildConfig", uselist=False, back_populates="guild")
     bingo_games = relationship("BingoGame", back_populates="guild")
     train_games = relationship("TrainGame", back_populates="guild")
-
     discord_guild: ClassVar[Optional[DiscordGuild]] = None
 
 
@@ -87,6 +87,8 @@ class Member(Base):
     guild_id: Mapped[int] = mapped_column(ForeignKey("guilds.id"))
     guild = relationship("Guild", back_populates="members")
     responses = relationship("Response", back_populates="member")
+    stat_tracking_enabled: Mapped[bool] = mapped_column(Boolean, server_default=false())
+    daily_stats = relationship("AnimangaDailyStats", back_populates="member")
 
     __table_args__ = (
         Index("ix_member_guild_id", "guild_id"),
@@ -122,6 +124,38 @@ class Response(Base):
         return self.trigger.lower() == text.lower() or (
             not self.is_exact and text.lower().__contains__(self.trigger.lower())
         )
+
+
+class AnimangaListEntry(Base):
+    __tablename__ = "animanga_list_entries"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"))
+    user = relationship("User", back_populates="animanga_entries")
+    media_id: Mapped[int] = mapped_column(Integer)
+    progress: Mapped[int] = mapped_column(Integer)
+    is_manga: Mapped[bool] = mapped_column(Boolean)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "media_id", name="uq_user_media"),
+        Index("ix_user_id", "user_id"),
+    )
+
+
+class AnimangaDailyStats(Base):
+    __tablename__ = "animanga_daily_stats"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    guild_id: Mapped[int] = mapped_column(ForeignKey("guilds.id"))
+    member_id: Mapped[int] = mapped_column(ForeignKey("members.id"))
+    member = relationship("Member", back_populates="daily_stats")
+    minutes_watched: Mapped[int] = mapped_column(Integer)
+    placement: Mapped[int] = mapped_column(Integer)
+    date: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    episodes: Mapped[int] = mapped_column(Integer)
+    movies: Mapped[int] = mapped_column(Integer)
+    manga_chapters: Mapped[int] = mapped_column(Integer)
+    ln_chapters: Mapped[int] = mapped_column(Integer)
+
+    __table_args__ = (Index("ix_dailystats_guild_id", "guild_id"),)
 
 
 class Recommendation(Base):
