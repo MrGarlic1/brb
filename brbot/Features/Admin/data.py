@@ -34,33 +34,38 @@ class ConfirmButton(Button):
             custom_id="confirm_changes",
         )
 
+    async def callback(self, ctx: Interaction):
+        view: NekoAdminView = self.view
 
-class SSRarityButton(Button):
-    def __init__(self):
-        super().__init__(
-            style=ButtonStyle.secondary, label=NekoRarity.SS.name, custom_id="ss_rank"
-        )
+        async with view.session_generator() as session:
+            await view.admin_service.update_neko(view.neko, session)
+
+            if (
+                view.neko.rarity == view.original_neko.rarity
+                and view.neko.nsfw == view.original_neko.nsfw
+            ):
+                view.offset += 1
+
+            view.remaining_count -= 1
+
+            view.neko = await view.admin_service.get_neko_classification_info(
+                rarity=view.original_neko.rarity,
+                nsfw=view.original_neko.nsfw,
+                session=session,
+                offset=view.offset,
+            )
+        await view.render_new(ctx)
 
 
-class SRarityButton(Button):
-    def __init__(self):
-        super().__init__(
-            style=ButtonStyle.secondary, label=NekoRarity.S.name, custom_id="s_rank"
-        )
+class SetRarityButton(Button):
+    def __init__(self, rarity: NekoRarity):
+        super().__init__(style=ButtonStyle.secondary, label=rarity.name)
+        self.rarity = rarity
 
-
-class ARarityButton(Button):
-    def __init__(self):
-        super().__init__(
-            style=ButtonStyle.secondary, label=NekoRarity.A.name, custom_id="a_rank"
-        )
-
-
-class BRarityButton(Button):
-    def __init__(self):
-        super().__init__(
-            style=ButtonStyle.secondary, label=NekoRarity.B.name, custom_id="b_rank"
-        )
+    async def callback(self, ctx: Interaction):
+        view: NekoAdminView = self.view
+        view.neko.rarity = self.rarity
+        await view.render_new(ctx)
 
 
 class ToggleNsfwButton(Button):
@@ -72,12 +77,31 @@ class ToggleNsfwButton(Button):
             custom_id="toggle_nsfw",
         )
 
+    async def callback(self, ctx: Interaction):
+        view: NekoAdminView = self.view
+        view.neko.nsfw = True if view.neko.nsfw is None else not view.neko.nsfw
+        await view.render_new(ctx)
+
 
 class NotNekoButton(Button):
     def __init__(self):
         super().__init__(
             style=ButtonStyle.danger, label="Delete", custom_id="delete_neko"
         )
+
+    async def callback(self, ctx: Interaction):
+        view: NekoAdminView = self.view
+        async with view.session_generator() as session:
+            await view.admin_service.delete_neko(view.neko, session)
+
+            view.neko = await view.admin_service.get_neko_classification_info(
+                rarity=view.original_neko.rarity,
+                nsfw=view.original_neko.nsfw,
+                session=session,
+                offset=view.offset,
+            )
+        view.remaining_count -= 1
+        await view.render_new(ctx)
 
 
 class NekoAdminView(View):
@@ -103,61 +127,19 @@ class NekoAdminView(View):
         self.session_generator = session_generator
         self.add_item(NotNekoButton())
         self.add_item(ToggleNsfwButton())
-        self.add_item(BRarityButton())
-        self.add_item(ARarityButton())
-        self.add_item(SRarityButton())
-        self.add_item(SSRarityButton())
+        self.add_item(SetRarityButton(rarity=NekoRarity.B))
+        self.add_item(SetRarityButton(rarity=NekoRarity.A))
+        self.add_item(SetRarityButton(rarity=NekoRarity.S))
+        self.add_item(SetRarityButton(rarity=NekoRarity.SS))
         self.add_item(ConfirmButton())
         self.neko = neko
         self.original_neko = original_neko
         self.offset = 0
         self.remaining_count = remaining_count
 
-    async def interaction_check(self, interaction: Interaction) -> bool:
-        if interaction.data["custom_id"] == "ss_rank":
-            self.neko.rarity = NekoRarity.SS
-        if interaction.data["custom_id"] == "s_rank":
-            self.neko.rarity = NekoRarity.S
-        elif interaction.data["custom_id"] == "a_rank":
-            self.neko.rarity = NekoRarity.A
-        elif interaction.data["custom_id"] == "b_rank":
-            self.neko.rarity = NekoRarity.B
-        elif interaction.data["custom_id"] == "toggle_nsfw":
-            self.neko.nsfw = True if self.neko.nsfw is None else not self.neko.nsfw
-        elif interaction.data["custom_id"] == "delete_neko":
-            async with self.session_generator() as session:
-                await self.admin_service.delete_neko(self.neko, session)
-                self.neko = await self.admin_service.get_neko_classification_info(
-                    rarity=self.original_neko.rarity,
-                    nsfw=self.original_neko.nsfw,
-                    session=session,
-                    offset=self.offset,
-                )
-                self.remaining_count -= 1
-
-        elif interaction.data["custom_id"] == "confirm_changes":
-            async with self.session_generator() as session:
-                await self.admin_service.update_neko(self.neko, session)
-                # Increment offset to get the next from DB if classification does not change
-                if (
-                    self.neko.rarity == self.original_neko.rarity
-                    and self.neko.nsfw == self.original_neko.nsfw
-                ):
-                    self.offset += 1
-
-                self.remaining_count -= 1
-
-                # Fetch new entry with the same classification as the original request
-                self.neko = await self.admin_service.get_neko_classification_info(
-                    self.original_neko.rarity,
-                    session,
-                    self.original_neko.nsfw,
-                    self.offset,
-                )
-
+    async def render_new(self, interaction: Interaction):
         embed = await self.admin_service.gen_neko_classification_embed(
-            self.neko, self.remaining_count
+            self.neko,
+            self.remaining_count,
         )
-
         await interaction.response.edit_message(embed=embed, view=self)
-        return False
