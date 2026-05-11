@@ -251,6 +251,11 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
             )
 
         await ctx.followup.send(content=bd.pass_str)
+        if self.bot.guild_configs[ctx.guild.id].update_channel is None:
+            await ctx.channel.send(
+                content="An update channel currently isn't set! Leaderboards won't be sent. "
+                "To set a server update channel, an admin must run /config set update_channel."
+            )
         return
 
     @app_commands.command(
