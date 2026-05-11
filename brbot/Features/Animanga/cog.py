@@ -239,17 +239,7 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
         async with self.bot.session_generator() as session:
             stmt = (
                 insert(AnimangaListEntry)
-                .values(
-                    [
-                        {
-                            "user_id": entry.user_id,
-                            "media_id": entry.media_id,
-                            "progress": entry.progress,
-                            "is_manga": entry.is_manga,
-                        }
-                        for entry in initial_list_entries
-                    ]
-                )
+                .values(initial_list_entries)
                 .prefix_with("OR IGNORE")
             )
             await session.execute(stmt)

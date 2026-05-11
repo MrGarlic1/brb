@@ -64,7 +64,7 @@ class AnimangaStatService:
     @staticmethod
     async def get_user_list_entries(
         user_id: int, anilist_id: int
-    ) -> Optional[List[AnimangaListEntry]]:
+    ) -> Optional[List[Dict]]:
         manga_info = await AnimangaStatService.query_user_list_entries(
             anilist_id, MediaType.Manga
         )
@@ -77,22 +77,22 @@ class AnimangaStatService:
         new_list_entries = []
         for entry in manga_info:
             new_list_entries.append(
-                AnimangaListEntry(
-                    user_id=user_id,
-                    media_id=entry["mediaId"],
-                    progress=entry["progress"],
-                    is_manga=True,
-                )
+                {
+                    "user_id": user_id,
+                    "media_id": entry["mediaId"],
+                    "progress": entry["progress"],
+                    "is_manga": True,
+                }
             )
 
         for entry in anime_info:
             new_list_entries.append(
-                AnimangaListEntry(
-                    user_id=user_id,
-                    media_id=entry["mediaId"],
-                    progress=entry["progress"],
-                    is_manga=False,
-                )
+                {
+                    "user_id": user_id,
+                    "media_id": entry["mediaId"],
+                    "progress": entry["progress"],
+                    "is_manga": False,
+                }
             )
         return new_list_entries
 
