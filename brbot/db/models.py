@@ -443,7 +443,6 @@ class TrainPlayerTile(Base):
     __table_args__ = (
         Index("ix_train_player_tile_player_id", "player_id"),
         Index("ix_train_player_tile_tile_id", "tile_id"),
-        Index("ix_train_player_tile_player_visible", "player_id", "visible"),
         UniqueConstraint(
             "player_id", "tile_id", name="uq_train_player_tile_player_tile_id"
         ),
