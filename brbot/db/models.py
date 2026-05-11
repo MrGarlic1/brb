@@ -399,6 +399,8 @@ class TrainPlayer(Base):
     member = relationship("Member")
     items = relationship("TrainItem", back_populates="owner")
 
+    dmchannel: ClassVar[Optional[DMChannel]] = None
+
     @property
     def anilist_id(self) -> Optional[int]:
         return self.member.user.anilist_id
@@ -445,6 +447,7 @@ class TrainPlayerTile(Base):
     tile = relationship("TrainTile", back_populates="player_tiles")
     visible: Mapped[bool] = mapped_column(Boolean)
     has_rail: Mapped[bool] = mapped_column(Boolean)
+    rail_text: Mapped[Optional[str]] = mapped_column(String(400), nullable=True)
 
     __table_args__ = (
         Index("ix_train_player_tile_player_id", "player_id"),

@@ -1,4 +1,6 @@
-from discord import Interaction, Embed
+from datetime import datetime
+
+from discord import Interaction, Embed, Member
 from discord.ui import View
 from brbot.Core.botdata import bot_avatar_url, train_zones_url
 from brbot.Shared.Discord.buttons import NextPgButton, PrevPgButton
@@ -186,25 +188,25 @@ class GameEmoji(Enum):
     THIRD = "🥉"
 
 
-def train_game_embed(ctx: Interaction, game) -> Embed:
+def train_game_embed(
+    ctx: Interaction, name: str, width: int, height: int, members: list[Member]
+) -> Embed:
     embed = Embed()
     embed.set_author(name="Anime Trains", icon_url=bot_avatar_url)
     embed.colour = 0xFF9C2C
     embed.title = "It's Train Time"
-    embed.description = f'*{ctx.user.mention} has created "{game.name}"!*'
+    embed.description = f'*{ctx.user.mention} has created "{name}"!*'
     embed.set_thumbnail(url=ctx.user.avatar.url)
 
-    embed.add_field(
-        name="Board Size", value=f"{game.size[0]} by {game.size[1]}", inline=True
-    )
+    embed.add_field(name="Board Size", value=f"{width} by {height}", inline=True)
     player_mentions = []
-    for player in game.players:
-        player_mentions.append(f"<@{player.member.id}>")
+    for member in members:
+        player_mentions.append(member.mention)
     embed.add_field(name="Players", value=", ".join(player_mentions), inline=True)
     embed.add_field(
         name="\u200b", value="**Players, check your DMs to see your board!**"
     )
-    embed.set_footer(text=game.date)
+    embed.set_footer(text=datetime.now())
 
     return embed
 

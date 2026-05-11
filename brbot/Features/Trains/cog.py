@@ -64,90 +64,27 @@ class TrainsCog(commands.GroupCog, name="trains"):
             await ctx.followup.send(content="No valid players specified.")
             return
 
-        await self.game_service.create_train_game(
-            ctx.guild.id, name, players, self.bot.session_generator
+        error = await self.game_service.create_train_game(
+            ctx.guild.id,
+            name,
+            players,
+            height=height,
+            width=width,
+            session_generator=self.bot.session_generator,
         )
 
-        async def add_trains_player(m: Member):
-            dm_channel = await m.create_dm() if m.dm_channel is None else m.dm_channel
-            players.append(
-                TrainPlayer(
-                    member=m,
-                    dmchannel=dm_channel,
-                    anilist_id=bd.linked_profiles[m.id],
-                )
-            )
-
-        # Create player list
-        members = await bu.get_members_from_str(ctx.guild, players)
-        players: list = []
-
-        tasks: list = []
-        for member in members:
-            if member.id not in bd.linked_profiles:
-                logger.error(
-                    f"User {member.name} not linked to any anilist profile, aborting game creation"
-                )
-                await ctx.followup.send(
-                    content=f"Could not create game, <@{member.id}> must link their anilist profile! (/animanga link)"
-                )
-                return True
-
-            tasks.append(asyncio.create_task(add_trains_player(m=member)))
-        await asyncio.gather(*tasks)
-
-        # Return error if player list is empty
-        if not players:
-            await ctx.followup.send(content="No valid players specified.")
-            return True
-
-        # Create game object and set parameters
-        date = datetime.now().strftime(bd.date_format)
-        gameid = int(datetime.now().strftime("%Y%m%d%H%M%S"))
-
-        game = TrainGame(
-            name=name,
-            date=date,
-            players=players,
-            board=None,
-            gameid=gameid,
-            active=True,
-            size=(
-                width + 2 * river_ring,
-                height + 2 * river_ring,
-            ),  # Add space on board for river border
-        )
-        try:
-            game.gen_trains_board(play_area_size=(width, height), river_ring=river_ring)
-            game.gen_player_locations(river_ring=river_ring)
-        except game.BoardGenError as e:
-            await ctx.followup.send(content=str(e))
-            return True
-
-        game.get_player_tags()
-
-        try:
-            await game.set_game_anilist_info()
-        except Exception as e:
-            await ctx.followup.send(
-                content="Error fetching player anilist information. Please try again in a few seconds."
-            )
-            logger.error(f"Could not create game {self.name}: {e}")
-            return True
-
-        try:
-            mkdir(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{name}")
-        except OSError as e:
-            logger.error(f"Could not create game folder for {ctx.guild.name}: {e}")
-            await ctx.followup.send(
-                content="Invalid name! Game must not contain the following characters: / \\ : * ? < > |"
-            )
-            return True
+        if error:
+            await ctx.followup.send(content=error)
+            return
 
         # Push updates to player boards
-        await ctx.followup.send(embed=train_game_embed(ctx=ctx, game=game))
-        await game.update_boards_after_create(ctx=ctx)
-        return False
+        await ctx.followup.send(
+            embed=train_game_embed(
+                ctx=ctx, name=name, width=width, height=height, members=players
+            )
+        )
+        await TrainService.update_boards_after_create(ctx=ctx, session_generator=self.bot.session_generator)
+        return
 
     @app_commands.command(
         name="viewshop", description="View the shop for the active trains game."

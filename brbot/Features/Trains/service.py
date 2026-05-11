@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 from PIL import Image, ImageFont, ImageDraw
 from pilmoji import Pilmoji
 
-from discord import Interaction, Embed, File, Member as DiscordMember
+from discord import Interaction, Embed, File, Member as DiscordMember, Guild as DiscordGuild
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -32,10 +32,6 @@ from brbot.Shared.Users.repository import get_or_create_users
 import brbot.Shared.Anilist.anilist as al
 import brbot.Core.botdata as bd
 from brbot.Features.Trains.data import (
-    #    TrainTile,
-    #    TrainItem,
-    #    TrainPlayer,
-    #    TrainShot,
     RIVER_RING,
     RiverDirection,
     GameEmoji,
@@ -72,7 +68,7 @@ class TrainService:
 
     @staticmethod
     async def create_train_game(
-        guild_id: int,
+        guild: DiscordGuild,
         name: str,
         players: list[DiscordMember],
         height: int,
@@ -89,7 +85,7 @@ class TrainService:
                 if u.anilist_id is None:
                     return f"Could not create game, {u.mention_str} must link their anilist profile! (/animanga link)"
 
-            members = await get_or_create_members(discord_ids, guild_id, session)
+            members = await get_or_create_members(discord_ids, guild.id, session)
             member_ids_by_discord_id: dict[int, int] = {
                 m.user_id: m.id for m in members
             }
@@ -106,7 +102,7 @@ class TrainService:
             }
         except Exception as e:
             logger.error(
-                f"Could not find anilist information for players(s) in guild {guild_id}, aborting game creation: {e}"
+                f"Could not find anilist information for players(s) in guild {guild.id}, aborting game creation: {e}"
             )
             return "Error connecting to anilist, please try again later."
 
@@ -115,7 +111,7 @@ class TrainService:
         async with session_generator() as session:
             # Add board/game
             game = TrainGame(
-                guild_id=guild_id,
+                guild_id=guild.id,
                 name=name,
                 date=datetime.now(),
                 board_height=height,
@@ -174,6 +170,7 @@ class TrainService:
 
             await session.commit()
 
+        await TrainService.update_boards_after_create(guild, session_generator=session_generator)
         return None
 
     @staticmethod
@@ -605,26 +602,14 @@ class TrainService:
         else:
             return True
 
-    ### ### ### ###
-
-    def is_done(self) -> bool:
+    @staticmethod
+    def is_done(players: list[TrainPlayer]) -> bool:
         done = True
-        for player in self.players:
+        for player in players:
             if not player.done:
                 done = False
                 break
         return done
-
-    def get_player(
-        self, player_id: int
-    ) -> Union[tuple[None, None], tuple[int, TrainPlayer]]:
-        player = None
-        player_idx = None
-        for idx, p in enumerate(self.players):
-            if p.member.id == player_id:
-                player = p
-                player_idx = idx
-        return player_idx, player
 
     def is_valid_shot(self, player: TrainPlayer, shot_row: int, shot_col: int) -> bool:
         if player is None:  # Player not in game
@@ -705,40 +690,26 @@ class TrainService:
         except Exception as e:
             raise e
 
-    async def push_player_update(self, ctx: Interaction, p: TrainPlayer, p_idx: int):
-        try:
-            board_name: str = str(p.member.id)
-            self.draw_board_img(
-                filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}",
-                board_name=str(p.member.id),
-                player_idx=p_idx,
-                player_board=True,
-            )
-            board_img_path: str = (
-                f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}/{board_name}.png"
-            )
-            try:
-                with open(board_img_path, "rb") as f:
-                    file = BytesIO(f.read())
-            except FileNotFoundError:
-                logger.error(
-                    f'Unable to find board image "{board_name}" in "{board_img_path} '
-                    f"for game {self.name} in {ctx.guild.name}"
-                )
-                await ctx.response.send_message(bd.fail_str, ephemeral=True)
-                return True
+    @staticmethod
+    async def push_player_update(guild: DiscordGuild, game: TrainGame, p: TrainPlayer):
+        board = {(tile.column, tile.row): tile for tile in game.tiles}
+        img = TrainService.draw_board_img(
+            game_width=game.board_width,
+            game_height=game.board_height,
+            board=board,
+            player=p,
+            hide_hidden_tiles=True,
+        )
 
-            await p.dmchannel.send(
-                file=File(file, filename=board_img_path),
-                content=f'## Train board update for "{self.name}" in {ctx.guild.name}!',
-            )
+        await p.dmchannel.send(
+            file=File(img, filename="train_board.png"),
+            content=f'## Train board update for "{game.name}" in {guild.name}!',
+        )
 
-        except AttributeError:
-            logger.warning(f"Could not find user with ID {p.member.id}, removing.")
-            del self.players[p_idx]
 
+    @staticmethod
     async def update_boards_after_shot(
-        self, ctx: Interaction, row: int, column: int
+        guild: DiscordGuild, row: int, column: int
     ) -> None:
         # Push updates to player boards, check if game is finished
         tasks: list = []
@@ -746,11 +717,11 @@ class TrainService:
             if (row, column) in player.vis_tiles:
                 logger.debug(
                     f"Sending board update with shot ({row}, {column}) to "
-                    f"{player.member.name} for game {self.name} in {ctx.guild.name}"
+                    f"{player.member.name} for game {self.name} in {guild.name}"
                 )
                 tasks.append(
                     asyncio.create_task(
-                        self.push_player_update(ctx, player, player_idx)
+                        self.push_player_update(guild, player, player_idx)
                     )
                 )
         await asyncio.gather(*tasks)
@@ -764,22 +735,34 @@ class TrainService:
         self.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}")
         return None
 
-    async def update_boards_after_create(self, ctx: Interaction) -> None:
+    @staticmethod
+    async def update_boards_after_create(guild: DiscordGuild, session_generator: async_sessionmaker) -> None:
+
+        async with session_generator() as session:
+            stmt = (
+                select(TrainGame).where(TrainGame.guild_id == guild.id).where(TrainGame.active)
+                .options(selectinload(TrainGame.players).selectinload(TrainPlayer.player_tiles))
+                .options(selectinload(TrainGame.players).selectinload(TrainPlayer.member))
+                .options(selectinload(TrainGame.tiles))
+            )
+            result = await session.execute(stmt)
+            game: TrainGame = result.scalar_one()
+
         tasks: list = []
 
-        for player_idx, player in enumerate(self.players):
+        for player in game.players:
+            if player.dmchannel is None:
+                member = await guild.fetch_member(player.member.user_id)
+                player.dmchannel = member.dm_channel
+
             logger.debug(
                 f"Sending initial board to "
-                f"{player.member.name} for game {self.name} in {ctx.guild.name}"
+                f"{player.member.name} for game {game.name} in {guild.name}"
             )
             tasks.append(
-                asyncio.create_task(self.push_player_update(ctx, player, player_idx))
+                asyncio.create_task(TrainService.push_player_update(guild, game, player))
             )
         await asyncio.gather(*tasks)
-
-        # Update master board/game state
-        self.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}")
-        bd.active_trains[ctx.guild_id] = self
         return None
 
     def gen_stats_embed(
@@ -1003,15 +986,20 @@ class TrainService:
         embed.set_image(url="attachment://stats_img.png")
         return embed, image
 
+    @staticmethod
     def draw_board_img(
-        self,
-        filepath: str,
-        board_name: str,
-        player_board: bool = False,
-        player_idx: int = 0,
-    ):
+        game_width: int,
+        game_height: int,
+        board: dict[tuple[int, int], TrainTile],
+        player: TrainPlayer,
+        hide_hidden_tiles: bool = False,
+    ) -> BytesIO:
         # Generate board image. If player board: only generate tiles which are rendered.
         # Grey out other tiles.
+
+        player_start = (player.start_col, player.start_row)
+        player_end = (player.end_col, player.end_row)
+        vis_tiles = {(tile.column, tile.row): tile for tile in player.player_tiles}
 
         # Adjustments
         label_offset: int = 1
@@ -1020,7 +1008,7 @@ class TrainService:
         hidden_tile_color: tuple[int, int, int] = (255, 255, 255)
         border_color: tuple[int, int, int] = (190, 190, 190)
         font_color: tuple[int, int, int] = (0, 0, 0)
-        font_path = f"{bd.parent}/Shared/ggsans/ggsans-Bold.ttf"
+        font_path = f"{bd.STATIC_DIRECTORY}/ggsans/ggsans-Bold.ttf"
         default_font = False
 
         try:
@@ -1033,12 +1021,11 @@ class TrainService:
             base_font = ImageFont.load_default()
         font = base_font
 
-        player = self.players[player_idx]
         board_img = Image.new(
             mode="RGB",
             size=(
-                (self.size[0] + label_offset) * tile_pixels,
-                (self.size[1] + label_offset) * tile_pixels,
+                (game_width + label_offset) * tile_pixels,
+                (game_height + label_offset) * tile_pixels,
             ),
             color=0xFFFFFF,
         )
@@ -1076,7 +1063,7 @@ class TrainService:
 
         # Draw column labels/tile borders
 
-        for label_x in range(1, self.size[0] + 1):
+        for label_x in range(1, game_width + 1):
             draw.rectangle(
                 xy=(
                     (label_x * tile_pixels, 1),
@@ -1094,7 +1081,7 @@ class TrainService:
                 fill=font_color,
             )
         # Draw row labels/tile borders
-        for label_y in range(1, self.size[1] + 1):
+        for label_y in range(1, game_height + 1):
             draw.rectangle(
                 xy=(
                     (1, label_y * tile_pixels),
@@ -1122,11 +1109,11 @@ class TrainService:
         if not default_font:
             font = ImageFont.truetype(font_path, font_size)
 
-        for coords in self.board.keys():
+        for coords in board.keys():
             (row, col) = coords
 
             # Draw hidden tile as gray, skip to next tile
-            if player_board and coords not in player.vis_tiles:
+            if hide_hidden_tiles and coords not in vis_tiles:
                 draw.rectangle(
                     xy=(
                         (col * tile_pixels, row * tile_pixels),
@@ -1140,7 +1127,7 @@ class TrainService:
 
             # Draw non-hidden tiles
 
-            tile_zone = self.board[coords].zone
+            tile_zone = board[coords].zone
             if tile_zone is None:
                 tile_color: tuple[int, int, int] = (255, 255, 255)
             else:
@@ -1155,20 +1142,20 @@ class TrainService:
                 outline=border_color,
                 width=1,
             )
-            if self.board[coords].terrain == "river":
+            if board[coords].terrain == "river":
                 draw_hatch_pattern(row, col)
 
             resource_text = (
-                self.board[coords].resource if self.board[coords].resource else ""
+                board[coords].resource if board[coords].resource else ""
             )
 
             # Draw start/end text
-            if coords == player.start and not self.board[coords].rails:
+            if coords == player_start and not vis_tiles[coords].has_rail:
                 rail_text = "Start"
-            elif coords == player.end and not self.board[coords].rails:
+            elif coords == player_end and not vis_tiles[coords].has_rail:
                 rail_text = "End"
             else:
-                rail_text = "".join(self.board[coords].rails)
+                rail_text = vis_tiles[coords].rail_text
             text_pixels = draw.textlength(text=resource_text + rail_text, font=font)
 
             # Dynamic font/emoji sizing depending on length of text
@@ -1210,12 +1197,10 @@ class TrainService:
                         f"{bd.parent}/Shared/ggsans/ggsans-Bold.ttf", font_size
                     )
 
-        try:
-            board_img.save(f"{filepath}/{board_name}.png")
-        except PermissionError:
-            logger.error(f"Permission denied for board {board_name} at {filepath}")
-            return "Could not write the board. Try again in a few seconds..."
-        return None
+        buffer = BytesIO()
+        board_img.save(buffer, format="png")
+        buffer.seek(0)
+        return buffer
 
     def update_player_stats_after_shot(
         self,
