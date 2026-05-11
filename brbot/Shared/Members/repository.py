@@ -25,7 +25,7 @@ async def get_or_create_member(
             await session.flush()
             return member
         except IntegrityError:
-            pass
+            await session.rollback()
 
         result = await session.execute(stmt)
         member = result.scalar_one_or_none()
