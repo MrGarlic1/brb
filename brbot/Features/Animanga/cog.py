@@ -17,7 +17,7 @@ from datetime import datetime, timezone, time
 from discord import app_commands, Interaction
 from discord.ext import commands, tasks
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import delete
+from sqlalchemy import delete, insert
 import logging
 
 logger = logging.getLogger(__name__)
@@ -237,7 +237,23 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
             return
 
         async with self.bot.session_generator() as session:
-            session.add_all(initial_list_entries)
+            stmt = (
+                insert(AnimangaListEntry)
+                .values(
+                    [
+                        {
+                            "user_id": entry.user_id,
+                            "media_id": entry.media_id,
+                            "progress": entry.progress,
+                            "is_manga": entry.is_manga,
+                        }
+                        for entry in initial_list_entries
+                    ]
+                )
+                .prefix_with("OR IGNORE")
+            )
+            await session.execute(stmt)
+
             member: Member = await get_or_create_member(
                 ctx.user.id, ctx.guild.id, session
             )
