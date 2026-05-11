@@ -1,31 +1,20 @@
-import asyncio
-import io
-from datetime import datetime, timedelta
-from math import log
-from os import path
+from datetime import datetime, timezone
 from random import randint, shuffle, choice
-from typing import Union
-from io import BytesIO
 
 import logging
-import matplotlib.font_manager
-import matplotlib.pyplot as plt
-from PIL import Image, ImageFont, ImageDraw
-from pilmoji import Pilmoji
 
 from discord import (
     Interaction,
-    Embed,
-    File,
     Member as DiscordMember,
     Guild as DiscordGuild,
 )
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from typing import Optional
+from typing import Optional, Sequence
 from brbot.db.models import (
     TrainTile,
+    TrainItem,
     TrainShot,
     TrainPlayer,
     TrainGame,
@@ -49,28 +38,40 @@ from brbot.Features.Trains.data import (
 logger = logging.getLogger(__name__)
 
 
-class TrainService:
+class GameService:
     def __init__(self):
         pass
 
     @staticmethod
-    async def get_guild_active_train_game(
-        guild_id: int, session: AsyncSession, load_players: bool = False
+    async def get_guild_train_game(
+        guild_id: int, session: AsyncSession, load_players: bool = False, active: bool = True, name: str = None
     ) -> Optional[TrainGame]:
         stmt = (
             select(TrainGame)
             .where(TrainGame.guild_id == guild_id)
-            .where(TrainGame.active.is_(True))
+            .where(TrainGame.active.is_(active))
         )
+        if name is not None:
+            stmt = stmt.where(TrainGame.name == name)
         if load_players:
             stmt = stmt.options(
                 selectinload(TrainGame.players).selectinload(TrainPlayer.member),
+                selectinload(TrainGame.tiles),
                 selectinload(TrainGame.players).selectinload(TrainPlayer.shots),
                 selectinload(TrainGame.players).selectinload(TrainPlayer.player_tiles),
             )
 
         result = await session.execute(stmt)
         return result.scalars().first()
+
+    @staticmethod
+    async def get_guild_game_names(guild_id: int, session: AsyncSession) -> Optional[Sequence[str]]:
+        stmt = (
+            select(TrainGame.name)
+            .where(TrainGame.guild_id == guild_id)
+        )
+        result = await session.execute(stmt)
+        return result.scalars().all()
 
     @staticmethod
     async def create_train_game(
@@ -112,14 +113,14 @@ class TrainService:
             )
             return "Error connecting to anilist, please try again later."
 
-        tags_by_discord_id = await TrainService.get_player_tags(players)
+        tags_by_discord_id = await GameService.get_player_tags(players)
 
         async with session_generator() as session:
             # Add board/game
             game = TrainGame(
                 guild_id=guild.id,
                 name=name,
-                date=datetime.now(),
+                date=datetime.now(timezone.utc),
                 board_height=height,
                 board_width=width,
                 active=True,
@@ -127,7 +128,7 @@ class TrainService:
             session.add(game)
             await session.flush()
             game_id: int = game.id
-            board = await TrainService.gen_trains_board(
+            board = await GameService.gen_trains_board(
                 game_id=game_id, play_width=width, play_height=height
             )
             session.add_all(board.values())
@@ -146,7 +147,7 @@ class TrainService:
                     )
                 )
 
-            train_players = await TrainService.add_player_locations(
+            train_players = await GameService.add_player_locations(
                 train_players, board, width, height, session
             )
             session.add_all(train_players)
@@ -157,7 +158,7 @@ class TrainService:
                 await session.refresh(player, ["player_tiles"])
 
             for player in train_players:
-                await TrainService.add_vis_tiles(
+                await GameService.add_vis_tiles(
                     player,
                     (player.start_col, player.start_row),
                     (width, height),
@@ -165,7 +166,7 @@ class TrainService:
                     session,
                     render_dist=0,
                 )
-                await TrainService.add_vis_tiles(
+                await GameService.add_vis_tiles(
                     player,
                     (player.end_col, player.end_row),
                     (width, height),
@@ -175,10 +176,6 @@ class TrainService:
                 )
 
             await session.commit()
-
-        await TrainService.update_boards_after_create(
-            guild, session_generator=session_generator
-        )
         return None
 
     @staticmethod
@@ -567,6 +564,32 @@ class TrainService:
         return players
 
     @staticmethod
+    async def save_shot(
+            game: TrainGame,
+            player: TrainPlayer,
+            shot: TrainShot,
+            session: AsyncSession
+    ):
+        board = {tile.position: tile for tile in game.tiles}
+        inventory: list[TrainItem] = player.items
+        telescope_count = len([item for item in inventory if item.emoji == GameEmoji.TELESCOPE.value])
+
+        # Update DB Objects (Add player tiles, update stats)
+        await GameService.add_vis_tiles(
+            player=player,
+            root_position=shot.coords,
+            board_size=game.size,
+            board=board,
+            session=session,
+            telescope_count=telescope_count,
+        )
+
+        GameService.update_stats_after_shot(game, player, shot)
+        await session.flush()
+        return False
+
+
+    @staticmethod
     async def add_vis_tiles(
         player: TrainPlayer,
         root_position: tuple[int, int],
@@ -590,7 +613,7 @@ class TrainService:
             for row in range(shot_row - render_dist, shot_row + render_dist + 1):
                 if (col, row) in vis_tiles_by_coordinate:  # Already rendered tiles
                     continue
-                elif TrainService.in_bounds(col, row, size=board_size):
+                elif GameService.in_bounds(col, row, size=board_size):
                     new_vis_tiles.append(
                         TrainPlayerTile(
                             tile_id=board[(col, row)].id,
@@ -604,22 +627,24 @@ class TrainService:
         session.add_all(new_vis_tiles)
 
     @staticmethod
-    def in_bounds(row: int, col: int, size: tuple[int, int]) -> bool:
+    def in_bounds(col: int, row: int, size: tuple[int, int]) -> bool:
         if row < 1 or col < 1 or row > size[1] or col > size[0]:
             return False
         else:
             return True
 
     @staticmethod
-    def is_done(players: list[TrainPlayer]) -> bool:
+    def is_done(game: TrainGame) -> bool:
         done = True
-        for player in players:
+        for player in game.players:
             if not player.done:
                 done = False
                 break
         return done
 
-    def is_valid_shot(self, player: TrainPlayer, shot_row: int, shot_col: int) -> bool:
+    @staticmethod
+    def is_valid_shot(game: TrainGame, player: TrainPlayer, shot_col: int, shot_row: int) -> bool:
+        board: dict[tuple[int, int], TrainTile] = {(tile.column, tile.row): tile for tile in game.tiles}
         if player is None:  # Player not in game
             return False
 
@@ -627,669 +652,117 @@ class TrainService:
             return False
 
         if player.shots:
-            base_coords = tuple(player.shots[-1].coords())
+            last_shot: TrainShot = player.shots[-1]
+            base_coords = last_shot.coords
         else:
-            if (shot_row, shot_col) == player.start:
+            if (shot_col, shot_row) == (player.start_col, player.start_row):
                 return True
             else:
                 return False
 
-        if not self.in_bounds(shot_row, shot_col):  # Out of bounds shots
+        if not GameService.in_bounds(shot_col, shot_row, game.size):  # Out of bounds shots
             return False
 
+        shot_pos_player_tiles: list[TrainPlayerTile] = [
+            pt for pt in board[(shot_col, shot_row)].player_tiles if pt.has_rail
+        ]
+
         if (
-            len(self.board[(shot_row, shot_col)].rails) >= 2
+            len(shot_pos_player_tiles) >= 2
         ):  # Tiles with too many players on them
             return False
 
         # Shots not adjacent to player's rail endpoint
-        if abs(shot_row - base_coords[0]) + abs(shot_col - base_coords[1]) != 1:
+        if abs(shot_col - base_coords[0]) + abs(shot_row - base_coords[1]) != 1:
             return False
 
-        base_intersecting_tag = None
-        for tag in self.board[
-            base_coords
-        ].rails:  # Shots that move along someone else's rails for more than 1 tile
-            if tag != player.tag:
-                base_intersecting_tag = tag
-        if base_intersecting_tag in self.board[(shot_row, shot_col)].rails:
+        base_intersecting_player_id = None
+        base_pos_player_tiles: list[TrainPlayerTile] = [
+            pt for pt in board[base_coords].player_tiles if pt.has_rail
+        ]
+
+        for tile in base_pos_player_tiles:  # Shots that move along someone else's rails for more than 1 tile
+            if tile.player_id != player.id:
+                base_intersecting_player_id = tile.player_id
+
+        if any(pt.player_id == base_intersecting_player_id for pt in shot_pos_player_tiles):
             return False
 
         # Tiles that run next to your current rails
 
         test_coords = (
-            (shot_row, shot_col + 1),
-            (shot_row, shot_col - 1),
-            (shot_row + 1, shot_col),
-            (shot_row - 1, shot_col),
+            (shot_col, shot_row + 1),
+            (shot_col, shot_row - 1),
+            (shot_col + 1, shot_row),
+            (shot_col - 1, shot_row),
         )
+        already_shot_coordinates = [(pt.column, pt.row) for pt in player.player_tiles if pt.has_rail]
 
         for coord in test_coords:
-            if not self.in_bounds(coord[0], coord[1]) or coord == base_coords:
+            if not GameService.in_bounds(coord[0], coord[1], game.size) or coord == base_coords:
                 continue
-            elif player.tag in self.board[coord].rails:
+            elif coord in already_shot_coordinates:
                 return False
 
         return True
 
-    async def set_game_anilist_info(self):
-        max_concurrent = asyncio.Semaphore(6)
-
-        async def get_player_anilist_info(player: TrainPlayer) -> TrainPlayer | None:
-            async with max_concurrent:
-                starting_anilist = await al.query_user_animelist(
-                    bd.linked_profiles[player.member.id]
-                )
-                least_watched_genre = await al.query_user_genres(
-                    bd.linked_profiles[player.member.id]
-                )
-            if not starting_anilist or not least_watched_genre:
-                raise AttributeError(
-                    f"Player {player.member.name} anilist info not found."
-                )
-
-            player.starting_anilist = starting_anilist
-            player.least_watched_genre = least_watched_genre
-            return player
-
-        tasks: list = [get_player_anilist_info(p) for p in self.players]
-        try:
-            self.players = await asyncio.gather(*tasks)
-        except Exception as e:
-            raise e
 
     @staticmethod
-    async def push_player_update(guild: DiscordGuild, game: TrainGame, p: TrainPlayer):
-        board = {(tile.column, tile.row): tile for tile in game.tiles}
-        img = TrainService.draw_board_img(
-            game_width=game.board_width,
-            game_height=game.board_height,
-            board=board,
-            player=p,
-            hide_hidden_tiles=True,
-        )
+    async def validate_and_cache_anilist_info(link, cache) -> int | None:
+        show_id = al.anilist_id_from_url(url=link)
+        if show_id is None:
+            return None
 
-        await p.dmchannel.send(
-            file=File(img, filename="train_board.png"),
-            content=f'## Train board update for "{game.name}" in {guild.name}!',
-        )
+        anilist_info = cache.get(show_id)
+        if anilist_info is None:
+            anilist_info = await al.query_media(media_id=show_id)
+            cache[show_id] = anilist_info
+
+        return show_id
 
     @staticmethod
-    async def update_boards_after_shot(
-        guild: DiscordGuild, row: int, column: int
-    ) -> None:
-        # Push updates to player boards, check if game is finished
-        tasks: list = []
-        for player_idx, player in enumerate(self.players):
-            if (row, column) in player.vis_tiles:
-                logger.debug(
-                    f"Sending board update with shot ({row}, {column}) to "
-                    f"{player.member.name} for game {self.name} in {guild.name}"
-                )
-                tasks.append(
-                    asyncio.create_task(
-                        self.push_player_update(guild, player, player_idx)
-                    )
-                )
-        await asyncio.gather(*tasks)
-        active: bool = not self.is_done()
-        self.active = active
-        if self.active:
-            bd.active_trains[ctx.guild_id] = self
-        else:
-            del bd.active_trains[ctx.guild_id]
-
-        self.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}")
-        return None
-
-    @staticmethod
-    async def update_boards_after_create(
-        guild: DiscordGuild, session_generator: async_sessionmaker
-    ) -> None:
-        async with session_generator() as session:
-            stmt = (
-                select(TrainGame)
-                .where(TrainGame.guild_id == guild.id)
-                .where(TrainGame.active)
-                .options(
-                    selectinload(TrainGame.players).selectinload(
-                        TrainPlayer.player_tiles
-                    )
-                )
-                .options(
-                    selectinload(TrainGame.players).selectinload(TrainPlayer.member)
-                )
-                .options(selectinload(TrainGame.tiles))
-            )
-            result = await session.execute(stmt)
-            game: TrainGame = result.scalar_one()
-
-        tasks: list = []
-
-        for player in game.players:
-            if player.dmchannel is None:
-                member = await guild.fetch_member(player.member.user_id)
-                player.dmchannel = member.dm_channel
-
-            logger.debug(
-                f"Sending initial board to "
-                f"{player.member.name} for game {game.name} in {guild.name}"
-            )
-            tasks.append(
-                asyncio.create_task(
-                    TrainService.push_player_update(guild, game, player)
-                )
-            )
-        await asyncio.gather(*tasks)
-        return None
-
-    def gen_stats_embed(
-        self, ctx: Interaction, page: int = 0
-    ) -> tuple[Embed, Union[None, File]]:
-        embed: Embed = Embed()
-        embed.set_author(name="Anime Trains", icon_url=bd.bot_avatar_url)
-
-        max_pages: int = len(self.players) + 1
-        page: int = 1 + (page % max_pages)  # Loop back through pages both ways
-        embed.set_footer(text=f"Page {page}/{max_pages}")
-
-        # Game stats page
-        if page == 1:
-            resource_count: dict = {}
-            claimed_resource_count: dict = {}
-            rail_count: int = 0
-            intersection_count: int = 0
-            for coord, tile in self.board.items():
-                if tile.resource:
-                    try:
-                        resource_count[tile.resource] += 1
-                    except KeyError:
-                        resource_count[tile.resource] = 1
-                if tile.rails:
-                    rail_count += 1
-                    if tile.resource:
-                        try:
-                            claimed_resource_count[tile.resource] += 1
-                        except KeyError:
-                            claimed_resource_count[tile.resource] = 1
-                    if len(tile.rails) > 1:
-                        intersection_count += 1
-
-            embed.title = "Game Stats"
-            embed.description = f"*{self.name}*\n\u200b"
-            embed.set_thumbnail(url=ctx.guild.icon.url)
-            embed.add_field(
-                name="🚂 Active?", value="✅" if self.active else "❌", inline=True
-            )
-            embed.add_field(
-                name="🚂 Complete?", value="✅" if self.is_done() else "❌", inline=True
-            )
-            embed.add_field(name="\u200b", value="\u200b", inline=False)
-
-            for resource, count in resource_count.items():
-                if resource not in claimed_resource_count.keys():
-                    claimed_resource_count[resource]: int = 0
-
-                embed.add_field(
-                    name=f"# of {resource} Claimed/Total",
-                    value=f"{claimed_resource_count[resource]}/{count}",
-                    inline=True,
-                )
-
-            embed.add_field(name="🛤️ Total Rails", value=rail_count, inline=True)
-            embed.add_field(
-                name="🔀 # of Crossings", value=intersection_count, inline=True
-            )
-
-            if self.is_done():
-                self.draw_board_img(
-                    filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}",
-                    board_name="MASTER",
-                    player_board=False,
-                )
-                board_img_path = (
-                    f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}/MASTER.png"
-                )
-                try:
-                    with open(board_img_path, "rb") as f:
-                        file = BytesIO(f.read())
-                except FileNotFoundError:
-                    logger.warning(
-                        f"Could not find image at {board_img_path} for "
-                        f"game {self.name} in {ctx.guild.name}, skipping image send"
-                    )
-                    return embed, None
-
-                image = File(file, filename="MASTER.png")
-                embed.set_image(url="attachment://MASTER.png")
-                return embed, image
-            else:
-                return embed, None
-
-        # Player stats page
-        player_idx: int = page - 2
-        player: TrainPlayer = self.players[player_idx]
-
-        if len(player.shots) == 0:
-            embed.description = (
-                f"### {player.member.mention} has not placed any rails yet!"
-            )
-            return embed, None
-
-        embed.set_thumbnail(url=player.member.avatar.url)
-        embed.description = f"### Stats for {player.member.mention}"
-        embed.add_field(name="\u200b", value="\u200b", inline=False)
-
-        # Total shots/in-zone shots
-        total_shots: int = len(player.shots)
-        in_zone_shots: int = 0
-        prev_shot_time = datetime.strptime(self.date, bd.date_format)
-        time_between_shots_list = []
-        weights = []
-
-        # Get time deltas for all previous shots and current time, take weighted average
-        for shot_idx, shot in enumerate(player.shots):
-            if (
-                self.board[shot.coords()].zone
-                in self.known_shows[shot.show_id]["genres"]
-            ):
-                in_zone_shots += 1
-            time_between_shots_list.append(
-                (
-                    datetime.strptime(shot.time, bd.date_format) - prev_shot_time
-                ).total_seconds()
-            )
-            # Weight based on seconds elapsed since shot. Time delta minimum is 300
-            weights.append(
-                log(0.01 * max((datetime.now() - prev_shot_time).total_seconds(), 300))
-                ** -0.9
-            )
-            prev_shot_time = datetime.strptime(shot.time, bd.date_format)
-
-        time_between_shots_list.append(
-            (datetime.now() - prev_shot_time).total_seconds()
-        )
-        weights.append(log((datetime.now() - prev_shot_time).total_seconds()) ** -1)
-        avg_secs_between_shots = round(
-            sum(time_between_shots_list) / len(time_between_shots_list)
-        )
-
-        embed.add_field(name="🧮 Total Shots", value=total_shots, inline=True)
-        embed.add_field(name="🛤️ Total Rails Used", value=player.rails, inline=True)
-        embed.add_field(
-            name="🍥 % in Zone",
-            value=f"{round(in_zone_shots / total_shots * 100)}%",
-            inline=True,
-        )
-        embed.add_field(
-            name="🚂 Done?", value="✅" if player.done else "❌", inline=True
-        )
-        embed.add_field(
-            name="⏳ Avg. Time Between Shots",
-            value=str(timedelta(seconds=avg_secs_between_shots)),
-            inline=False,
-        )
-
-        # Projected completion time
-        if not player.shots:
-            projected_time = "N/A"
-        elif player.done:
-            projected_time = datetime.strptime(player.donetime, "%Y%m%d%H%M%S")
-            projected_time = projected_time.strftime("%Y/%m/%d at %H:%M:%S")
-        else:
-            # player.end is [ROW, COL]
-            last_shot = player.shots[-1]
-            dist_left = abs(last_shot.row - player.end[0]) + abs(
-                last_shot.col - player.end[1]
-            )
-            weighted_time_deltas = [
-                t * w for t, w in zip(time_between_shots_list, weights)
-            ]
-            weighted_avg_secs_between_shots = sum(weighted_time_deltas) / sum(weights)
-            projected_time = datetime.now() + timedelta(
-                seconds=round(dist_left * 1.5) * weighted_avg_secs_between_shots
-            )
-            projected_time = projected_time.strftime("%Y/%m/%d at %H:%M:%S")
-
-        embed.add_field(
-            name="🗓️ Projected Completion Date", value=projected_time, inline=False
-        )
-
-        # Shot genre pie chart
-
-        genre_counts: dict[str, int] = {}
-        for shot in self.players[player_idx].shots:
-            for genre in self.known_shows[shot.show_id]["genres"]:
-                if genre in genre_counts:
-                    genre_counts[genre] += 1
-                else:
-                    genre_counts[genre] = 1
-
-        plt.style.use("dark_background")
-        fig, ax = plt.subplots()
-
-        plt.rcParams["font.size"] = 14
-        plt.rcParams["font.family"] = "gg sans"
-        plt.rcParams["font.weight"] = "bold"
-        wedges, text, autotexts = ax.pie(list(genre_counts.values()), autopct="%1.1f%%")
-        plt.setp(autotexts, size=16, weight="medium", color="black")
-        plt.title(
-            label="Shot Genre Percentages              ",
-            weight="bold",
-            size=17,
-            family="gg sans",
-            horizontalalignment="right",
-        )
-        plt.legend(
-            genre_counts.keys(),
-            title="Genres",
-            loc="lower left",
-            framealpha=0,
-            bbox_to_anchor=(-0.45, 0.2, 0.75, 1),
-            prop=matplotlib.font_manager.FontProperties(
-                family="gg sans", weight="medium", size=15, style="italic"
-            ),
-            title_fontproperties=matplotlib.font_manager.FontProperties(
-                family="gg sans", weight="medium", size=17
-            ),
-        )
-        filepath = f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}/stats_img.png"
-        plt.savefig(filepath, transparent=True)
-        plt.close(fig)
-
-        with open(filepath, "rb") as f:
-            file = io.BytesIO(f.read())
-        image = File(file, filename="stats_img.png")
-
-        embed.set_image(url="attachment://stats_img.png")
-        return embed, image
-
-    @staticmethod
-    def draw_board_img(
-        game_width: int,
-        game_height: int,
-        board: dict[tuple[int, int], TrainTile],
+    def update_stats_after_shot(
+        game: TrainGame,
         player: TrainPlayer,
-        hide_hidden_tiles: bool = False,
-    ) -> BytesIO:
-        # Generate board image. If player board: only generate tiles which are rendered.
-        # Grey out other tiles.
-
-        player_start = (player.start_col, player.start_row)
-        player_end = (player.end_col, player.end_row)
-        vis_tiles = {(tile.column, tile.row): tile for tile in player.player_tiles}
-
-        # Adjustments
-        label_offset: int = 1
-        label_font_size: int = 24
-        tile_pixels: int = 50
-        hidden_tile_color: tuple[int, int, int] = (255, 255, 255)
-        border_color: tuple[int, int, int] = (190, 190, 190)
-        font_color: tuple[int, int, int] = (0, 0, 0)
-        font_path = f"{bd.STATIC_DIRECTORY}/ggsans/ggsans-Bold.ttf"
-        default_font = False
-
-        try:
-            base_font = ImageFont.truetype(font_path, label_font_size)
-        except FileNotFoundError:
-            logger.warning(
-                f"Could not find ggsans-Bold at {font_path}, using default font"
-            )
-            default_font = True
-            base_font = ImageFont.load_default()
-        font = base_font
-
-        board_img = Image.new(
-            mode="RGB",
-            size=(
-                (game_width + label_offset) * tile_pixels,
-                (game_height + label_offset) * tile_pixels,
-            ),
-            color=0xFFFFFF,
-        )
-        draw: ImageDraw = ImageDraw.Draw(board_img)
-        pilmoji: Pilmoji = Pilmoji(board_img)
-
-        def draw_hatch_pattern(hatch_row: int, hatch_col: int):
-            hatch_row += label_offset
-            hatch_col += label_offset
-            hatch_color: tuple[int, int, int] = (40, 40, 40)
-            padding: int = 1
-
-            x_start: int = tile_pixels * (hatch_col - 1)
-            y_start: int = tile_pixels * (hatch_row - 1)
-
-            x, y = x_start, y_start
-            while y < y_start + tile_pixels:
-                xy = (
-                    (x_start + padding, y + padding),
-                    (x + tile_pixels - padding, y_start + tile_pixels - padding),
-                )
-                draw.line(xy=xy, fill=hatch_color, width=1)
-                x -= 4
-                y += 4
-
-            x, y = x_start, y_start
-            while x < x_start + tile_pixels:
-                xy = (
-                    (x + padding, y_start + padding),
-                    (x_start + tile_pixels - padding, y + tile_pixels - padding),
-                )
-                draw.line(xy=xy, fill=hatch_color, width=1)
-                x += 4
-                y -= 4
-
-        # Draw column labels/tile borders
-
-        for label_x in range(1, game_width + 1):
-            draw.rectangle(
-                xy=(
-                    (label_x * tile_pixels, 1),
-                    ((label_x + 1) * tile_pixels, tile_pixels),
-                ),
-                fill=hidden_tile_color,
-                outline=border_color,
-                width=1,
-            )
-            draw.text(
-                xy=(label_x * tile_pixels + tile_pixels / 2, tile_pixels / 2),
-                text=str(label_x),
-                font=font,
-                anchor="mm",
-                fill=font_color,
-            )
-        # Draw row labels/tile borders
-        for label_y in range(1, game_height + 1):
-            draw.rectangle(
-                xy=(
-                    (1, label_y * tile_pixels),
-                    (tile_pixels, (label_y + 1) * tile_pixels),
-                ),
-                fill=hidden_tile_color,
-                outline=border_color,
-                width=1,
-            )
-            draw.text(
-                xy=(
-                    round(tile_pixels / 2),
-                    label_y * tile_pixels + round(tile_pixels / 2),
-                ),
-                text=str(label_y),
-                font=font,
-                anchor="mm",
-                fill=font_color,
-            )
-        # Draw game tiles
-
-        default_font_size: int = 24
-        font_size = default_font_size
-        emoji_pixels: int = font_size - 4
-        if not default_font:
-            font = ImageFont.truetype(font_path, font_size)
-
-        for coords in board.keys():
-            (row, col) = coords
-
-            # Draw hidden tile as gray, skip to next tile
-            if hide_hidden_tiles and coords not in vis_tiles:
-                draw.rectangle(
-                    xy=(
-                        (col * tile_pixels, row * tile_pixels),
-                        ((col + 1) * tile_pixels, (row + 1) * tile_pixels),
-                    ),
-                    fill=hidden_tile_color,
-                    outline=border_color,
-                    width=1,
-                )
-                continue
-
-            # Draw non-hidden tiles
-
-            tile_zone = board[coords].zone
-            if tile_zone is None:
-                tile_color: tuple[int, int, int] = (255, 255, 255)
-            else:
-                tile_color = genre_colors[tile_zone]
-
-            draw.rectangle(
-                xy=(
-                    (col * tile_pixels, row * tile_pixels),
-                    (col * tile_pixels + tile_pixels, row * tile_pixels + tile_pixels),
-                ),
-                fill=tile_color,
-                outline=border_color,
-                width=1,
-            )
-            if board[coords].terrain == "river":
-                draw_hatch_pattern(row, col)
-
-            resource_text = board[coords].resource if board[coords].resource else ""
-
-            # Draw start/end text
-            if coords == player_start and not vis_tiles[coords].has_rail:
-                rail_text = "Start"
-            elif coords == player_end and not vis_tiles[coords].has_rail:
-                rail_text = "End"
-            else:
-                rail_text = vis_tiles[coords].rail_text
-            text_pixels = draw.textlength(text=resource_text + rail_text, font=font)
-
-            # Dynamic font/emoji sizing depending on length of text
-            if resource_text and rail_text:
-                text_pixels += emoji_pixels
-                text_offset = round(emoji_pixels * 0.4)
-            else:
-                text_offset = 0
-
-            while text_pixels > 0.8 * tile_pixels and font_size > 6:
-                font_size -= 2
-                emoji_pixels -= 2
-                if not default_font:
-                    font = ImageFont.truetype(
-                        f"{bd.parent}/Shared/ggsans/ggsans-Bold.ttf", font_size
-                    )
-                text_pixels = draw.textlength(text=resource_text + rail_text, font=font)
-                if resource_text:
-                    text_pixels += emoji_pixels
-
-            # Draw tile resource and rails
-            pilmoji.text(
-                xy=(
-                    col * tile_pixels + round(tile_pixels / 2) - text_offset,
-                    row * tile_pixels + round(tile_pixels / 2),
-                ),
-                text=rail_text + resource_text,
-                anchor="mm",
-                fill=font_color,
-                font=font,
-                emoji_position_offset=(-round(font_size / 2), -round(font_size / 2)),
-                emoji_scale_factor=1.1,
-            )
-            if font_size != default_font_size:
-                font_size = default_font_size
-                emoji_pixels = font_size - 4
-                if not default_font:
-                    font = ImageFont.truetype(
-                        f"{bd.parent}/Shared/ggsans/ggsans-Bold.ttf", font_size
-                    )
-
-        buffer = BytesIO()
-        board_img.save(buffer, format="png")
-        buffer.seek(0)
-        return buffer
-
-    def update_player_stats_after_shot(
-        self,
-        sender_idx: int,
-        player: TrainPlayer,
-        undo: bool = False,
-        shot: TrainShot = None,
+        shot: TrainShot,
     ):
+        board = {tile.position: tile for tile in game.tiles}
         check_gem_time = False
-        if self.board[shot.coords()].resource == game_emoji["gems"]:
-            shot_list = player.shots[:-1] if undo else player.shots
-            if game_emoji["gems"] not in [
-                self.board[shot.coords()].resource for shot in shot_list
+        if board[shot.coords].resource == GameEmoji.GEMS.value:
+            shot_list: list[TrainShot] = player.shots
+            if GameEmoji.GEMS.value not in [
+                board[shot.coords].resource for shot in shot_list
             ]:
                 check_gem_time = True
 
-        if undo:
-            shot = player.shots[-1]
-            self.board[shot.coords()].rails.remove(player.tag)
-            del self.players[sender_idx].shots[-1]
-            if self.players[sender_idx].done:
-                self.players[sender_idx].done = False
-                self.players[sender_idx].donetime = None
-            if check_gem_time:
-                self.players[sender_idx].score.pop("GemTime")
-        else:
-            self.board[shot.coords()].rails.append(player.tag)
-            self.players[sender_idx].shots.append(shot)
-            if shot.coords() == player.end:
-                self.players[sender_idx].done = True
-                self.players[sender_idx].donetime = datetime.now().strftime(
-                    "%Y%m%d%H%M%S"
-                )
-            if check_gem_time:
-                self.players[sender_idx].score["GemTime"] = int(
-                    datetime.strptime(shot.time, bd.date_format).timestamp()
-                )
+        shot_player_tile: TrainPlayerTile = next(pt for pt in player.player_tiles if pt.position == shot.coords)
 
-        self.update_vis_tiles(
-            player_idx=sender_idx, shot_row=shot.row, shot_col=shot.col, remove=undo
-        )
-        if undo:
-            shot = player.shots[-1]
-            self.update_vis_tiles(
-                player_idx=sender_idx, shot_row=shot.row, shot_col=shot.col
-            )
-            self.update_vis_tiles(
-                player_idx=sender_idx,
-                shot_row=player.start[0],
-                shot_col=player.start[1],
-            )
-            self.update_vis_tiles(
-                player_idx=sender_idx,
-                shot_row=player.end[0],
-                shot_col=player.end[1],
-                render_dist=0,
+        shot_player_tile.has_rail = True
+
+        if shot.coords == (player.end_col, player.end_row):
+            player.done = True
+            player.donetime = datetime.now(timezone.utc)
+
+        if check_gem_time:
+            player.score["GemTime"] = int(
+                shot.time.timestamp()
             )
 
-        if self.board[shot.coords()].terrain == "river":
-            if "Pontoon Bridge" in player.inventory:
+        if board[shot.coords].terrain == "river":
+            bridge: TrainItem | None = next(item.emoji == GameEmoji.BRIDGE and item.uses > 0 for item in player.items)
+            if bridge:
                 rails = 0
-                player.update_item_count("Pontoon Bridge")
+                bridge.uses -= 1
             else:
                 rails = 2
         else:
             rails = 1
 
-        if self.board[shot.coords()].zone in self.known_shows[shot.show_id]["genres"]:
+        if board[shot.coords].zone in shot.genres:
             rails *= 0.5
-        if undo:
-            self.players[sender_idx].rails -= rails
-        else:
-            self.players[sender_idx].rails += rails
+
+        player.rails += rails
+
 
     def buy_item(self, itemname: str, showinfo: str, ctx: Interaction) -> bool:
         player_idx, player = self.get_player(ctx.user.id)
@@ -1344,7 +817,7 @@ class TrainService:
 
         for player in self.players:
             if player.donetime is None:
-                player.donetime = datetime.now().strftime("%Y%m%d%H%M%S")
+                player.donetime = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
         self.players.sort(key=lambda p: p.donetime)
 
         # Find player prison counts and gun effects before counting score for intersection scoring
@@ -1489,58 +962,3 @@ class TrainService:
             player.score["total"] = sum(player.score.values())
 
         self.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}")
-
-    def gen_score_embed(
-        self, ctx: Interaction, page: int = 0
-    ) -> tuple[Embed, Union[None, File]]:
-        embed = Embed()
-
-        max_pages: int = len(self.players) + 1
-        page: int = 1 + (page % max_pages)  # Loop back through pages both ways
-        embed.set_footer(text=f"Page {page}/{max_pages}")
-        embed.set_author(name="Anime Trains", icon_url=bd.bot_avatar_url)
-        embed.colour = 0xFF9C2C
-
-        self.players.sort(key=lambda p: p.score["total"], reverse=True)
-
-        if page == 1:
-            embed.title = "Game Complete!"
-            embed.description = "*Scoring results are as follows...*"
-            for idx, player in enumerate(self.players):
-                place_emojis = {
-                    0: game_emoji["first"],
-                    1: game_emoji["second"],
-                    2: game_emoji["third"],
-                }
-                place_emoji = place_emojis.get(idx, "")
-                embed.add_field(
-                    name="\u200b",
-                    value=f"{place_emoji} {player.member.mention}'s score is **{player.score['total']}**",
-                    inline=False,
-                )
-            board_img_path = (
-                f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}/MASTER.png"
-            )
-            if not path.exists(board_img_path):
-                self.draw_board_img(
-                    filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}",
-                    board_name="MASTER",
-                    player_board=False,
-                )
-            try:
-                with open(board_img_path, "rb") as f:
-                    file = BytesIO(f.read())
-            except FileNotFoundError:
-                return embed, None
-
-            image = File(file, filename="MASTER.png")
-            embed.set_image(url="attachment://MASTER.png")
-            return embed, image
-
-        player_idx: int = page - 2
-        embed.set_thumbnail(url=self.players[player_idx].member.avatar.url)
-        embed.title = f"{self.players[player_idx].member.name}"
-        for category, score in self.players[player_idx].score.items():
-            embed.add_field(name=category.title(), value=score)
-
-        return embed, None

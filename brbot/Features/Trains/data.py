@@ -223,44 +223,44 @@ def train_symbols_embed() -> Embed:
     embed.colour = 0xFF9C2C
     embed.title = "Symbol Reference"
     embed.add_field(
-        name=f"{game_emoji['wheat']}: Wheat",
+        name=f"{GameEmoji.WHEAT.value}: Wheat",
         value="Plus 1 point if connected to your network. Plus 3 more points if connected to a city. "
         "Each additional wheat is worth 1 point only.",
         inline=True,
     )
     embed.add_field(
-        name=f"{game_emoji['wood']}: Wood",
+        name=f"{GameEmoji.WOOD.value}: Wood",
         value="Provides 2 points for each wood connected to your network.",
         inline=True,
     )
     embed.add_field(
-        name=f"{game_emoji['gems']}: Gems",
+        name=f"{GameEmoji.GEMS.value}: Gems",
         value="Provides 2 points if connected to your network. "
         "The first player to connect gems to their network gets 3 bonus points.",
         inline=True,
     )
     embed.add_field(name="\u200b", value="\u200b", inline=False)
     embed.add_field(
-        name=f"{game_emoji['city']}: City",
+        name=f"{GameEmoji.CITY.value}: City",
         value="Provides stated bonuses. Each city has a favorite season (revealed at end). "
         "Any player who shoots a city with the correct season gets 3 bonus points.",
         inline=True,
     )
     embed.add_field(
-        name=f"{game_emoji['prison']}: Prison",
+        name=f"{GameEmoji.PRISON.value}: Prison",
         value="Reduces points that other players get for intersections with your rails by 1. "
         "Reduces points gained by your own houses by 1 for each house.",
         inline=True,
     )
     embed.add_field(
-        name=f"{game_emoji['house']}: House",
+        name=f"{GameEmoji.HOUSE.value}: House",
         value="Provides 1 points for each house connected to your network. "
         "If the house is connected to a city, then the player gains 1 bonus point per house. "
         "If the house is connected to a prison, the player loses 1 point per house.",
         inline=True,
     )
     embed.add_field(
-        name=f"{game_emoji['river']} Gray dotted tiles: River",
+        name=f"{GameEmoji.RIVER.value} Gray dotted tiles: River",
         value="Shots made on rivers use double the normal amount of rails.",
         inline=False,
     )
@@ -360,21 +360,21 @@ def default_shop() -> dict[str, TrainItem]:
     return {
         "Telescope": TrainItem(
             name="Telescope",
-            emoji=game_emoji["telescope"],
+            emoji=GameEmoji.TELESCOPE.value,
             description="Permanently increases your vision by 1!",
             cost=3,
             amount=2,
         ),
         "Gun": TrainItem(
             name="Gun",
-            emoji=game_emoji["gun"],
+            emoji=GameEmoji.GUN.value,
             description="Increase the prison's intersection penalty for other players by 0.5!",
             cost=5,
             amount=1,
         ),
         "Bucket": TrainItem(
             name="Bucket",
-            emoji=game_emoji["bucket"],
+            emoji=GameEmoji.BUCKET.value,
             description="Allows you to create 3 river tiles at locations of your choice! (consumable)",
             cost=1,
             amount=4,
@@ -382,7 +382,7 @@ def default_shop() -> dict[str, TrainItem]:
         ),
         "Pontoon Bridge": TrainItem(
             name="Pontoon Bridge",
-            emoji=game_emoji["bridge"],
+            emoji=GameEmoji.BRIDGE.value,
             description="Allows you to use 0 rails when placing on a river tile! (consumed when entering a river)",
             cost=1,
             amount=4,
@@ -390,21 +390,21 @@ def default_shop() -> dict[str, TrainItem]:
         ),
         "Axe": TrainItem(
             name="Axe",
-            emoji=game_emoji["axe"],
-            description=f"Increase points gained from {game_emoji['wood']} tiles by 0.5!",
+            emoji=GameEmoji.AXE.value,
+            description=f"Increase points gained from {GameEmoji.WOOD.value} tiles by 0.5!",
             cost=3,
             amount=2,
         ),
         "Coin": TrainItem(
             name="Coin",
-            emoji=game_emoji["coin"],
+            emoji=GameEmoji.COIN.value,
             description="Increases your score by 2!",
             cost=3,
             amount=4,
         ),
         "MagLev": TrainItem(
             name="MagLev",
-            emoji=game_emoji["maglev"],
+            emoji=GameEmoji.MAGLEV.value,
             description="Faster trains! "
             "Permanently decreases the anime requirement for rails from 3 hours to 2 hours.",
             cost=3,

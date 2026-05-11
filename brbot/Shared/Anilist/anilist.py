@@ -30,7 +30,7 @@ def anilist_id_from_url(url: str, is_character: bool = False) -> int | None:
     return None
 
 
-async def query_media(*, media_id: int):
+async def query_media(*, media_id: int) -> dict:
     """
     Retrieves anilist data used in anime games for a media
     Args:
