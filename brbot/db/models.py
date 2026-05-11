@@ -253,7 +253,7 @@ class BingoShot(Base):
     player_id: Mapped[int] = mapped_column(ForeignKey("bingo_players.id"))
     anilist_entry_id: Mapped[int] = mapped_column(Integer)
     tag: Mapped[str] = mapped_column(String(400))
-    time: Mapped[DateTime] = mapped_column(DateTime)
+    time: Mapped[datetime] = mapped_column(DateTime)
     hit: Mapped[bool] = mapped_column(Boolean)
     info: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
     player = relationship("BingoPlayer", back_populates="shots")
@@ -301,7 +301,7 @@ class BingoGame(Base):
     __tablename__ = "bingo_games"
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(400))
-    date: Mapped[DateTime] = mapped_column(DateTime)
+    date: Mapped[datetime] = mapped_column(DateTime)
     active: Mapped[bool] = mapped_column(Boolean)
     guild_id: Mapped[int] = mapped_column(ForeignKey("guilds.id"))
     mode: Mapped[int] = mapped_column(Integer)
@@ -370,19 +370,12 @@ class TrainPlayer(Base):
     rails: Mapped[int] = mapped_column(Integer)
     starting_anilist: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     score: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    start_col: Mapped[int] = mapped_column(Integer)
-    start_row: Mapped[int] = mapped_column(Integer)
-    end_col: Mapped[int] = mapped_column(Integer)
-    end_row: Mapped[int] = mapped_column(Integer)
-
-    current_tile_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("player_tiles.id"), nullable=True
-    )
-    current_tile = relationship(
-        "TrainPlayerTile", foreign_keys=[current_tile_id], post_update=True
-    )
+    start_col: Mapped[int] = mapped_column(Integer, nullable=True)
+    start_row: Mapped[int] = mapped_column(Integer, nullable=True)
+    end_col: Mapped[int] = mapped_column(Integer, nullable=True)
+    end_row: Mapped[int] = mapped_column(Integer, nullable=True)
     done: Mapped[bool] = mapped_column(Boolean)
-    donetime: Mapped[Optional[DateTime]] = mapped_column(DateTime, nullable=True)
+    donetime: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     least_watched_genre: Mapped[Optional[str]] = mapped_column(
         String(400), nullable=True
     )
@@ -406,10 +399,6 @@ class TrainPlayer(Base):
         return self.member.user.anilist_id
 
     @property
-    def dmchannel(self) -> Optional[DMChannel]:
-        return self.member.user.dmchannel
-
-    @property
     def current_position(self) -> Optional[tuple[int, int]]:
         if self.current_tile_id is None:
             return None
@@ -431,7 +420,7 @@ class TrainTile(Base):
 
     @property
     def position(self) -> tuple[int, int]:
-        return self.row, self.column
+        return self.column, self.row
 
 
 class TrainPlayerTile(Base):
@@ -445,9 +434,11 @@ class TrainPlayerTile(Base):
         "TrainPlayer", back_populates="player_tiles", foreign_keys=[player_id]
     )
     tile = relationship("TrainTile", back_populates="player_tiles")
-    visible: Mapped[bool] = mapped_column(Boolean)
     has_rail: Mapped[bool] = mapped_column(Boolean)
     rail_text: Mapped[Optional[str]] = mapped_column(String(400), nullable=True)
+
+    def position(self) -> tuple[int, int]:
+        return self.column, self.row
 
     __table_args__ = (
         Index("ix_train_player_tile_player_id", "player_id"),
@@ -466,15 +457,16 @@ class TrainShot(Base):
     anilist_media_id: Mapped[int] = mapped_column(Integer)
     row: Mapped[int] = mapped_column(Integer)
     column: Mapped[int] = mapped_column(Integer)
+    genres: Mapped[List[str]] = mapped_column(JSON)
     info: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
-    time: Mapped[DateTime] = mapped_column(DateTime)
+    time: Mapped[datetime] = mapped_column(DateTime)
     player = relationship("TrainPlayer", back_populates="shots")
 
     __table_args__ = (Index("ix_train_shot_player_id", "player_id"),)
 
     @property
     def coords(self) -> tuple[int, int]:
-        return self.row, self.column
+        return self.column, self.row
 
 
 class Neko(Base):
