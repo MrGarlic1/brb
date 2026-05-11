@@ -54,6 +54,7 @@ class AnimangaStatService:
             embed.add_field(
                 name="\u200b",
                 value=f"{user_str}{manga_str}{ln_str}{tv_str}{movie_str}",
+                inline=False,
             )
         embed.set_footer(
             text="Want to be on the daily leaderboard? /animanga track_daily"
