@@ -54,7 +54,7 @@ class ConfirmButton(Button):
                 session=session,
                 offset=view.offset,
             )
-        await view.render_new(ctx)
+        await view.render(ctx)
 
 
 class SetRarityButton(Button):
@@ -65,7 +65,7 @@ class SetRarityButton(Button):
     async def callback(self, ctx: Interaction):
         view: NekoAdminView = self.view
         view.neko.rarity = self.rarity
-        await view.render_new(ctx)
+        await view.render(ctx)
 
 
 class ToggleNsfwButton(Button):
@@ -80,7 +80,7 @@ class ToggleNsfwButton(Button):
     async def callback(self, ctx: Interaction):
         view: NekoAdminView = self.view
         view.neko.nsfw = True if view.neko.nsfw is None else not view.neko.nsfw
-        await view.render_new(ctx)
+        await view.render(ctx)
 
 
 class NotNekoButton(Button):
@@ -101,7 +101,7 @@ class NotNekoButton(Button):
                 offset=view.offset,
             )
         view.remaining_count -= 1
-        await view.render_new(ctx)
+        await view.render(ctx)
 
 
 class NekoAdminView(View):
@@ -137,7 +137,7 @@ class NekoAdminView(View):
         self.offset = 0
         self.remaining_count = remaining_count
 
-    async def render_new(self, interaction: Interaction):
+    async def render(self, interaction: Interaction):
         embed = await self.admin_service.gen_neko_classification_embed(
             self.neko,
             self.remaining_count,

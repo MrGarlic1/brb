@@ -180,21 +180,13 @@ class GameBoardView(View):
         self.players = players
         self.render_service = render_service
 
-    async def interaction_check(self, interaction: Interaction) -> bool:
-        if interaction.data["custom_id"] == "prev_page":
-            self.page -= 1
-
-        elif interaction.data["custom_id"] == "next_page":
-            self.page += 1
-
+    async def render(self, interaction: Interaction):
         self.page = 1 + (self.page % len(self.players))
-
         embed, image = self.render_service.gen_board_embed(
             players=self.players,
             discord_member=interaction.user,
             page=self.page,
         )
-
         await interaction.response.edit_message(embed=embed, view=self)
         return False
 
@@ -213,14 +205,7 @@ class GameRulesView(View):
         self.add_item(NextPgButton())
         self.page = page
 
-    async def interaction_check(self, interaction: Interaction) -> bool:
-        if interaction.data["custom_id"] == "prev_page":
-            self.page -= 1
-
-        elif interaction.data["custom_id"] == "next_page":
-            self.page += 1
-
+    async def render(self, interaction: Interaction):
         embed = gen_rules_embed(page=self.page)
-
         await interaction.response.edit_message(embed=embed, view=self)
         return False

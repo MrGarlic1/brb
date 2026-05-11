@@ -21,13 +21,7 @@ class RspView(View):
         self.add_item(NextPgButton())
         self.page = page
 
-    async def interaction_check(self, interaction: Interaction) -> bool:
-        if interaction.data["custom_id"] == "prev_page":
-            self.page -= 1
-
-        elif interaction.data["custom_id"] == "next_page":
-            self.page += 1
-
+    async def render(self, interaction: Interaction):
         embed = self.response_service.gen_resp_list(interaction.guild, self.page)
 
         await interaction.response.edit_message(embed=embed, view=self)

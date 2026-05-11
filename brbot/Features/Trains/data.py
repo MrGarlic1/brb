@@ -97,13 +97,7 @@ class GameStatsView(View):
         self.page = 1
         self.game = game
 
-    async def interaction_check(self, interaction: Interaction) -> bool:
-        if interaction.data["custom_id"] == "prev_page":
-            self.page -= 1
-
-        elif interaction.data["custom_id"] == "next_page":
-            self.page += 1
-
+    async def render(self, interaction: Interaction):
         embed, image = self.game.gen_stats_embed(interaction, self.page)
 
         if not image:
@@ -114,7 +108,6 @@ class GameStatsView(View):
             await interaction.response.edit_message(
                 embed=embed, view=self, attachments=[image]
             )
-        return False
 
 
 class GameRulesView(View):
@@ -131,13 +124,7 @@ class GameRulesView(View):
         self.add_item(NextPgButton())
         self.page = page
 
-    async def interaction_check(self, interaction: Interaction) -> bool:
-        if interaction.data["custom_id"] == "prev_page":
-            self.page -= 1
-
-        elif interaction.data["custom_id"] == "next_page":
-            self.page += 1
-
+    async def render(self, interaction: Interaction):
         embed = gen_rules_embed(page=self.page)
 
         await interaction.response.edit_message(embed=embed, view=self)

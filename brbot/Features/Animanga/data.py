@@ -32,12 +32,35 @@ class IgnoreRecButton(Button):
             custom_id="ignore_rec",
         )
 
+    async def callback(self, interaction: Interaction):
+        async with self.view.session_generator() as session:
+            await self.view.rec_service.ignore_media_rec(
+                user_discord_id=self.view.user_id,
+                anilist_user_id=self.view.anilist_user_id,
+                media_id=self.view.current_media_id,
+                media_type=self.view.media_type,
+                session=session,
+            )
+            if self.view.max_page is not None:
+                self.view.max_page -= 1
+
 
 class RestoreRecButton(Button):
     def __init__(self):
         super().__init__(
             style=ButtonStyle.primary, label="Stop Ignoring", custom_id="restore_rec"
         )
+
+    async def callback(self, interaction: Interaction):
+        async with self.view.session_generator() as session:
+            await self.view.rec_service.restore_media_rec(
+                user_discord_id=self.view.user_id,
+                ignored_media_id=self.view.current_media_id,
+                media_type=self.view.media_type,
+                session=session,
+            )
+            if self.view.max_page is not None:
+                self.view.max_page -= 1
 
 
 class MediaType(Enum):
@@ -89,27 +112,12 @@ class RecView(View):
 
     async def interaction_check(self, interaction: Interaction) -> bool:
         if self.current_media_id is None:
-            await interaction.response.defer()
-            return True
-        if interaction.data["custom_id"] == "prev_page":
-            self.page -= 1
-        elif interaction.data["custom_id"] == "next_page":
-            self.page += 1
+            return False
         elif interaction.user.id != self.user_id:
-            await interaction.response.defer()
-            return True
-        elif interaction.data["custom_id"] == "ignore_rec":
-            async with self.session_generator() as session:
-                await self.rec_service.ignore_media_rec(
-                    user_discord_id=self.user_id,
-                    anilist_user_id=self.anilist_user_id,
-                    media_id=self.current_media_id,
-                    media_type=self.media_type,
-                    session=session,
-                )
-                if self.max_page is not None:
-                    self.max_page -= 1
+            return False
+        return True
 
+    async def render(self, interaction: Interaction):
         if self.max_page is None:
             async with self.session_generator() as session:
                 max_page = await self.rec_service.get_user_recommendation_count(
@@ -171,26 +179,12 @@ class IgnoredRecView(View):
 
     async def interaction_check(self, interaction: Interaction) -> bool:
         if self.current_media_id is None:
-            await interaction.response.defer()
-            return True
-        if interaction.data["custom_id"] == "prev_page":
-            self.page -= 1
-        elif interaction.data["custom_id"] == "next_page":
-            self.page += 1
+            return False
         elif interaction.user.id != self.user_id:
-            await interaction.response.defer()
-            return True
-        elif interaction.data["custom_id"] == "restore_rec":
-            async with self.session_generator() as session:
-                await self.rec_service.restore_media_rec(
-                    user_discord_id=self.user_id,
-                    ignored_media_id=self.current_media_id,
-                    media_type=self.media_type,
-                    session=session,
-                )
-                if self.max_page is not None:
-                    self.max_page -= 1
+            return False
+        return True
 
+    async def render(self, interaction: Interaction):
         if self.max_page is None:
             async with self.session_generator() as session:
                 max_page = await self.rec_service.get_user_ignored_count(
