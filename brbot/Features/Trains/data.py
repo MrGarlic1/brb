@@ -360,21 +360,21 @@ def default_shop() -> dict[str, TrainItem]:
     return {
         "Telescope": TrainItem(
             name="Telescope",
-            emoji=GameEmoji.TELESCOPE.value,
+            emoji=GameEmoji.TELESCOPE.name,
             description="Permanently increases your vision by 1!",
             cost=3,
             amount=2,
         ),
         "Gun": TrainItem(
             name="Gun",
-            emoji=GameEmoji.GUN.value,
+            emoji=GameEmoji.GUN.name,
             description="Increase the prison's intersection penalty for other players by 0.5!",
             cost=5,
             amount=1,
         ),
         "Bucket": TrainItem(
             name="Bucket",
-            emoji=GameEmoji.BUCKET.value,
+            emoji=GameEmoji.BUCKET.name,
             description="Allows you to create 3 river tiles at locations of your choice! (consumable)",
             cost=1,
             amount=4,
@@ -382,7 +382,7 @@ def default_shop() -> dict[str, TrainItem]:
         ),
         "Pontoon Bridge": TrainItem(
             name="Pontoon Bridge",
-            emoji=GameEmoji.BRIDGE.value,
+            emoji=GameEmoji.BRIDGE.name,
             description="Allows you to use 0 rails when placing on a river tile! (consumed when entering a river)",
             cost=1,
             amount=4,
@@ -390,21 +390,21 @@ def default_shop() -> dict[str, TrainItem]:
         ),
         "Axe": TrainItem(
             name="Axe",
-            emoji=GameEmoji.AXE.value,
+            emoji=GameEmoji.AXE.name,
             description=f"Increase points gained from {GameEmoji.WOOD.value} tiles by 0.5!",
             cost=3,
             amount=2,
         ),
         "Coin": TrainItem(
             name="Coin",
-            emoji=GameEmoji.COIN.value,
+            emoji=GameEmoji.COIN.name,
             description="Increases your score by 2!",
             cost=3,
             amount=4,
         ),
         "MagLev": TrainItem(
             name="MagLev",
-            emoji=GameEmoji.MAGLEV.value,
+            emoji=GameEmoji.MAGLEV.name,
             description="Faster trains! "
             "Permanently decreases the anime requirement for rails from 3 hours to 2 hours.",
             cost=3,

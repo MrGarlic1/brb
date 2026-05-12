@@ -35,6 +35,11 @@ class RenderService:
 
     @staticmethod
     async def push_player_update(guild: DiscordGuild, game: TrainGame, p: TrainPlayer):
+        if p.dmchannel is None:
+            member = await guild.fetch_member(p.member.user_id)
+            dm = await member.create_dm()
+            p.dmchannel = dm
+
         board = {(tile.column, tile.row): tile for tile in game.tiles}
         img = RenderService.draw_board_img(
             game_width=game.board_width,
@@ -42,7 +47,6 @@ class RenderService:
             board=board,
             player=p,
         )
-
         await p.dmchannel.send(
             file=File(img, filename="train_board.png"),
             content=f'## Train board update for "{game.name}" in {guild.name}!',
@@ -69,19 +73,12 @@ class RenderService:
         return None
 
     @staticmethod
-    async def send_updates_after_create(
-        game: TrainGame, guild: DiscordGuild
-    ) -> None:
+    async def send_updates_after_create(game: TrainGame, guild: DiscordGuild) -> None:
         tasks: list = []
-
         for player in game.players:
-            if player.dmchannel is None:
-                member = await guild.fetch_member(player.member.user_id)
-                player.dmchannel = member.dm_channel
-
             logger.debug(
                 f"Sending initial board to "
-                f"{player.member.name} for game {game.name} in {guild.name}"
+                f"{player.member.user_id} for game {game.name} in {guild.name}"
             )
             tasks.append(
                 asyncio.create_task(
@@ -198,14 +195,16 @@ class RenderService:
         for shot_idx, shot in enumerate(player.shots):
             if board[shot.coords()].zone in shot.genres:
                 in_zone_shots += 1
-            time_between_shots_list.append(
-                (
-                    shot.time - prev_shot_time
-                ).total_seconds()
-            )
+            time_between_shots_list.append((shot.time - prev_shot_time).total_seconds())
             # Weight based on seconds elapsed since shot. Time delta minimum is 300
             weights.append(
-                log(0.01 * max((datetime.now(timezone.utc) - prev_shot_time).total_seconds(), 300))
+                log(
+                    0.01
+                    * max(
+                        (datetime.now(timezone.utc) - prev_shot_time).total_seconds(),
+                        300,
+                    )
+                )
                 ** -0.9
             )
             prev_shot_time = shot.time
@@ -213,7 +212,9 @@ class RenderService:
         time_between_shots_list.append(
             (datetime.now(timezone.utc) - prev_shot_time).total_seconds()
         )
-        weights.append(log((datetime.now(timezone.utc) - prev_shot_time).total_seconds()) ** -1)
+        weights.append(
+            log((datetime.now(timezone.utc) - prev_shot_time).total_seconds()) ** -1
+        )
         avg_secs_between_shots = round(
             sum(time_between_shots_list) / len(time_between_shots_list)
         )
@@ -238,7 +239,11 @@ class RenderService:
         if not player.shots:
             projected_time = "N/A"
         elif player.done:
-            projected_time = player.donetime if player.donetime is not None else datetime.now(timezone.utc)
+            projected_time = (
+                player.donetime
+                if player.donetime is not None
+                else datetime.now(timezone.utc)
+            )
             projected_time = projected_time.strftime("%Y/%m/%d at %H:%M:%S")
         else:
             last_shot = player.shots[-1]
@@ -434,7 +439,7 @@ class RenderService:
             font = ImageFont.truetype(font_path, font_size)
 
         for coords in board.keys():
-            (row, col) = coords
+            (col, row) = coords
 
             # Draw hidden tile as gray, skip to next tile
             if hide_hidden_tiles and coords not in vis_tiles:
@@ -469,15 +474,19 @@ class RenderService:
             if board[coords].terrain == "river":
                 draw_hatch_pattern(row, col)
 
-            resource_text = board[coords].resource if board[coords].resource else ""
+            resource_text = GameEmoji[board[coords].resource].value if board[coords].resource else ""
 
             # Draw start/end text
+            print(coords)
+            print(player_start)
+            print(vis_tiles[coords].has_rail)
             if coords == player_start and not vis_tiles[coords].has_rail:
+                print("Draw?")
                 rail_text = "Start"
             elif coords == player_end and not vis_tiles[coords].has_rail:
                 rail_text = "End"
             else:
-                rail_text = vis_tiles[coords].rail_text
+                rail_text = vis_tiles[coords].rail_text if vis_tiles[coords].rail_text else ""
             text_pixels = draw.textlength(text=resource_text + rail_text, font=font)
 
             # Dynamic font/emoji sizing depending on length of text
@@ -492,7 +501,7 @@ class RenderService:
                 emoji_pixels -= 2
                 if not default_font:
                     font = ImageFont.truetype(
-                        f"{bd.parent}/Shared/ggsans/ggsans-Bold.ttf", font_size
+                        f"{bd.STATIC_DIRECTORY}/ggsans/ggsans-Bold.ttf", font_size
                     )
                 text_pixels = draw.textlength(text=resource_text + rail_text, font=font)
                 if resource_text:
@@ -516,7 +525,7 @@ class RenderService:
                 emoji_pixels = font_size - 4
                 if not default_font:
                     font = ImageFont.truetype(
-                        f"{bd.parent}/Shared/ggsans/ggsans-Bold.ttf", font_size
+                        f"{bd.STATIC_DIRECTORY}/ggsans/ggsans-Bold.ttf", font_size
                     )
 
         buffer = BytesIO()

@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from typing import Optional, Sequence
 from brbot.db.models import (
+    Member,
     TrainTile,
     TrainItem,
     TrainShot,
@@ -44,7 +45,11 @@ class GameService:
 
     @staticmethod
     async def get_guild_train_game(
-        guild_id: int, session: AsyncSession, load_players: bool = False, active: bool = True, name: str = None
+        guild_id: int,
+        session: AsyncSession,
+        load_players: bool = False,
+        active: bool = True,
+        name: str = None,
     ) -> Optional[TrainGame]:
         stmt = (
             select(TrainGame)
@@ -65,11 +70,10 @@ class GameService:
         return result.scalars().first()
 
     @staticmethod
-    async def get_guild_game_names(guild_id: int, session: AsyncSession) -> Optional[Sequence[str]]:
-        stmt = (
-            select(TrainGame.name)
-            .where(TrainGame.guild_id == guild_id)
-        )
+    async def get_guild_game_names(
+        guild_id: int, session: AsyncSession
+    ) -> Optional[Sequence[str]]:
+        stmt = select(TrainGame.name).where(TrainGame.guild_id == guild_id)
         result = await session.execute(stmt)
         return result.scalars().all()
 
@@ -84,7 +88,10 @@ class GameService:
     ) -> str | None:
         discord_ids = [m.id for m in players]
         discord_usernames = [m.name for m in players]
-
+        play_width = width
+        play_height = height
+        width += 2 * RIVER_RING
+        height += 2 * RIVER_RING
         async with session_generator() as session:
             users = await get_or_create_users(discord_ids, discord_usernames, session)
 
@@ -129,7 +136,7 @@ class GameService:
             await session.flush()
             game_id: int = game.id
             board = await GameService.gen_trains_board(
-                game_id=game_id, play_width=width, play_height=height
+                game_id=game_id, play_width=play_width, play_height=play_height
             )
             session.add_all(board.values())
 
@@ -146,10 +153,10 @@ class GameService:
                         done=False,
                     )
                 )
-
             train_players = await GameService.add_player_locations(
-                train_players, board, width, height, session
+                train_players, board, width, height
             )
+
             session.add_all(train_players)
             await session.flush()
 
@@ -165,6 +172,7 @@ class GameService:
                     board,
                     session,
                     render_dist=0,
+                    is_shot=False
                 )
                 await GameService.add_vis_tiles(
                     player,
@@ -173,6 +181,7 @@ class GameService:
                     board,
                     session,
                     render_dist=0,
+                    is_shot=False
                 )
 
             await session.commit()
@@ -236,6 +245,8 @@ class GameService:
 
             for x_new in range(x - spread, x + spread):
                 for y_new in range(y - spread, y + spread):
+                    if (x_new, y_new) not in board:
+                        continue
                     if board.get((x_new, y_new)).resource == resource:
                         return True
 
@@ -449,8 +460,8 @@ class GameService:
                 else:
                     terrain = None
                 board[(c + 1, r + 1)] = TrainTile(
-                    column=c,
-                    row=r,
+                    column=c + 1,
+                    row=r + 1,
                     game_id=game_id,
                     terrain=terrain,
                 )
@@ -498,7 +509,6 @@ class GameService:
         board: dict[tuple[int, int], TrainTile],
         width: int,
         height: int,
-        session: AsyncSession,
     ) -> list[TrainPlayer]:
         row_bounds = (1 + RIVER_RING, height - RIVER_RING)
         col_bounds = (1 + RIVER_RING, width - RIVER_RING)
@@ -507,21 +517,22 @@ class GameService:
         for player_idx, player in enumerate(players):
             quadrant: str = choice(("Left", "Top"))
 
-            # Generate start locations (NOTE: game.size is (width, height) while coordinates are in (row, col)
+            # Generate start locations (NOTE: game.size is (width, height), coordinates are in (col, row)
             attempts: int = 0
             start_loc = None
             while attempts <= 40:
                 if quadrant == "Left":
-                    start_loc = (randint(row_bounds[0], row_bounds[1]), col_bounds[0])
+                    start_loc = (randint(col_bounds[0], col_bounds[1]), row_bounds[0])
                 else:
-                    start_loc = (row_bounds[0], randint(col_bounds[0], col_bounds[1]))
+                    start_loc = (col_bounds[0], randint(row_bounds[0], row_bounds[1]))
 
                 if (
                     board[start_loc].terrain is None
                     and board[start_loc].resource is None
                     and start_loc not in taken_spaces
                 ):
-                    player.start = start_loc
+                    player.start_col = start_loc[0]
+                    player.start_row = start_loc[1]
                     taken_spaces.append(start_loc)
                     break
                 attempts += 1
@@ -539,16 +550,17 @@ class GameService:
             end_loc = None
             while attempts <= 40:
                 if quadrant == "Left":
-                    end_loc = (randint(row_bounds[0], row_bounds[1]), col_bounds[1])
+                    end_loc = (randint(col_bounds[0], col_bounds[1]), row_bounds[1])
                 else:
-                    end_loc = (row_bounds[1], randint(col_bounds[0], col_bounds[1]))
+                    end_loc = (col_bounds[1], randint(row_bounds[0], row_bounds[1]))
 
                 if (
                     board[end_loc].terrain is None
                     and board[end_loc].resource is None
                     and end_loc not in taken_spaces
                 ):
-                    player.end = end_loc
+                    player.end_col = end_loc[0]
+                    player.end_row = end_loc[1]
                     taken_spaces.append(end_loc)
                     break
                 attempts += 1
@@ -565,14 +577,13 @@ class GameService:
 
     @staticmethod
     async def save_shot(
-            game: TrainGame,
-            player: TrainPlayer,
-            shot: TrainShot,
-            session: AsyncSession
+        game: TrainGame, player: TrainPlayer, shot: TrainShot, session: AsyncSession
     ):
         board = {tile.position: tile for tile in game.tiles}
         inventory: list[TrainItem] = player.items
-        telescope_count = len([item for item in inventory if item.emoji == GameEmoji.TELESCOPE.value])
+        telescope_count = len(
+            [item for item in inventory if item.emoji == GameEmoji.TELESCOPE.name]
+        )
 
         # Update DB Objects (Add player tiles, update stats)
         await GameService.add_vis_tiles(
@@ -588,7 +599,6 @@ class GameService:
         await session.flush()
         return False
 
-
     @staticmethod
     async def add_vis_tiles(
         player: TrainPlayer,
@@ -598,6 +608,7 @@ class GameService:
         session: AsyncSession,
         telescope_count: int = 0,
         render_dist: int = 4,
+        is_shot: bool = True
     ) -> None:
         shot_col = root_position[0]
         shot_row = root_position[1]
@@ -620,7 +631,7 @@ class GameService:
                             column=col,
                             row=row,
                             player_id=player.id,
-                            has_rail=shot_col == col and shot_row == row,
+                            has_rail=shot_col == col and shot_row == row and is_shot,
                         )
                     )
 
@@ -643,8 +654,12 @@ class GameService:
         return done
 
     @staticmethod
-    def is_valid_shot(game: TrainGame, player: TrainPlayer, shot_col: int, shot_row: int) -> bool:
-        board: dict[tuple[int, int], TrainTile] = {(tile.column, tile.row): tile for tile in game.tiles}
+    def is_valid_shot(
+        game: TrainGame, player: TrainPlayer, shot_col: int, shot_row: int
+    ) -> bool:
+        board: dict[tuple[int, int], TrainTile] = {
+            (tile.column, tile.row): tile for tile in game.tiles
+        }
         if player is None:  # Player not in game
             return False
 
@@ -660,16 +675,16 @@ class GameService:
             else:
                 return False
 
-        if not GameService.in_bounds(shot_col, shot_row, game.size):  # Out of bounds shots
+        if not GameService.in_bounds(
+            shot_col, shot_row, game.size
+        ):  # Out of bounds shots
             return False
 
         shot_pos_player_tiles: list[TrainPlayerTile] = [
             pt for pt in board[(shot_col, shot_row)].player_tiles if pt.has_rail
         ]
 
-        if (
-            len(shot_pos_player_tiles) >= 2
-        ):  # Tiles with too many players on them
+        if len(shot_pos_player_tiles) >= 2:  # Tiles with too many players on them
             return False
 
         # Shots not adjacent to player's rail endpoint
@@ -681,11 +696,15 @@ class GameService:
             pt for pt in board[base_coords].player_tiles if pt.has_rail
         ]
 
-        for tile in base_pos_player_tiles:  # Shots that move along someone else's rails for more than 1 tile
+        for tile in (
+            base_pos_player_tiles
+        ):  # Shots that move along someone else's rails for more than 1 tile
             if tile.player_id != player.id:
                 base_intersecting_player_id = tile.player_id
 
-        if any(pt.player_id == base_intersecting_player_id for pt in shot_pos_player_tiles):
+        if any(
+            pt.player_id == base_intersecting_player_id for pt in shot_pos_player_tiles
+        ):
             return False
 
         # Tiles that run next to your current rails
@@ -696,16 +715,20 @@ class GameService:
             (shot_col + 1, shot_row),
             (shot_col - 1, shot_row),
         )
-        already_shot_coordinates = [(pt.column, pt.row) for pt in player.player_tiles if pt.has_rail]
+        already_shot_coordinates = [
+            (pt.column, pt.row) for pt in player.player_tiles if pt.has_rail
+        ]
 
         for coord in test_coords:
-            if not GameService.in_bounds(coord[0], coord[1], game.size) or coord == base_coords:
+            if (
+                not GameService.in_bounds(coord[0], coord[1], game.size)
+                or coord == base_coords
+            ):
                 continue
             elif coord in already_shot_coordinates:
                 return False
 
         return True
-
 
     @staticmethod
     async def validate_and_cache_anilist_info(link, cache) -> int | None:
@@ -728,14 +751,16 @@ class GameService:
     ):
         board = {tile.position: tile for tile in game.tiles}
         check_gem_time = False
-        if board[shot.coords].resource == GameEmoji.GEMS.value:
+        if board[shot.coords].resource == GameEmoji.GEMS.name:
             shot_list: list[TrainShot] = player.shots
-            if GameEmoji.GEMS.value not in [
+            if GameEmoji.GEMS.name not in [
                 board[shot.coords].resource for shot in shot_list
             ]:
                 check_gem_time = True
 
-        shot_player_tile: TrainPlayerTile = next(pt for pt in player.player_tiles if pt.position == shot.coords)
+        shot_player_tile: TrainPlayerTile = next(
+            pt for pt in player.player_tiles if pt.position == shot.coords
+        )
 
         shot_player_tile.has_rail = True
 
@@ -744,12 +769,13 @@ class GameService:
             player.donetime = datetime.now(timezone.utc)
 
         if check_gem_time:
-            player.score["GemTime"] = int(
-                shot.time.timestamp()
-            )
+            player.score["GemTime"] = int(shot.time.timestamp())
 
         if board[shot.coords].terrain == "river":
-            bridge: TrainItem | None = next(item.emoji == GameEmoji.BRIDGE and item.uses > 0 for item in player.items)
+            bridge: TrainItem | None = next(
+                item.emoji_name == GameEmoji.BRIDGE.name and item.uses > 0
+                for item in player.items
+            )
             if bridge:
                 rails = 0
                 bridge.uses -= 1
@@ -763,6 +789,34 @@ class GameService:
 
         player.rails += rails
 
+    @staticmethod
+    async def get_player_item_counts(guild_id: int, discord_id: int, session: AsyncSession) -> Optional[dict[str, int]]:
+        stmt = (
+            select(TrainPlayer)
+            .join(TrainPlayer.member)
+            .join(TrainPlayer.game)
+            .where(Member.guild_id == guild_id)
+            .where(Member.user_id == discord_id)
+            .where(TrainGame.active.is_(True))
+            .options(selectinload(TrainPlayer.items))
+        )
+        result = await session.execute(stmt)
+        player: Optional[TrainPlayer] = result.scalars().one_or_none()
+        if player is None:
+            return None
+
+        inventory: list[TrainItem] = player.items
+        item_counts = {}
+        for item in inventory:
+            item_counts.setdefault(item.emoji_name, 0)
+            item_counts[item.emoji_name] += 1
+
+        return item_counts
+
+    @staticmethod
+    async def inventory_string(items: dict[str, int]) -> str:
+        return "\n".join(f"{GameEmoji[name].value}: x{count}" for name, count in items.items())
+
 
     def buy_item(self, itemname: str, showinfo: str, ctx: Interaction) -> bool:
         player_idx, player = self.get_player(ctx.user.id)
@@ -772,8 +826,8 @@ class GameService:
         player_loc = (player.shots[-1].row, player.shots[-1].col)
 
         if self.board[player_loc].resource not in (
-            game_emoji["shop"],
-            game_emoji["city"],
+            GameEmoji.SHOP.name,
+            GameEmoji.CITY.name,
         ):
             return True
 
@@ -896,7 +950,7 @@ class GameService:
                         val=1 - player_prison_counts[intersecting_player_tag],
                     )
 
-                if shot_tile.resource == game_emoji["city"]:
+                if shot_tile.resource == GameEmoji.CITY.name:
                     has_city = True
                     if shot.coords() not in city_coords:
                         city_coords[shot.coords()] = choice(
@@ -904,16 +958,16 @@ class GameService:
                         )
                     if shot_anime_info["season"] == city_coords[shot.coords()]:
                         add_to_score(p=player, key="city season bonus", val=3)
-                elif shot_tile.resource == game_emoji["wheat"]:
+                elif shot_tile.resource == GameEmoji.WHEAT.name:
                     add_to_score(p=player, key="wheat", val=1)
 
-                elif shot_tile.resource == game_emoji["wood"]:
+                elif shot_tile.resource == GameEmoji.WOOD.name:
                     add_to_score(p=player, key="wood", val=2)
 
-                elif shot_tile.resource == game_emoji["gems"]:
+                elif shot_tile.resource == GameEmoji.GEMS.name:
                     add_to_score(p=player, key="gems", val=2)
 
-                elif shot_tile.resource == game_emoji["house"]:
+                elif shot_tile.resource == GameEmoji.HOUSE.name:
                     num_houses += 1
                     add_to_score(p=player, key="houses", val=1)
 
@@ -962,3 +1016,14 @@ class GameService:
             player.score["total"] = sum(player.score.values())
 
         self.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}")
+
+
+    @staticmethod
+    async def delete_train_game(
+        game: TrainGame, keep_files: bool, session: AsyncSession
+    ) -> None:
+        if keep_files:
+            game.active = False
+            await session.flush()
+        else:
+            await session.delete(game)
