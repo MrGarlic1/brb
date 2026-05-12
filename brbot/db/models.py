@@ -105,7 +105,7 @@ class Response(Base):
     member_id: Mapped[int] = mapped_column(ForeignKey("members.id"))
     trigger: Mapped[str] = mapped_column(String(2000))
     text: Mapped[str] = mapped_column(String(2000))
-    is_exact: Mapped[bool] = mapped_column(Boolean)
+    behavior: Mapped[int] = mapped_column(Integer)
     member = relationship("Member", back_populates="responses")
 
     __table_args__ = (
@@ -115,15 +115,10 @@ class Response(Base):
             "guild_id",
             "trigger",
             "text",
-            "is_exact",
-            name="uq_response_guild_trigger_text_exact",
+            "behavior",
+            name="uq_response_guild_trigger_text_behavior",
         ),
     )
-
-    def matches(self, text: str) -> bool:
-        return self.trigger.lower() == text.lower() or (
-            not self.is_exact and text.lower().__contains__(self.trigger.lower())
-        )
 
 
 class AnimangaListEntry(Base):

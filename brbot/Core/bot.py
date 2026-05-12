@@ -12,11 +12,10 @@ from os import makedirs
 from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError
 
-from brbot.db.models import GuildConfig, Response, Guild
+from brbot.db.models import GuildConfig, Guild
 from brbot.Core.botutils import load_fonts
 from brbot.Shared.Responses.models import CachedResponse
 from brbot.Shared.GuildConfig.models import CachedGuildConfig
-from typing import Sequence
 import brbot.Core.botdata as bd
 
 logger = logging.getLogger(__name__)
@@ -31,8 +30,9 @@ class BrBot(commands.AutoShardedBot):
         self.session_generator = None
         self.session_generator: async_sessionmaker[AsyncSession]
         self.locks: dict[int, Lock] = {}
-        self.responses: dict[int, list[CachedResponse]] = {}
+        self.responses: dict[int, dict[str, list[CachedResponse]]] = {}
         self.mentions: dict[int, list[CachedResponse]] = {}
+        self.corrections: dict[int, list[CachedResponse]] = {}
         self.guild_configs: dict[int, CachedGuildConfig] = {}
 
         self.cached_al_characters: dict[int, dict] = {}
@@ -153,35 +153,8 @@ class BrBot(commands.AutoShardedBot):
         # Load responses
 
         for guild_id in guild_ids:
-            self.responses.setdefault(guild_id, [])
+            self.responses.setdefault(guild_id, {})
             self.mentions.setdefault(guild_id, [])
-
-        stmt = select(Response).where(Response.guild_id.in_(guild_ids))
-        async with self.session_generator() as session:
-            result = await session.execute(stmt)
-
-        response_list: Sequence[Response] = result.scalars().all()
-        for response in response_list:
-            if response.is_exact:
-                self.responses.setdefault(response.guild_id, []).append(
-                    CachedResponse(
-                        trigger=response.trigger,
-                        text=response.text,
-                        exact=response.is_exact,
-                        member_id=response.member_id,
-                    )
-                )
-            else:
-                self.mentions.setdefault(response.guild_id, []).append(
-                    CachedResponse(
-                        trigger=response.trigger,
-                        text=response.text,
-                        exact=response.is_exact,
-                        member_id=response.member_id,
-                    )
-                )
-
-        logger.info(f"Loaded {len(response_list)} responses")
 
     async def setup_new_guild(self, discord_guild: DiscordGuild) -> None:
         """

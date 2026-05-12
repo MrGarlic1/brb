@@ -2,7 +2,7 @@ import brbot.Core.botdata as bd
 import brbot.Core.botutils as bu
 from brbot.Core.bot import BrBot
 from brbot.Features.Responses.service import ResponseService
-from brbot.Features.Responses.data import RspView
+from brbot.Features.Responses.data import RspView, ResponseType
 from brbot.Shared.Responses.models import CachedResponse
 from brbot.Shared.Members.repository import get_or_create_member
 from discord import app_commands, Interaction, Message
@@ -18,6 +18,7 @@ class ResponsesCog(commands.GroupCog, name="response"):
         self.response_service = ResponseService(
             exact_cache=bot.responses,
             phrase_cache=bot.mentions,
+            correction_cache=bot.corrections,
             guild_config_cache=bot.guild_configs,
         )
         self.bot = bot
@@ -29,15 +30,28 @@ class ResponsesCog(commands.GroupCog, name="response"):
     @app_commands.describe(
         trigger="Text to respond to",
         text="What the bot should respond with",
-        exact="If the message should exactly match the trigger phrase to respond",
+        behavior="Exact match, phrase match, or correction (returns original message, trig replaced with text)",
     )
-    async def add(self, ctx: Interaction, trigger: str, text: str, exact: bool):
+    @app_commands.choices(
+        behavior=[
+            app_commands.Choice(
+                name=ResponseType.Exact.name, value=ResponseType.Exact.value
+            ),
+            app_commands.Choice(
+                name=ResponseType.Phrase.name, value=ResponseType.Phrase.value
+            ),
+            app_commands.Choice(
+                name=ResponseType.Correction.name, value=ResponseType.Correction.value
+            ),
+        ]
+    )
+    async def add(self, ctx: Interaction, trigger: str, text: str, behavior: int):
         # Config permission checks
         async with self.bot.locks[ctx.guild_id]:
             async with self.bot.session_generator() as session:
                 member = await get_or_create_member(ctx.user.id, ctx.guild_id, session)
                 error = await self.response_service.get_response_add_validation_error(
-                    ctx.guild_id, member, exact, session
+                    ctx.guild_id, member, behavior, session
                 )
 
         if error:
@@ -50,7 +64,10 @@ class ResponsesCog(commands.GroupCog, name="response"):
                 error = await self.response_service.add_response(
                     ctx.guild_id,
                     CachedResponse(
-                        trigger=trigger, text=text, exact=exact, member_id=member.id
+                        trigger=trigger,
+                        text=text,
+                        behavior=behavior,
+                        member_id=member.id,
                     ),
                     session,
                 )
@@ -69,18 +86,31 @@ class ResponsesCog(commands.GroupCog, name="response"):
     @app_commands.describe(
         trigger="Text to respond to",
         text="What the bot should respond with",
-        exact="If the message should exactly match the trigger phrase to respond",
+        behavior="Exact match, phrase match, or correction (returns original message, trig replaced with text)",
+    )
+    @app_commands.choices(
+        behavior=[
+            app_commands.Choice(
+                name=ResponseType.Exact.name, value=ResponseType.Exact.value
+            ),
+            app_commands.Choice(
+                name=ResponseType.Phrase.name, value=ResponseType.Phrase.value
+            ),
+            app_commands.Choice(
+                name=ResponseType.Correction.name, value=ResponseType.Correction.value
+            ),
+        ]
     )
     async def remove(
         self,
         ctx: Interaction,
         trigger: str = "",
         text: str = "",
-        exact: Optional[bool] = None,
+        behavior: Optional[int] = None,
     ) -> None:
         # Config permission checks
         response_to_delete: Optional[CachedResponse] = self.response_service.get_resp(
-            ctx.guild_id, trigger, text, exact
+            ctx.guild_id, trigger, text, behavior
         )
         if response_to_delete is None:
             await ctx.response.send_message(
@@ -123,9 +153,9 @@ class ResponsesCog(commands.GroupCog, name="response"):
     ) -> list[app_commands.Choice[str]]:
         trigs: set = set()
         # Add autocomplete options if they match input text, remove duplicates. 25 maximum values (discord limit)
-        for response in self.bot.responses[ctx.guild_id]:
-            if response.trigger not in trigs and current in response.trigger:
-                trigs.add(response.trigger)
+        for trigger in self.bot.responses[ctx.guild_id]:
+            if trigger not in trigs and current in trigger:
+                trigs.add(trigger)
         for response in self.bot.mentions[ctx.guild_id]:
             if response.trigger not in trigs and current in response.trigger:
                 trigs.add(response.trigger)
@@ -135,11 +165,22 @@ class ResponsesCog(commands.GroupCog, name="response"):
         return choices
 
     @remove.autocomplete("text")
-    async def response_autocomplete(self, ctx: Interaction, current: str):
+    async def response_autocomplete(self, ctx: Interaction, _: str):
         # Add autocomplete response options for the specified trigger.
+        all_responses = (
+            [
+                rsp
+                for rsp_group in self.response_service.exact_responses[
+                    ctx.guild_id
+                ].values()
+                for rsp in rsp_group
+            ]
+            + self.response_service.correction_responses[ctx.guild_id]
+            + self.response_service.phrase_responses[ctx.guild_id]
+        )
         responses = [
             response.text
-            for response in self.bot.responses[ctx.guild_id]
+            for response in all_responses
             if response.trigger == ctx.namespace["trigger"]
         ]
         choices = list(map(bu.autocomplete_filter, responses))
@@ -198,4 +239,7 @@ class ResponsesCog(commands.GroupCog, name="response"):
 
 
 async def setup(bot: BrBot):
-    await bot.add_cog(ResponsesCog(bot))
+    cog = ResponsesCog(bot)
+    await bot.add_cog(cog)
+    async with bot.session_generator() as session:
+        await cog.response_service.load_responses(session)

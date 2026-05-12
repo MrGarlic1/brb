@@ -2,6 +2,7 @@ import logging
 from brbot.Shared.Discord.buttons import NextPgButton, PrevPgButton
 from discord.ui import View
 from discord import Interaction
+from enum import Enum
 
 logger = logging.getLogger(__name__)
 
@@ -26,3 +27,16 @@ class RspView(View):
 
         await interaction.response.edit_message(embed=embed, view=self)
         return False
+
+
+class ResponseType(Enum):
+    Phrase = 0
+    Exact = 1
+    Correction = 2
+
+    def __eq__(self, other):
+        if isinstance(other, ResponseType):
+            return self.value == other.value
+        elif isinstance(other, int):
+            return self.value == other
+        return NotImplemented
