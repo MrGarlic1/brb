@@ -341,7 +341,7 @@ class TrainItem(Base):
     __tablename__ = "train_items"
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(400))
-    emoji: Mapped[str] = mapped_column(String(40))
+    emoji_name: Mapped[str] = mapped_column(String(40))
     description: Mapped[str] = mapped_column(String(400))
     uses: Mapped[int] = mapped_column(Integer)
     showinfo: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)

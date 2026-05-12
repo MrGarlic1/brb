@@ -109,6 +109,7 @@ class ConfigCog(commands.GroupCog, name="config"):
             f"{self.bot.guild_configs[ctx.guild_id].max_user_responses}\n"
             f"Restrict User Response Deleting: {self.bot.guild_configs[ctx.guild_id].restrict_response_deletion}\n"
             f"Enable NSFW: {self.bot.guild_configs[ctx.guild_id].enable_nsfw}\n"
+            f"Update Channel: <#{self.bot.guild_configs[ctx.guild_id].update_channel}>\n"
         )
 
 

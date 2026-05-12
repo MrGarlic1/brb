@@ -296,7 +296,7 @@ class BingoCog(commands.GroupCog, name="bingo"):
                 await ctx.followup.send(
                     content="A transient error occurred while deleting. Please try again!"
                 )
-
+            await session.commit()
         await ctx.followup.send(content=bd.pass_str)
         return
 

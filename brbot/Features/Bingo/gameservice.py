@@ -19,7 +19,7 @@ from brbot.Shared.Users.repository import get_or_create_users
 from brbot.Shared.Members.repository import get_or_create_members
 from brbot.db.models import BingoTile, BingoPlayer, BingoGame
 from random import sample
-from sqlalchemy import select, delete
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from typing import Sequence, Optional
 import logging
@@ -327,5 +327,4 @@ class BingoGameService:
             game.active = False
             await session.flush()
         else:
-            stmt = delete(BingoGame).where(BingoGame.id == game.id)
-            await session.execute(stmt)
+            await session.delete(game)
