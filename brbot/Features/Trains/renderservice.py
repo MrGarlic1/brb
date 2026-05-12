@@ -16,6 +16,7 @@ from discord import (
     Embed,
     File,
     Guild as DiscordGuild,
+    Member as DiscordMember,
 )
 from typing import Optional
 from brbot.db.models import (
@@ -54,15 +55,16 @@ class RenderService:
 
     @staticmethod
     async def send_updates_after_shot(
-        game: TrainGame, guild: DiscordGuild, row: int, column: int
+        game: TrainGame, guild: DiscordGuild, column: int, row: int
     ) -> None:
         # Push updates to player boards
         tasks: list = []
         for player_idx, player in enumerate(game.players):
-            if (row, column) in player.vis_tiles:
+            vis_tiles = [pt.position for pt in player.player_tiles]
+            if (column, row) in vis_tiles:
                 logger.debug(
                     f"Sending board update with shot ({row}, {column}) to "
-                    f"{player.member.name} for game {game.name} in {guild.name}"
+                    f"{player.member.user_id} for game {game.name} in {guild.name}"
                 )
                 tasks.append(
                     asyncio.create_task(
@@ -89,13 +91,11 @@ class RenderService:
         return None
 
     @staticmethod
-    def gen_stats_embed(
+    async def gen_stats_embed(
         game: TrainGame, ctx: Interaction, page: int = 0, game_done: bool = False
     ) -> tuple[Embed, Union[None, File]]:
         embed: Embed = Embed()
         embed.set_author(name="Anime Trains", icon_url=bd.bot_avatar_url)
-
-        board = {tile.position: tile for tile in game.tiles}
 
         max_pages: int = len(game.players) + 1
         page: int = 1 + (page % max_pages)  # Loop back through pages both ways
@@ -103,86 +103,98 @@ class RenderService:
 
         # Game stats page
         if page == 1:
-            resource_count: dict = {}
-            claimed_resource_count: dict = {}
-            rail_count: int = 0
-            intersection_count: int = 0
-
-            player_tile_board = {}
-            for tile in game.tiles:
-                tile_rails = [pt for pt in tile.player_tiles if pt.has_rail]
-                player_tile_board[tile.position] = tile_rails
-
-            for coord, tile in board.items():
-                if tile.resource:
-                    try:
-                        resource_count[tile.resource] += 1
-                    except KeyError:
-                        resource_count[tile.resource] = 1
-
-                if coord in player_tile_board:
-                    rail_count += len(player_tile_board[coord])
-                    if tile.resource:
-                        try:
-                            claimed_resource_count[tile.resource] += 1
-                        except KeyError:
-                            claimed_resource_count[tile.resource] = 1
-                    if len(player_tile_board[coord]) > 1:
-                        intersection_count += 1
-
-            embed.title = "Game Stats"
-            embed.description = f"*{game.name}*\n\u200b"
-            embed.set_thumbnail(url=ctx.guild.icon.url)
-            embed.add_field(
-                name="🚂 Active?", value="✅" if game.active else "❌", inline=True
-            )
-
-            embed.add_field(
-                name="🚂 Complete?", value="✅" if game_done else "❌", inline=True
-            )
-            embed.add_field(name="\u200b", value="\u200b", inline=False)
-
-            for resource, count in resource_count.items():
-                if resource not in claimed_resource_count.keys():
-                    claimed_resource_count[resource]: int = 0
-
-                embed.add_field(
-                    name=f"# of {resource} Claimed/Total",
-                    value=f"{claimed_resource_count[resource]}/{count}",
-                    inline=True,
-                )
-
-            embed.add_field(name="🛤️ Total Rails", value=rail_count, inline=True)
-            embed.add_field(
-                name="🔀 # of Crossings", value=intersection_count, inline=True
-            )
-
-            if game_done:
-                img_bytes = RenderService.draw_board_img(
-                    game_width=game.board_width,
-                    game_height=game.board_height,
-                    board=board,
-                )
-                image = File(img_bytes, filename="bingo_board.png")
-
-                embed.set_image(url="attachment://bingo_board.png")
-                return embed, image
-            else:
-                return embed, None
-
+            return RenderService._render_game_stats(embed, game, ctx, game_done)
         # Player stats page
         player_idx: int = page - 2
+        player_discord_member = await ctx.guild.fetch_member(game.players[player_idx].member.user_id)
+        return RenderService._render_player_stats(embed, game, player_idx, player_discord_member)
+
+
+    @staticmethod
+    def _render_game_stats(embed: Embed, game: TrainGame, ctx: Interaction, game_done: bool):
+        resource_count: dict = {}
+        claimed_resource_count: dict = {}
+        rail_count: int = 0
+        intersection_count: int = 0
+        board = {tile.position: tile for tile in game.tiles}
+
+        player_tile_board = {}
+        for tile in game.tiles:
+            tile_rails = [pt for pt in tile.player_tiles if pt.has_rail]
+            player_tile_board[tile.position] = tile_rails
+
+        for coord, tile in board.items():
+            if tile.resource:
+                try:
+                    resource_count[tile.resource] += 1
+                except KeyError:
+                    resource_count[tile.resource] = 1
+
+            if player_tile_board[coord]:
+                rail_count += len(player_tile_board[coord])
+                if tile.resource:
+                    try:
+                        claimed_resource_count[tile.resource] += 1
+                    except KeyError:
+                        claimed_resource_count[tile.resource] = 1
+                if len(player_tile_board[coord]) > 1:
+                    intersection_count += 1
+
+        embed.title = "Game Stats"
+        embed.description = f"*{game.name}*\n\u200b"
+        embed.set_thumbnail(url=ctx.guild.icon.url)
+        embed.add_field(
+            name="🚂 Active?", value="✅" if game.active else "❌", inline=True
+        )
+
+        embed.add_field(
+            name="🚂 Complete?", value="✅" if game_done else "❌", inline=True
+        )
+        embed.add_field(name="\u200b", value="\u200b", inline=False)
+
+        for resource, count in resource_count.items():
+            if resource not in claimed_resource_count.keys():
+                claimed_resource_count[resource]: int = 0
+
+            embed.add_field(
+                name=f"# of {resource} Claimed/Total",
+                value=f"{claimed_resource_count[resource]}/{count}",
+                inline=True,
+            )
+
+        embed.add_field(name="🛤️ Total Rails", value=rail_count, inline=True)
+        embed.add_field(
+            name="🔀 # of Crossings", value=intersection_count, inline=True
+        )
+
+        if game_done:
+            img_bytes = RenderService.draw_board_img(
+                game_width=game.board_width,
+                game_height=game.board_height,
+                board=board,
+            )
+            image = File(img_bytes, filename="bingo_board.png")
+
+            embed.set_image(url="attachment://bingo_board.png")
+            return embed, image
+        else:
+            return embed, None
+
+
+    @staticmethod
+    def _render_player_stats(embed: Embed, game: TrainGame, player_idx: int, discord_member: DiscordMember):
         player: TrainPlayer = game.players[player_idx]
+        board = {tile.position: tile for tile in game.tiles}
+
+        embed.set_thumbnail(url=discord_member.avatar.url)
+        embed.description = f"### Stats for {discord_member.mention}"
+        embed.add_field(name="\u200b", value="\u200b", inline=False)
 
         if len(player.shots) == 0:
             embed.description = (
-                f"### {player.member.mention} has not placed any rails yet!"
+                f"### {discord_member.mention} has not placed any rails yet!"
             )
             return embed, None
-
-        embed.set_thumbnail(url=player.member.avatar.url)
-        embed.description = f"### Stats for {player.member.mention}"
-        embed.add_field(name="\u200b", value="\u200b", inline=False)
 
         # Total shots/in-zone shots
         total_shots: int = len(player.shots)
@@ -474,19 +486,21 @@ class RenderService:
             if board[coords].terrain == "river":
                 draw_hatch_pattern(row, col)
 
-            resource_text = GameEmoji[board[coords].resource].value if board[coords].resource else ""
+            resource_text = (
+                GameEmoji[board[coords].resource].value
+                if board[coords].resource
+                else ""
+            )
 
             # Draw start/end text
-            print(coords)
-            print(player_start)
-            print(vis_tiles[coords].has_rail)
             if coords == player_start and not vis_tiles[coords].has_rail:
-                print("Draw?")
                 rail_text = "Start"
             elif coords == player_end and not vis_tiles[coords].has_rail:
                 rail_text = "End"
             else:
-                rail_text = vis_tiles[coords].rail_text if vis_tiles[coords].rail_text else ""
+                rail_text = (
+                    vis_tiles[coords].rail_text if vis_tiles[coords].rail_text else ""
+                )
             text_pixels = draw.textlength(text=resource_text + rail_text, font=font)
 
             # Dynamic font/emoji sizing depending on length of text

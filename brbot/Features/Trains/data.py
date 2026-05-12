@@ -2,9 +2,16 @@ from datetime import datetime
 
 from discord import Interaction, Embed, Member
 from discord.ui import View
+from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+
+from brbot.db.models import TrainPlayer, TrainTile
 from brbot.Core.botdata import bot_avatar_url, train_zones_url
 from brbot.Shared.Discord.buttons import NextPgButton, PrevPgButton
 from enum import Enum
+
+from brbot.db.models import TrainGame
 
 DEFAULT_WIDTH = 16
 DEFAULT_HEIGHT = 16
@@ -90,15 +97,29 @@ class GameStatsView(View):
         page (int): Which response page in server's response list to display
     """
 
-    def __init__(self, game):
+    def __init__(self, game_id: int, game_done: bool, session_generator: async_sessionmaker, render_service):
         super().__init__(timeout=60)
         self.add_item(PrevPgButton())
         self.add_item(NextPgButton())
         self.page = 1
-        self.game = game
+        self.game_id = game_id
+        self.render_service = render_service
+        self.session_generator = session_generator
+        self.game_done = game_done
 
     async def render(self, interaction: Interaction):
-        embed, image = self.game.gen_stats_embed(interaction, self.page)
+        async with self.session_generator() as session:
+            stmt = select(TrainGame).where(TrainGame.id == self.game_id)
+            stmt = stmt.options(
+                selectinload(TrainGame.players).selectinload(TrainPlayer.member),
+                selectinload(TrainGame.tiles).selectinload(TrainTile.player_tiles),
+                selectinload(TrainGame.players).selectinload(TrainPlayer.shots),
+                selectinload(TrainGame.players).selectinload(TrainPlayer.player_tiles),
+            )
+            result = await session.execute(stmt)
+            game = result.scalars().first()
+
+        embed, image = await self.render_service.gen_stats_embed(game, interaction, self.page, self.game_done)
 
         if not image:
             await interaction.response.edit_message(

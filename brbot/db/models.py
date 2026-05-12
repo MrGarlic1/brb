@@ -432,6 +432,7 @@ class TrainPlayerTile(Base):
     has_rail: Mapped[bool] = mapped_column(Boolean)
     rail_text: Mapped[Optional[str]] = mapped_column(String(400), nullable=True)
 
+    @property
     def position(self) -> tuple[int, int]:
         return self.column, self.row
 
