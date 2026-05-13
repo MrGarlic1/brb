@@ -61,7 +61,9 @@ class GameService:
         if load_players:
             stmt = stmt.options(
                 selectinload(TrainGame.players).selectinload(TrainPlayer.member),
-                selectinload(TrainGame.tiles).selectinload(TrainTile.player_tiles).selectinload(TrainPlayerTile.player),
+                selectinload(TrainGame.tiles)
+                .selectinload(TrainTile.player_tiles)
+                .selectinload(TrainPlayerTile.player),
                 selectinload(TrainGame.players).selectinload(TrainPlayer.shots),
                 selectinload(TrainGame.items),
                 selectinload(TrainGame.players).selectinload(TrainPlayer.items),
@@ -168,7 +170,9 @@ class GameService:
             await session.commit()
 
         async with session_generator() as session:
-            game = await GameService.get_guild_train_game(guild.id, session, load_players=True)
+            game = await GameService.get_guild_train_game(
+                guild.id, session, load_players=True
+            )
 
             for player_id in player_starts:
                 await GameService.add_vis_tiles(
@@ -605,7 +609,6 @@ class GameService:
         GameService.update_stats_after_shot(game, player, shot)
         await session.flush()
 
-
     @staticmethod
     async def add_vis_tiles(
         game: TrainGame,
@@ -620,7 +623,9 @@ class GameService:
         shot_col = root_position[0]
         shot_row = root_position[1]
         render_dist += telescope_count
-        player = next((player for player in game.players if player.id == player_id), None)
+        player = next(
+            (player for player in game.players if player.id == player_id), None
+        )
         if player is None:
             return
 
@@ -787,13 +792,19 @@ class GameService:
             player.done = True
             player.donetime = datetime.now(timezone.utc)
 
+        player.current_row = shot.row
+        player.current_col = shot.column
+
         if check_gem_time:
             player.score["GemTime"] = int(shot.time.timestamp())
 
         if board[shot.coords].terrain == "river":
             bridge: TrainItem | None = next(
-                (item.emoji_name == GameEmoji.BRIDGE.name and item.uses > 0
-                for item in player.items), None
+                (
+                    item.emoji_name == GameEmoji.BRIDGE.name and item.uses > 0
+                    for item in player.items
+                ),
+                None,
             )
             if bridge:
                 rails = 0
@@ -840,35 +851,43 @@ class GameService:
             f"{GameEmoji[name].value}: x{count}" for name, count in items.items()
         )
 
-    def buy_item(self, itemname: str, showinfo: str, ctx: Interaction) -> bool:
-        player_idx, player = self.get_player(ctx.user.id)
-        if player is None or self.shop[itemname].amount < 1 or not player.shots:
+    @staticmethod
+    def buy_item(game: TrainGame, itemname: str, showinfo: str, user_id: int) -> bool:
+        player: TrainPlayer = next(
+            (player for player in game.players if player.member.user_id == user_id),
+            None,
+        )
+        board = {tile.position: tile for tile in game.tiles}
+        item_to_purchase: TrainItem = next(
+            (
+                item
+                for item in game.items
+                if item.name == itemname and item.owner_player_id is None
+            ),
+            None,
+        )
+
+        if player is None or item_to_purchase is None:
             return True
 
-        player_loc = (player.shots[-1].row, player.shots[-1].col)
+        if player.current_position is None:
+            return True
 
-        if self.board[player_loc].resource not in (
+        if board[player.current_position].resource not in (
             GameEmoji.SHOP.name,
             GameEmoji.CITY.name,
         ):
             return True
 
-        if player_loc in player.shops_used:
+        if player.current_position == (player.last_bought_col, player.last_bought_row):
             return True
 
-        if itemname in self.players[player_idx].inventory:
-            self.players[player_idx].inventory[itemname].amount += 1
-        else:
-            self.players[player_idx].inventory[itemname] = default_shop()[itemname]
-            self.players[player_idx].inventory[itemname].amount = 1
-            self.players[player_idx].inventory[itemname].showinfo += f" {showinfo}"
-
-        player.shops_used.append(player_loc)
+        item_to_purchase.showinfo = showinfo
+        player.items.append(item_to_purchase)
+        player.last_bought_col, player.last_bought_row = player.current_position
         logger.debug(
-            f"Player {player.member.name} bought {itemname} for game {self.name} in {ctx.guild.name}"
+            f"Player {player.member.user_id} bought {itemname} for game {game.name} in guild {game.guild_id}"
         )
-        self.shop[itemname].amount -= 1
-        self.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}")
         return False
 
     def use_bucket(self, ctx: Interaction, row: int, col: int) -> bool:
@@ -1048,3 +1067,27 @@ class GameService:
             await session.flush()
         else:
             await session.delete(game)
+
+    @staticmethod
+    async def find_archived_game(
+        guild_id: int, session: AsyncSession, name: str = None
+    ):
+        if name is None:
+            game = await GameService.get_guild_train_game(
+                guild_id, session, load_players=False, active=True
+            )
+        else:
+            game = await GameService.get_guild_train_game(
+                guild_id, session, load_players=False, active=False, name=name
+            )
+
+        return game
+
+    @staticmethod
+    def show_game_inventory(game: TrainGame):
+        item_counts = {}
+        for item in game.items:
+            item_counts.setdefault(item.emoji_name, 0)
+            item_counts[item.emoji_name] += 1
+
+        return "\n".join(f"{emoji}: x{count}" for emoji, count in item_counts.items())

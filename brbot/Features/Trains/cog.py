@@ -3,7 +3,7 @@ from brbot.Features.Trains.gameservice import GameService
 from brbot.Features.Trains.data import (
     DEFAULT_HEIGHT,
     DEFAULT_WIDTH,
-    default_shop,
+    DEFAULT_SHOP_DEFINITION,
     train_game_embed,
     GameStatsView,
     GameRulesView,
@@ -12,7 +12,6 @@ from brbot.Features.Trains.data import (
 from brbot.Features.Trains.renderservice import RenderService
 from brbot.db.models import TrainShot
 import brbot.Core.botdata as bd
-from os import listdir
 import brbot.Core.botutils as bu
 from datetime import datetime, timezone
 from discord import app_commands, Interaction, File
@@ -93,18 +92,21 @@ class TrainsCog(commands.GroupCog, name="trains"):
         name="viewshop", description="View the shop for the active trains game."
     )
     async def viewshop(self, ctx: Interaction):
-        if ctx.guild_id not in bd.active_trains:
-            await ctx.response.send_message(
-                content="There is no active game! To make one, use /trains newgame",
-                ephemeral=True,
+        async with self.bot.session_generator() as session:
+            game = await self.game_service.get_guild_train_game(
+                ctx.guild.id, session, active=True, load_players=True
             )
-            return True
+            if game is None:
+                await ctx.response.send_message(
+                    content="There is no active game! To make one, use /trains newgame",
+                    ephemeral=True,
+                )
+                return
 
-        game = bd.active_trains[ctx.guild_id]
         await ctx.response.send_message(
-            content="\n".join([item.shop_entry() for item in game.shop.values()])
+            content=self.game_service.show_game_inventory(game)
         )
-        return False
+        return
 
     @app_commands.command(name="buy", description="Buy an item from a shop/city.")
     @app_commands.describe(
@@ -113,27 +115,31 @@ class TrainsCog(commands.GroupCog, name="trains"):
     )
     @app_commands.choices(
         name=[
-            app_commands.Choice(name=itemname, value=itemname)
-            for itemname in default_shop()
+            app_commands.Choice(name=item.name, value=item.name)
+            for _, item in DEFAULT_SHOP_DEFINITION
         ]
     )
     async def buy(self, ctx: Interaction, name: str, showinfo: str):
-        if ctx.guild_id not in bd.active_trains:
-            await ctx.response.send_message(
-                content="There is no active game! To make one, use /trains newgame",
-                ephemeral=True,
+        await ctx.response.defer()
+        async with self.bot.session_generator() as session:
+            game = await self.game_service.get_guild_train_game(
+                ctx.guild.id, session, active=True, load_players=True
             )
-            return True
+            if game is None:
+                await ctx.followup.send(
+                    content="There is no active game! To make one, use /trains newgame",
+                    ephemeral=True,
+                )
+                return
 
-        game = bd.active_trains[ctx.guild_id]
+            err = self.game_service.buy_item(
+                game=game, itemname=name, showinfo=showinfo, user_id=ctx.user.id
+            )
+            await session.commit()
 
-        err = game.buy_item(itemname=name, showinfo=showinfo, ctx=ctx)
-        if err:
-            await ctx.response.send_message(content=bd.fail_str)
-            return True
-
-        await ctx.response.send_message(content=bd.pass_str)
-        return False
+        message = bd.fail_str if err else bd.pass_str
+        await ctx.followup.send(content=message)
+        return
 
     @app_commands.command(
         name="inventory", description="View your inventory for the active trains game."
@@ -261,7 +267,9 @@ class TrainsCog(commands.GroupCog, name="trains"):
         if not game.active:
             await self.game_service.calculate_player_scores(ctx=ctx)
             embed, image = self.render_service.gen_score_embed(game=game, page=0)
-            view = GameStatsView(game.id, True, self.bot.session_generator, self.render_service)
+            view = GameStatsView(
+                game.id, True, self.bot.session_generator, self.render_service
+            )
             await ctx.followup.send(embed=embed, file=image, view=view)
         return
 
@@ -303,7 +311,9 @@ class TrainsCog(commands.GroupCog, name="trains"):
             embed, image = await self.render_service.gen_stats_embed(
                 game, ctx, game_done=is_done
             )
-            view = GameStatsView(game.id, is_done, self.bot.session_generator, self.render_service)
+            view = GameStatsView(
+                game.id, is_done, self.bot.session_generator, self.render_service
+            )
             if image:
                 await ctx.followup.send(embed=embed, file=image, view=view)
             else:
@@ -393,48 +403,28 @@ class TrainsCog(commands.GroupCog, name="trains"):
     )
     @app_commands.describe(name="Name of game to be restored")
     async def restore(self, ctx: Interaction, name: str):
-        if not ctx.user.guild_permissions.administrator:
-            await ctx.response.send_message(
-                content="You must be an administrator to use this command!",
-                ephemeral=True,
+        # Logic to get game or return error if no game found
+        await ctx.response.defer()
+        async with self.bot.session_generator() as session:
+            game = await self.game_service.find_archived_game(
+                ctx.guild_id, session, name=name
             )
-            return True
-        if ctx.guild_id in bd.active_trains:
-            await ctx.response.send_message(
-                "There is already an active game in this server!"
-            )
-            return True
-        try:
-            test_game = await load_trains_game(
-                filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{name}",
-                guild=ctx.guild,
-            )
-        except FileNotFoundError:
-            await ctx.response.send_message(content="Game name does not exist.")
-            return True
-        if not any(player.done is False for player in test_game.players):
-            await ctx.response.send_message(
-                "You can not restore a completed game to active status."
-            )
-            return True
+            if game is None:
+                names = await GameService.get_guild_game_names(ctx.guild_id, session)
+                await ctx.response.send_message(
+                    content=f"No game found! Possible options: {', '.join(names)}"
+                )
+                return
+            if self.game_service.is_done(game):
+                await ctx.response.send_message(
+                    content=f"This game is already complete!"
+                )
+                return
 
-        test_game.active = True
-        logger.info(f"Restored game {name} to active status in {ctx.guild.name}")
-        test_game.save_game(
-            f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{test_game.name}"
-        )
-        bd.active_trains[ctx.guild_id] = test_game
-        await ctx.response.send_message(content=bd.pass_str)
-        return False
-
-    @restore.autocomplete("name")
-    async def restore_autocomplete(self, ctx: Interaction, current: str):
-        games = listdir(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains")
-        games = [gamename for gamename in games if current in gamename]
-        choices = list(map(bu.autocomplete_filter, games))
-        if len(choices) > 25:
-            choices = choices[:24]
-        return choices
+            game.active = True
+            await session.commit()
+            await ctx.followup.send(content=bd.pass_str)
+            return
 
     @app_commands.command(
         name="rules", description="Display the rules for playing trains"

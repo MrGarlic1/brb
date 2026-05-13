@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime
 
 from discord import Interaction, Embed, Member
@@ -6,7 +7,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from brbot.db.models import TrainPlayer, TrainTile
+from brbot.db.models import TrainPlayer, TrainTile, TrainItem
 from brbot.Core.botdata import bot_avatar_url, train_zones_url
 from brbot.Shared.Discord.buttons import NextPgButton, PrevPgButton
 from enum import Enum
@@ -18,42 +19,20 @@ DEFAULT_HEIGHT = 16
 RIVER_RING = 1
 
 
+@dataclass
+class TrainItemInfo:
+    name: str
+    description: str
+    emoji_name: str
+    uses: int
+    cost: int
+
+
 class RiverDirection(Enum):
     RIGHT = 0
     DOWN_RIGHT = (1,)
     DOWN = 2
     DOWN_LEFT = 3
-
-
-class TrainItem:
-    def __init__(
-        self,
-        name: str,
-        emoji: str,
-        description: str,
-        amount: int,
-        cost: float,
-        showinfo: str = "",
-        uses: int = -1,
-    ):
-        self.name = name
-        self.emoji = emoji
-        self.description = description
-        self.amount = amount
-        self.cost = cost
-        self.showinfo = showinfo
-        self.uses = uses
-
-    """
-    def inv_entry(self):
-        return f"{self.emoji}: (x{self.amount})"
-
-    def shop_entry(self):
-        return f"{self.emoji} {self.name} (x{self.amount}) (Cost {self.cost}): {self.description}"
-
-    def __repr__(self):
-        return f"{self.name} {self.emoji} {self.description} {self.amount} {self.cost} {self.showinfo}"
-    """
 
 
 def find_anilist_changes(
@@ -97,7 +76,13 @@ class GameStatsView(View):
         page (int): Which response page in server's response list to display
     """
 
-    def __init__(self, game_id: int, game_done: bool, session_generator: async_sessionmaker, render_service):
+    def __init__(
+        self,
+        game_id: int,
+        game_done: bool,
+        session_generator: async_sessionmaker,
+        render_service,
+    ):
         super().__init__(timeout=60)
         self.add_item(PrevPgButton())
         self.add_item(NextPgButton())
@@ -119,7 +104,9 @@ class GameStatsView(View):
             result = await session.execute(stmt)
             game = result.scalars().first()
 
-        embed, image = await self.render_service.gen_stats_embed(game, interaction, self.page, self.game_done)
+        embed, image = await self.render_service.gen_stats_embed(
+            game, interaction, self.page, self.game_done
+        )
 
         if not image:
             await interaction.response.edit_message(
@@ -368,67 +355,93 @@ def train_items_embed() -> Embed:
     embed.set_author(name="Anime Trains", icon_url=bot_avatar_url)
     embed.colour = 0xFF9C2C
     embed.title = "Item Reference"
-    for item in default_shop().values():
+    for _, item in DEFAULT_SHOP_DEFINITION:
         embed.add_field(
-            name=f"{item.emoji} {item.name}",
+            name=f"{GameEmoji[item.emoji_name].value} {item.name}",
             value=f"*Cost: {item.cost}*\n{item.description}",
             inline=True,
         )
     return embed
 
 
-def default_shop() -> dict[str, TrainItem]:
-    return {
-        "Telescope": TrainItem(
+DEFAULT_SHOP_DEFINITION = [
+    (
+        3,
+        TrainItemInfo(
             name="Telescope",
-            emoji=GameEmoji.TELESCOPE.name,
+            emoji_name=GameEmoji.TELESCOPE.name,
             description="Permanently increases your vision by 1!",
+            uses=0,
             cost=3,
-            amount=2,
         ),
-        "Gun": TrainItem(
+    ),
+    (
+        1,
+        TrainItemInfo(
             name="Gun",
-            emoji=GameEmoji.GUN.name,
+            emoji_name=GameEmoji.GUN.name,
             description="Increase the prison's intersection penalty for other players by 0.5!",
+            uses=0,
             cost=5,
-            amount=1,
         ),
-        "Bucket": TrainItem(
+    ),
+    (
+        4,
+        TrainItemInfo(
             name="Bucket",
-            emoji=GameEmoji.BUCKET.name,
+            emoji_name=GameEmoji.BUCKET.name,
             description="Allows you to create 3 river tiles at locations of your choice! (consumable)",
             cost=1,
-            amount=4,
             uses=3,
         ),
-        "Pontoon Bridge": TrainItem(
+    ),
+    (
+        4,
+        TrainItemInfo(
             name="Pontoon Bridge",
-            emoji=GameEmoji.BRIDGE.name,
+            emoji_name=GameEmoji.BRIDGE.name,
             description="Allows you to use 0 rails when placing on a river tile! (consumed when entering a river)",
             cost=1,
-            amount=4,
             uses=3,
         ),
-        "Axe": TrainItem(
+    ),
+    (
+        2,
+        TrainItemInfo(
             name="Axe",
-            emoji=GameEmoji.AXE.name,
+            emoji_name=GameEmoji.AXE.name,
             description=f"Increase points gained from {GameEmoji.WOOD.value} tiles by 0.5!",
             cost=3,
-            amount=2,
+            uses=0,
         ),
-        "Coin": TrainItem(
+    ),
+    (
+        4,
+        TrainItemInfo(
             name="Coin",
-            emoji=GameEmoji.COIN.name,
+            emoji_name=GameEmoji.COIN.name,
             description="Increases your score by 2!",
             cost=3,
-            amount=4,
+            uses=0,
         ),
-        "MagLev": TrainItem(
+    ),
+    (
+        2,
+        TrainItemInfo(
             name="MagLev",
-            emoji=GameEmoji.MAGLEV.name,
+            emoji_name=GameEmoji.MAGLEV.name,
             description="Faster trains! "
             "Permanently decreases the anime requirement for rails from 3 hours to 2 hours.",
             cost=3,
-            amount=2,
+            uses=0,
         ),
-    }
+    ),
+]
+
+
+def make_default_shop(game_id) -> list[TrainItem]:
+    return [
+        TrainItem(game_id=game_id, **vars(defn))
+        for count, defn in DEFAULT_SHOP_DEFINITION
+        for _ in range(count)
+    ]

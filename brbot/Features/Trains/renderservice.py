@@ -106,12 +106,17 @@ class RenderService:
             return RenderService._render_game_stats(embed, game, ctx, game_done)
         # Player stats page
         player_idx: int = page - 2
-        player_discord_member = await ctx.guild.fetch_member(game.players[player_idx].member.user_id)
-        return RenderService._render_player_stats(embed, game, player_idx, player_discord_member)
-
+        player_discord_member = await ctx.guild.fetch_member(
+            game.players[player_idx].member.user_id
+        )
+        return RenderService._render_player_stats(
+            embed, game, player_idx, player_discord_member
+        )
 
     @staticmethod
-    def _render_game_stats(embed: Embed, game: TrainGame, ctx: Interaction, game_done: bool):
+    def _render_game_stats(
+        embed: Embed, game: TrainGame, ctx: Interaction, game_done: bool
+    ):
         resource_count: dict = {}
         claimed_resource_count: dict = {}
         rail_count: int = 0
@@ -163,9 +168,7 @@ class RenderService:
             )
 
         embed.add_field(name="🛤️ Total Rails", value=rail_count, inline=True)
-        embed.add_field(
-            name="🔀 # of Crossings", value=intersection_count, inline=True
-        )
+        embed.add_field(name="🔀 # of Crossings", value=intersection_count, inline=True)
 
         if game_done:
             img_bytes = RenderService.draw_board_img(
@@ -180,9 +183,10 @@ class RenderService:
         else:
             return embed, None
 
-
     @staticmethod
-    def _render_player_stats(embed: Embed, game: TrainGame, player_idx: int, discord_member: DiscordMember):
+    def _render_player_stats(
+        embed: Embed, game: TrainGame, player_idx: int, discord_member: DiscordMember
+    ):
         player: TrainPlayer = game.players[player_idx]
         board = {tile.position: tile for tile in game.tiles}
 
