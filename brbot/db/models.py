@@ -369,7 +369,12 @@ class TrainPlayer(Base):
     start_row: Mapped[int] = mapped_column(Integer, nullable=True)
     end_col: Mapped[int] = mapped_column(Integer, nullable=True)
     end_row: Mapped[int] = mapped_column(Integer, nullable=True)
+    current_col: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    current_row: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     done: Mapped[bool] = mapped_column(Boolean)
+    last_bought_col: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    last_bought_row: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
     donetime: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     least_watched_genre: Mapped[Optional[str]] = mapped_column(
         String(400), nullable=True
@@ -395,9 +400,9 @@ class TrainPlayer(Base):
 
     @property
     def current_position(self) -> Optional[tuple[int, int]]:
-        if self.current_tile_id is None:
+        if self.current_row is None or self.current_col is None:
             return None
-        return self.current_tile.position
+        return self.current_col, self.current_row
 
 
 class TrainTile(Base):

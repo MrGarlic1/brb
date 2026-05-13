@@ -32,7 +32,6 @@ from brbot.Features.Trains.data import (
     RiverDirection,
     GameEmoji,
     genre_colors,
-    default_shop,
     find_anilist_changes,
 )
 

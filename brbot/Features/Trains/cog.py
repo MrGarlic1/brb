@@ -417,7 +417,7 @@ class TrainsCog(commands.GroupCog, name="trains"):
                 return
             if self.game_service.is_done(game):
                 await ctx.response.send_message(
-                    content=f"This game is already complete!"
+                    content="This game is already complete!"
                 )
                 return
 
