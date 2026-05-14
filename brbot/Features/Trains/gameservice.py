@@ -4,7 +4,6 @@ from random import randint, shuffle, choice
 import logging
 
 from discord import (
-    Interaction,
     Member as DiscordMember,
     Guild as DiscordGuild,
 )
@@ -837,12 +836,12 @@ class GameService:
 
     @staticmethod
     def get_player_item_counts(
-        game: TrainGame, discord_id: int, player: TrainPlayer = None
-    ) -> Optional[dict[str, int]]:
+        game: TrainGame, *, discord_id: int = None, player: TrainPlayer = None
+    ) -> dict[str, int]:
         if player is None:
             player = GameService.find_player(game=game, discord_user_id=discord_id)
-        if player is None:
-            return None
+
+        assert player is not None
 
         inventory: list[TrainItem] = player.items
         item_counts = {}
@@ -914,12 +913,12 @@ class GameService:
         return False
 
     @staticmethod
-    async def calculate_player_scores(game, ctx: Interaction) -> None:
-        def add_to_score(p: TrainPlayer, key: str, val: int):
-            if key in player.score:
-                p.score[key] += val
+    async def calculate_player_scores(game) -> None:
+        def add_to_score(score: dict, key: str, val: int):
+            if key in score:
+                score[key] += val
             else:
-                p.score[key] = val
+                score[key] = val
 
         players: list[TrainPlayer] = game.players
         board: dict[tuple[int, int], TrainTile] = {
@@ -936,28 +935,25 @@ class GameService:
         player_starting_anilists = []
 
         for player in players:
-            inventory = GameService.get_player_item_counts(game, ctx.user.id, player)
-            player.score = {}  # Avoid re-adding to non-zero score
+            inventory = GameService.get_player_item_counts(game, player=player)
             player_starting_anilists += player.starting_anilist
             track_resources = [board[shot.coords].resource for shot in player.shots]
-            player_prison_counts[player.tag] = track_resources.count(
+            player_prison_counts[player.id] = track_resources.count(
                 GameEmoji.PRISON.name
             )
-            if (
-                player_prison_counts[player.tag] != 0
-                and GameEmoji.GUN.name in inventory
-            ):
-                player_prison_counts[player.tag] += 0.5 * inventory[GameEmoji.GUN.name]
+            if player_prison_counts[player.id] != 0 and GameEmoji.GUN.name in inventory:
+                player_prison_counts[player.id] += 0.5 * inventory[GameEmoji.GUN.name]
 
         city_coords: dict[tuple[int, int], str] = {}
         for idx, player in enumerate(players):
-            inventory = GameService.get_player_item_counts(game, ctx.user.id, player)
+            inventory = GameService.get_player_item_counts(game, player=player)
+            score_dict = {}  # Avoid re-adding to non-zero score
 
             # Fast finish scoring
             if idx == 0:
-                player.score["speed bonus"] = 2
+                score_dict["speed bonus"] = 2
             elif idx == 1:
-                player.score["speed bonus"] = 1
+                score_dict["speed bonus"] = 1
 
             # Item score bonuses
             axe_bonus = 0
@@ -966,7 +962,7 @@ class GameService:
 
             if GameEmoji.COIN.name in inventory:
                 add_to_score(
-                    p=player,
+                    score=score_dict,
                     key=GameEmoji.COIN.name,
                     val=2 * inventory[GameEmoji.COIN.name],
                 )
@@ -990,49 +986,52 @@ class GameService:
             num_houses = 0
 
             for shot in player.shots:
-                shot_tile: TrainTile = board[shot.coords()]
-                shot_anime_info = self.known_shows[shot.show_id]
+                shot: TrainShot
+                shot_tile: TrainTile = board[shot.coords]
+                shot_anime_info = shot.anilist_info
 
                 if not train_tag_quest_complete and any(
                     tag["name"] == "Trains" and tag["rank"] > 40
                     for tag in shot_anime_info["tags"]
                 ):
                     if any(
-                        anime["mediaId"] == shot.show_id
+                        anime["mediaId"] == shot.anilist_media_id
                         and anime["progress"] == shot_anime_info["episodes"]
                         for anime in anilist_changes
                     ):
                         train_tag_quest_complete = True
-                if len(shot_tile.rails) > 1:
-                    intersecting_player_tag = [
-                        tag for tag in shot_tile.rails if tag != player.tag
+                if len(shot_tile.player_tiles) > 1:
+                    intersecting_player = [
+                        pt.player
+                        for pt in shot_tile.player_tiles
+                        if pt.player.id != player.id
                     ][0]
                     add_to_score(
-                        p=player,
+                        score=score_dict,
                         key="intersections",
-                        val=1 - player_prison_counts[intersecting_player_tag],
+                        val=1 - player_prison_counts[intersecting_player.id],
                     )
 
                 if shot_tile.resource == GameEmoji.CITY.name:
                     has_city = True
-                    if shot.coords() not in city_coords:
-                        city_coords[shot.coords()] = choice(
+                    if shot.coords not in city_coords:
+                        city_coords[shot.coords] = choice(
                             ["SPRING", "SUMMER", "AUTUMN", "WINTER"]
                         )
-                    if shot_anime_info["season"] == city_coords[shot.coords()]:
-                        add_to_score(p=player, key="city season bonus", val=3)
+                    if shot_anime_info["season"] == city_coords[shot.coords]:
+                        add_to_score(score=score_dict, key="city season bonus", val=3)
                 elif shot_tile.resource == GameEmoji.WHEAT.name:
-                    add_to_score(p=player, key="wheat", val=1)
+                    add_to_score(score=score_dict, key="wheat", val=1)
 
                 elif shot_tile.resource == GameEmoji.WOOD.name:
-                    add_to_score(p=player, key="wood", val=2)
+                    add_to_score(score=score_dict, key="wood", val=2)
 
                 elif shot_tile.resource == GameEmoji.GEMS.name:
-                    add_to_score(p=player, key="gems", val=2)
+                    add_to_score(score=score_dict, key="gems", val=2)
 
                 elif shot_tile.resource == GameEmoji.HOUSE.name:
                     num_houses += 1
-                    add_to_score(p=player, key="houses", val=1)
+                    add_to_score(score=score_dict, key="houses", val=1)
 
                 if not shots_without_resources_quest_complete:
                     if not shot_tile.resource:
@@ -1048,35 +1047,38 @@ class GameService:
                 if shot_tile.zone in shot_anime_info["genres"]:
                     genre_zone_matched = True
                 if any(
-                    shot.show_id == d["mediaId"] for d in player_starting_anilists
+                    shot.anilist_media_id == d["mediaId"]
+                    for d in player_starting_anilists
                 ) and not any(
-                    d["mediaId"] == shot.show_id for d in player.starting_anilist
+                    d["mediaId"] == shot.anilist_media_id
+                    for d in player.starting_anilist
                 ):
-                    if shot.show_id not in different_player_anime_shots:
-                        different_player_anime_shots.append(shot.show_id)
+                    if shot.anilist_media_id not in different_player_anime_shots:
+                        different_player_anime_shots.append(shot.anilist_media_id)
 
-            if has_city and "wheat" in player.score:
-                player.score["wheat"] += 3
-            if has_city and "houses" in player.score:
-                player.score["houses"] += 1 * num_houses
-                player.score["houses"] -= player_prison_counts[player.tag] * num_houses
+            if has_city and "wheat" in score_dict:
+                score_dict["wheat"] += 3
+            if has_city and "houses" in score_dict:
+                score_dict["houses"] += 1 * num_houses
+                score_dict["houses"] -= player_prison_counts[player.id] * num_houses
 
-            player.score["rails bonus"] = -2 * int((player.rails - 26) / 3)
+            score_dict["rails bonus"] = -2 * int((player.rails - 26) / 3)
 
             if least_watched_genre_shots >= 2:
-                player.score["quest: least watched genre"] = 4
+                score_dict["quest: least watched genre"] = 4
             if len(anime_sources) >= 4:
-                player.score["quest: different sources"] = 3
+                score_dict["quest: different sources"] = 3
             if not genre_zone_matched:
-                player.score["quest: genre zone match"] = 3
+                score_dict["quest: genre zone match"] = 3
             if shots_without_resources_quest_complete:
-                player.score["quest: shots without resources"] = 3
+                score_dict["quest: shots without resources"] = 3
             if len(different_player_anime_shots) >= 3:
-                player.score["quest: other player's shows"] = 2
+                score_dict["quest: other player's shows"] = 2
             if train_tag_quest_complete:
-                player.score["quest: train tag"] = 3
+                score_dict["quest: train tag"] = 3
 
-            player.score["total"] = sum(player.score.values())
+            score_dict["total"] = sum(score_dict.values())
+            player.score = score_dict
 
     @staticmethod
     async def delete_train_game(

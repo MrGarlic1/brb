@@ -158,7 +158,9 @@ class TrainsCog(commands.GroupCog, name="trains"):
                     ephemeral=True,
                 )
                 return
-            item_counts = self.game_service.get_player_item_counts(game, ctx.user.id)
+            item_counts = self.game_service.get_player_item_counts(
+                game, discord_id=ctx.user.id
+            )
 
         if item_counts:
             await ctx.followup.send(
@@ -282,7 +284,7 @@ class TrainsCog(commands.GroupCog, name="trains"):
             )
 
         if not game.active:
-            await self.game_service.calculate_player_scores(game, ctx=ctx)
+            await self.game_service.calculate_player_scores(game)
             embed, image = self.render_service.gen_score_embed(game=game, page=0)
             view = GameStatsView(
                 game.id, True, self.bot.session_generator, self.render_service

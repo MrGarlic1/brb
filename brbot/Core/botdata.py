@@ -1,5 +1,5 @@
 # File containing global variables for bot.
-from os import getenv, path
+from os import getenv
 from pathlib import Path
 from brbot.db.models import GuildConfig
 import logging
@@ -38,8 +38,6 @@ try:
     DEV_SERVER_ID: int | None = int(getenv("DEV_SERVER_ID"))
 except (KeyError, ValueError, TypeError):
     DEV_SERVER_ID = None
-
-parent: str = f"{path.dirname(path.realpath(__file__))}/.."
 
 FEATURES_DIRECTORY = Path("brbot/Features")
 DATA_DIRECTORY = Path("brbot/db")
