@@ -598,3 +598,19 @@ class RenderService:
             embed.add_field(name=category.title(), value=score)
 
         return embed, None
+
+    @staticmethod
+    def inventory_string(items: dict[str, int]) -> str:
+        return "\n".join(
+            f"{GameEmoji[name].value}: x{count}" for name, count in items.items()
+        )
+
+    @staticmethod
+    def show_game_inventory(game: TrainGame):
+        item_counts = {}
+        for item in game.items:
+            if not item.owner_player_id:
+                item_counts.setdefault(item.emoji_name, 0)
+                item_counts[item.emoji_name] += 1
+
+        return "\n".join(f"{GameEmoji[name].value}: x{count}" for name, count in item_counts.items())

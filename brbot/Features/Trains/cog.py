@@ -7,7 +7,7 @@ from brbot.Features.Trains.data import (
     train_game_embed,
     GameStatsView,
     GameRulesView,
-    gen_rules_embed,
+    gen_rules_embed, GameEmoji,
 )
 from brbot.Features.Trains.renderservice import RenderService
 from brbot.db.models import TrainShot
@@ -104,7 +104,7 @@ class TrainsCog(commands.GroupCog, name="trains"):
                 return
 
         await ctx.response.send_message(
-            content=self.game_service.show_game_inventory(game)
+            content=self.render_service.show_game_inventory(game)
         )
         return
 
@@ -160,7 +160,7 @@ class TrainsCog(commands.GroupCog, name="trains"):
 
         if item_counts:
             await ctx.followup.send(
-                content=self.game_service.inventory_string(item_counts)
+                content=self.render_service.inventory_string(item_counts)
             )
         else:
             await ctx.followup.send(content="Your inventory is empty!", ephemeral=True)
@@ -172,24 +172,26 @@ class TrainsCog(commands.GroupCog, name="trains"):
         row="Row to use item on",
         column="Column to use item on",
     )
-    @app_commands.choices(item=[app_commands.Choice(name="Bucket", value="Bucket")])
+    @app_commands.choices(item=[app_commands.Choice(name=GameEmoji.BUCKET.name.title(), value=GameEmoji.BUCKET.name)])
     async def use(self, ctx: Interaction, item: str, row: int, column: int):
-        if ctx.guild_id not in bd.active_trains:
-            await ctx.response.send_message(
-                content="There is no active game! To make one, use /trains newgame",
-                ephemeral=True,
-            )
-            return True
+        async with self.bot.session_generator() as session:
+            game = await self.game_service.get_guild_train_game(ctx.guild.id, session, active=True)
+            if game is None:
+                await ctx.response.send_message(
+                    content="There is no active game! To make one, use /trains newgame",
+                    ephemeral=True,
+                )
+                return
 
-        game = bd.active_trains[ctx.guild_id]
-
-        if item == "Bucket":
-            err = game.use_bucket(ctx=ctx, row=row, col=column)
+            if item == GameEmoji.BUCKET.name:
+                err = self.game_service.use_bucket(game=game, row=row, col=column, user_id=ctx.user.id)
             if err:
                 await ctx.response.send_message(content=bd.fail_str)
-                return True
-            await ctx.response.send_message(content=bd.pass_str)
-            await game.update_boards_after_shot(ctx=ctx, row=row, column=column)
+                return
+
+            await self.render_service.send_updates_after_shot(game=game, guild=ctx.guild, row=row, column=column)
+
+        await ctx.response.send_message(content=bd.pass_str)
         return False
 
     @app_commands.command(name="shot", description="Make a trains shot")
@@ -375,7 +377,7 @@ class TrainsCog(commands.GroupCog, name="trains"):
                 ctx.guild_id, session=session
             )
             if game is None:
-                ctx.followup.send(
+                await ctx.followup.send(
                     content="There is no active game! To make one, use /train newgame",
                     ephemeral=True,
                 )
@@ -407,16 +409,16 @@ class TrainsCog(commands.GroupCog, name="trains"):
         await ctx.response.defer()
         async with self.bot.session_generator() as session:
             game = await self.game_service.find_archived_game(
-                ctx.guild_id, session, name=name
+                ctx.guild_id, session, name=name,
             )
             if game is None:
                 names = await GameService.get_guild_game_names(ctx.guild_id, session)
-                await ctx.response.send_message(
+                await ctx.followup.send(
                     content=f"No game found! Possible options: {', '.join(names)}"
                 )
                 return
             if self.game_service.is_done(game):
-                await ctx.response.send_message(
+                await ctx.followup.send(
                     content="This game is already complete!"
                 )
                 return

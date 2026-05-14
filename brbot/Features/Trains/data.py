@@ -17,7 +17,7 @@ from brbot.db.models import TrainGame
 DEFAULT_WIDTH = 16
 DEFAULT_HEIGHT = 16
 RIVER_RING = 1
-
+DEFAULT_RENDER_DISTANCE = 4
 
 @dataclass
 class TrainItemInfo:

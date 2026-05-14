@@ -32,7 +32,7 @@ from brbot.Features.Trains.data import (
     RiverDirection,
     GameEmoji,
     genre_colors,
-    find_anilist_changes,
+    find_anilist_changes, make_default_shop, DEFAULT_RENDER_DISTANCE,
 )
 
 logger = logging.getLogger(__name__)
@@ -71,6 +71,19 @@ class GameService:
 
         result = await session.execute(stmt)
         return result.scalars().first()
+
+    @staticmethod
+    def find_player(
+            game: TrainGame,
+            *,
+            discord_user_id: int = None,
+            player_id: int = None
+    ) -> Optional[TrainPlayer]:
+        if discord_user_id:
+            return next((player for player in game.players if player.member.user_id == discord_user_id), None)
+        if player_id:
+            return next((player for player in game.players if player.player_id == player_id), None)
+        return None
 
     @staticmethod
     async def get_guild_game_names(
@@ -143,6 +156,9 @@ class GameService:
             )
             session.add_all(board.values())
 
+            # Add items
+            session.add_all(make_default_shop(game_id))
+
             # Add players
             train_players = []
             for discord_id in anilist_id_by_discord_id.keys():
@@ -179,7 +195,6 @@ class GameService:
                     player_id,
                     player_starts[player_id],
                     board,
-                    session,
                     render_dist=0,
                     is_shot=False,
                 )
@@ -188,7 +203,6 @@ class GameService:
                     player_id,
                     player_ends[player_id],
                     board,
-                    session,
                     render_dist=0,
                     is_shot=False,
                 )
@@ -454,7 +468,7 @@ class GameService:
                 pass
 
             for pos in river_tiles:
-                board[pos].terrain = "river"
+                board[pos].terrain = GameEmoji.RIVER.name
             return None
 
         # For zones to generate, both board dimensions must be divisible by 4
@@ -463,9 +477,9 @@ class GameService:
         for c in range(width):
             for r in range(height):
                 if c + 1 <= RIVER_RING or c + 1 > height - RIVER_RING:
-                    terrain = "river"
+                    terrain = GameEmoji.RIVER.name
                 elif r + 1 <= RIVER_RING or r + 1 > width - RIVER_RING:
-                    terrain = "river"
+                    terrain = GameEmoji.RIVER.name
                 else:
                     terrain = None
                 board[(c + 1, r + 1)] = TrainTile(
@@ -601,7 +615,6 @@ class GameService:
             player_id=player.id,
             root_position=shot.coords,
             board=board,
-            session=session,
             telescope_count=telescope_count,
         )
 
@@ -614,49 +627,43 @@ class GameService:
         player_id: int,
         root_position: tuple[int, int],
         board: dict[tuple[int, int], TrainTile],
-        session: AsyncSession,
         telescope_count: int = 0,
-        render_dist: int = 4,
+        render_dist: int = DEFAULT_RENDER_DISTANCE,
         is_shot: bool = True,
     ) -> None:
         shot_col = root_position[0]
         shot_row = root_position[1]
         render_dist += telescope_count
-        player = next(
-            (player for player in game.players if player.id == player_id), None
-        )
+        player: TrainPlayer = GameService.find_player(game, player_id=player_id)
         if player is None:
             return
 
-        all_player_tiles_on_shot = []
-        for tile in game.tiles:
-            if tile.position == (shot_col, shot_row):
-                all_player_tiles_on_shot = tile.player_tiles
+        shot_tile: TrainTile = next((tile for tile in game.tiles if tile.position == root_position and is_shot), [])
+        all_player_tiles_on_shot = shot_tile.player_tiles
 
         vis_tiles_by_coordinate = {pt.position: pt for pt in player.player_tiles}
-
-        new_vis_tiles: list[TrainPlayerTile] = []
 
         for col in range(shot_col - render_dist, shot_col + render_dist + 1):
             for row in range(shot_row - render_dist, shot_row + render_dist + 1):
                 if (col, row) in vis_tiles_by_coordinate:  # Already rendered tiles
                     continue
-                elif GameService.in_bounds(col, row, size=game.size):
-                    new_vis_tiles.append(
-                        TrainPlayerTile(
-                            tile_id=board[(col, row)].id,
-                            column=col,
-                            row=row,
-                            player_id=player.id,
-                            has_rail=shot_col == col and shot_row == row and is_shot,
-                            rail_text="",
-                        )
+                if not GameService.in_bounds(col, row, size=game.size):
+                    continue
+
+                player.player_tiles.append(
+                    TrainPlayerTile(
+                        tile_id=board[(col, row)].id,
+                        column=col,
+                        row=row,
+                        player_id=player.id,
+                        has_rail=shot_col == col and shot_row == row and is_shot,
+                        rail_text="",
                     )
+                )
+        if is_shot:
+            for pt in all_player_tiles_on_shot:
+                pt.rail_text += pt.player.tag
 
-        for pt in all_player_tiles_on_shot:
-            pt.rail_text += pt.player.tag
-
-        session.add_all(new_vis_tiles)
 
     @staticmethod
     def in_bounds(col: int, row: int, size: tuple[int, int]) -> bool:
@@ -797,7 +804,7 @@ class GameService:
         if check_gem_time:
             player.score["GemTime"] = int(shot.time.timestamp())
 
-        if board[shot.coords].terrain == "river":
+        if board[shot.coords].terrain == GameEmoji.RIVER.name:
             bridge: TrainItem | None = next(
                 (
                     item.emoji_name == GameEmoji.BRIDGE.name and item.uses > 0
@@ -845,17 +852,8 @@ class GameService:
         return item_counts
 
     @staticmethod
-    async def inventory_string(items: dict[str, int]) -> str:
-        return "\n".join(
-            f"{GameEmoji[name].value}: x{count}" for name, count in items.items()
-        )
-
-    @staticmethod
     def buy_item(game: TrainGame, itemname: str, showinfo: str, user_id: int) -> bool:
-        player: TrainPlayer = next(
-            (player for player in game.players if player.member.user_id == user_id),
-            None,
-        )
+        player: TrainPlayer = GameService.find_player(game, discord_user_id=user_id)
         board = {tile.position: tile for tile in game.tiles}
         item_to_purchase: TrainItem = next(
             (
@@ -889,17 +887,25 @@ class GameService:
         )
         return False
 
-    def use_bucket(self, ctx: Interaction, row: int, col: int) -> bool:
-        player_idx, player = self.get_player(ctx.user.id)
+    @staticmethod
+    def use_bucket(game, user_id: int, col: int, row: int) -> bool:
+        player_idx, player = GameService.find_player(game, discord_user_id=user_id)
         if player is None:
             return True
 
-        if "Bucket" not in player.inventory or not self.in_bounds(row, col):
+        bucket_to_use = next(
+            (item for item in player.inventory if item.emoji_name == GameEmoji.BUCKET.name and item.uses > 0),
+            None
+        )
+
+        if not bucket_to_use or not GameService.in_bounds(col, row, game.size):
             return True
 
-        self.board[(row, col)].terrain = "river"
+        board = {tile.position: tile for tile in game.tiles}
 
-        player.update_item_count("Bucket")
+        board[(col, row)].terrain = GameEmoji.RIVER.name
+        bucket_to_use.uses -= 1
+
         return False
 
     async def calculate_player_scores(self, ctx: Interaction) -> None:
@@ -1073,20 +1079,11 @@ class GameService:
     ):
         if name is None:
             game = await GameService.get_guild_train_game(
-                guild_id, session, load_players=False, active=True
+                guild_id, session, load_players=True, active=True
             )
         else:
             game = await GameService.get_guild_train_game(
-                guild_id, session, load_players=False, active=False, name=name
+                guild_id, session, load_players=True, active=False, name=name
             )
 
         return game
-
-    @staticmethod
-    def show_game_inventory(game: TrainGame):
-        item_counts = {}
-        for item in game.items:
-            item_counts.setdefault(item.emoji_name, 0)
-            item_counts[item.emoji_name] += 1
-
-        return "\n".join(f"{emoji}: x{count}" for emoji, count in item_counts.items())

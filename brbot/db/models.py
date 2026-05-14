@@ -348,7 +348,6 @@ class TrainItem(Base):
     cost: Mapped[float] = mapped_column(Float)
     game_id: Mapped[int] = mapped_column(ForeignKey("train_games.id"))
     game = relationship("TrainGame", back_populates="items")
-    available: Mapped[bool] = mapped_column(Boolean)
     owner_player_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("train_players.id"), nullable=True
     )
