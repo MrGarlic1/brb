@@ -32,7 +32,9 @@ from brbot.Features.Trains.data import (
     RiverDirection,
     GameEmoji,
     genre_colors,
-    find_anilist_changes, make_default_shop, DEFAULT_RENDER_DISTANCE,
+    find_anilist_changes,
+    make_default_shop,
+    DEFAULT_RENDER_DISTANCE,
 )
 
 logger = logging.getLogger(__name__)
@@ -74,15 +76,22 @@ class GameService:
 
     @staticmethod
     def find_player(
-            game: TrainGame,
-            *,
-            discord_user_id: int = None,
-            player_id: int = None
+        game: TrainGame, *, discord_user_id: int = None, player_id: int = None
     ) -> Optional[TrainPlayer]:
         if discord_user_id:
-            return next((player for player in game.players if player.member.user_id == discord_user_id), None)
+            return next(
+                (
+                    player
+                    for player in game.players
+                    if player.member.user_id == discord_user_id
+                ),
+                None,
+            )
         if player_id:
-            return next((player for player in game.players if player.player_id == player_id), None)
+            return next(
+                (player for player in game.players if player.id == player_id),
+                None,
+            )
         return None
 
     @staticmethod
@@ -638,7 +647,10 @@ class GameService:
         if player is None:
             return
 
-        shot_tile: TrainTile = next((tile for tile in game.tiles if tile.position == root_position and is_shot), [])
+        shot_tile: TrainTile = next(
+            (tile for tile in game.tiles if tile.position == root_position and is_shot),
+            [],
+        )
         all_player_tiles_on_shot = shot_tile.player_tiles
 
         vis_tiles_by_coordinate = {pt.position: pt for pt in player.player_tiles}
@@ -663,7 +675,6 @@ class GameService:
         if is_shot:
             for pt in all_player_tiles_on_shot:
                 pt.rail_text += pt.player.tag
-
 
     @staticmethod
     def in_bounds(col: int, row: int, size: tuple[int, int]) -> bool:
@@ -889,13 +900,17 @@ class GameService:
 
     @staticmethod
     def use_bucket(game, user_id: int, col: int, row: int) -> bool:
-        player_idx, player = GameService.find_player(game, discord_user_id=user_id)
+        player: TrainPlayer = GameService.find_player(game, discord_user_id=user_id)
         if player is None:
             return True
 
         bucket_to_use = next(
-            (item for item in player.inventory if item.emoji_name == GameEmoji.BUCKET.name and item.uses > 0),
-            None
+            (
+                item
+                for item in player.items
+                if item.emoji_name == GameEmoji.BUCKET.name and item.uses > 0
+            ),
+            None,
         )
 
         if not bucket_to_use or not GameService.in_bounds(col, row, game.size):

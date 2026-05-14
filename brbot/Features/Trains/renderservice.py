@@ -487,7 +487,7 @@ class RenderService:
                 outline=border_color,
                 width=1,
             )
-            if board[coords].terrain == "river":
+            if board[coords].terrain == GameEmoji.RIVER.name:
                 draw_hatch_pattern(row, col)
 
             resource_text = (
@@ -613,4 +613,6 @@ class RenderService:
                 item_counts.setdefault(item.emoji_name, 0)
                 item_counts[item.emoji_name] += 1
 
-        return "\n".join(f"{GameEmoji[name].value}: x{count}" for name, count in item_counts.items())
+        return "\n".join(
+            f"{GameEmoji[name].value}: x{count}" for name, count in item_counts.items()
+        )

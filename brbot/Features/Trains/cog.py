@@ -7,7 +7,8 @@ from brbot.Features.Trains.data import (
     train_game_embed,
     GameStatsView,
     GameRulesView,
-    gen_rules_embed, GameEmoji,
+    gen_rules_embed,
+    GameEmoji,
 )
 from brbot.Features.Trains.renderservice import RenderService
 from brbot.db.models import TrainShot
@@ -172,10 +173,18 @@ class TrainsCog(commands.GroupCog, name="trains"):
         row="Row to use item on",
         column="Column to use item on",
     )
-    @app_commands.choices(item=[app_commands.Choice(name=GameEmoji.BUCKET.name.title(), value=GameEmoji.BUCKET.name)])
+    @app_commands.choices(
+        item=[
+            app_commands.Choice(
+                name=GameEmoji.BUCKET.name.title(), value=GameEmoji.BUCKET.name
+            )
+        ]
+    )
     async def use(self, ctx: Interaction, item: str, row: int, column: int):
         async with self.bot.session_generator() as session:
-            game = await self.game_service.get_guild_train_game(ctx.guild.id, session, active=True)
+            game = await self.game_service.get_guild_train_game(
+                ctx.guild.id, session, active=True, load_players=True
+            )
             if game is None:
                 await ctx.response.send_message(
                     content="There is no active game! To make one, use /trains newgame",
@@ -184,15 +193,20 @@ class TrainsCog(commands.GroupCog, name="trains"):
                 return
 
             if item == GameEmoji.BUCKET.name:
-                err = self.game_service.use_bucket(game=game, row=row, col=column, user_id=ctx.user.id)
-            if err:
-                await ctx.response.send_message(content=bd.fail_str)
-                return
+                err = self.game_service.use_bucket(
+                    game=game, row=row, col=column, user_id=ctx.user.id
+                )
+                if err:
+                    await ctx.response.send_message(content=bd.fail_str)
+                    return
+                await session.commit()
 
-            await self.render_service.send_updates_after_shot(game=game, guild=ctx.guild, row=row, column=column)
+                await self.render_service.send_updates_after_shot(
+                    game=game, guild=ctx.guild, row=row, column=column
+                )
 
         await ctx.response.send_message(content=bd.pass_str)
-        return False
+        return
 
     @app_commands.command(name="shot", description="Make a trains shot")
     @app_commands.describe(
@@ -409,7 +423,9 @@ class TrainsCog(commands.GroupCog, name="trains"):
         await ctx.response.defer()
         async with self.bot.session_generator() as session:
             game = await self.game_service.find_archived_game(
-                ctx.guild_id, session, name=name,
+                ctx.guild_id,
+                session,
+                name=name,
             )
             if game is None:
                 names = await GameService.get_guild_game_names(ctx.guild_id, session)
@@ -418,9 +434,7 @@ class TrainsCog(commands.GroupCog, name="trains"):
                 )
                 return
             if self.game_service.is_done(game):
-                await ctx.followup.send(
-                    content="This game is already complete!"
-                )
+                await ctx.followup.send(content="This game is already complete!")
                 return
 
             game.active = True
