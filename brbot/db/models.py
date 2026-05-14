@@ -3,7 +3,7 @@ from discord.channel import DMChannel
 from discord.member import Member as DiscordMember
 from discord.guild import Guild as DiscordGuild
 from discord.user import User as DiscordUser
-from typing import List, Optional, ClassVar
+from typing import List, Optional, ClassVar, Dict
 from sqlalchemy import ForeignKey
 from sqlalchemy import (
     String,
@@ -264,7 +264,7 @@ class BingoPlayer(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     game_id: Mapped[int] = mapped_column(ForeignKey("bingo_games.id"))
     member_id: Mapped[int] = mapped_column(ForeignKey("members.id"))
-    starting_anilist: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    starting_anilist: Mapped[Optional[Dict]] = mapped_column(JSON, nullable=True)
     done: Mapped[bool] = mapped_column(Boolean)
     donetime: Mapped[Optional[DateTime]] = mapped_column(DateTime, nullable=True)
     shots: Mapped[list[BingoShot]] = relationship(
@@ -362,8 +362,8 @@ class TrainPlayer(Base):
     member_id: Mapped[int] = mapped_column(ForeignKey("members.id"))
     tag: Mapped[str] = mapped_column(String(40))
     rails: Mapped[int] = mapped_column(Integer)
-    starting_anilist: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    score: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    starting_anilist: Mapped[Optional[List[Dict]]] = mapped_column(JSON, nullable=True)
+    score: Mapped[Optional[Dict]] = mapped_column(JSON, nullable=True)
     start_col: Mapped[int] = mapped_column(Integer, nullable=True)
     start_row: Mapped[int] = mapped_column(Integer, nullable=True)
     end_col: Mapped[int] = mapped_column(Integer, nullable=True)
@@ -456,7 +456,7 @@ class TrainShot(Base):
     anilist_media_id: Mapped[int] = mapped_column(Integer)
     row: Mapped[int] = mapped_column(Integer)
     column: Mapped[int] = mapped_column(Integer)
-    genres: Mapped[List[str]] = mapped_column(JSON)
+    anilist_info: Mapped[Dict] = mapped_column(JSON)
     info: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
     time: Mapped[datetime] = mapped_column(DateTime)
     player = relationship("TrainPlayer", back_populates="shots")

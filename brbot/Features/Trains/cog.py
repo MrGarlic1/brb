@@ -149,15 +149,16 @@ class TrainsCog(commands.GroupCog, name="trains"):
         await ctx.response.defer()
 
         async with self.bot.session_generator() as session:
-            item_counts = await self.game_service.get_player_item_counts(
-                ctx.guild.id, ctx.user.id, session
+            game = await self.game_service.get_guild_train_game(
+                ctx.guild.id, session, active=True, load_players=True
             )
-        if item_counts is None:
-            await ctx.response.send_message(
-                content="You are not currently involved in a train game in this server!",
-                ephemeral=True,
-            )
-            return
+            if game is None:
+                await ctx.response.send_message(
+                    content="You are not currently involved in a train game in this server!",
+                    ephemeral=True,
+                )
+                return
+            item_counts = self.game_service.get_player_item_counts(game, ctx.user.id)
 
         if item_counts:
             await ctx.followup.send(
@@ -267,7 +268,7 @@ class TrainsCog(commands.GroupCog, name="trains"):
                 anilist_media_id=show_id,
                 column=column,
                 row=row,
-                genres=anilist_info["genres"],
+                anilist_info=anilist_info,
                 info=info,
                 time=datetime.now(timezone.utc),
             )
@@ -281,7 +282,7 @@ class TrainsCog(commands.GroupCog, name="trains"):
             )
 
         if not game.active:
-            await self.game_service.calculate_player_scores(ctx=ctx)
+            await self.game_service.calculate_player_scores(game, ctx=ctx)
             embed, image = self.render_service.gen_score_embed(game=game, page=0)
             view = GameStatsView(
                 game.id, True, self.bot.session_generator, self.render_service

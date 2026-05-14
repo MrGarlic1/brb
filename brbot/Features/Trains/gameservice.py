@@ -13,7 +13,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from typing import Optional, Sequence
 from brbot.db.models import (
-    Member,
     TrainTile,
     TrainItem,
     TrainShot,
@@ -26,7 +25,7 @@ from brbot.Shared.Users.repository import get_or_create_users
 
 
 import brbot.Shared.Anilist.anilist as al
-import brbot.Core.botdata as bd
+
 from brbot.Features.Trains.data import (
     RIVER_RING,
     RiverDirection,
@@ -649,9 +648,9 @@ class GameService:
 
         shot_tile: TrainTile = next(
             (tile for tile in game.tiles if tile.position == root_position and is_shot),
-            [],
+            None,
         )
-        all_player_tiles_on_shot = shot_tile.player_tiles
+        all_player_tiles_on_shot = shot_tile.player_tiles if shot_tile else None
 
         vis_tiles_by_coordinate = {pt.position: pt for pt in player.player_tiles}
 
@@ -831,26 +830,17 @@ class GameService:
         else:
             rails = 1
 
-        if board[shot.coords].zone in shot.genres:
+        if board[shot.coords].zone in shot.anilist_info["genres"]:
             rails *= 0.5
 
         player.rails += rails
 
     @staticmethod
-    async def get_player_item_counts(
-        guild_id: int, discord_id: int, session: AsyncSession
+    def get_player_item_counts(
+        game: TrainGame, discord_id: int, player: TrainPlayer = None
     ) -> Optional[dict[str, int]]:
-        stmt = (
-            select(TrainPlayer)
-            .join(TrainPlayer.member)
-            .join(TrainPlayer.game)
-            .where(Member.guild_id == guild_id)
-            .where(Member.user_id == discord_id)
-            .where(TrainGame.active.is_(True))
-            .options(selectinload(TrainPlayer.items))
-        )
-        result = await session.execute(stmt)
-        player: Optional[TrainPlayer] = result.scalars().one_or_none()
+        if player is None:
+            player = GameService.find_player(game=game, discord_user_id=discord_id)
         if player is None:
             return None
 
@@ -923,42 +913,45 @@ class GameService:
 
         return False
 
-    async def calculate_player_scores(self, ctx: Interaction) -> None:
+    @staticmethod
+    async def calculate_player_scores(game, ctx: Interaction) -> None:
         def add_to_score(p: TrainPlayer, key: str, val: int):
             if key in player.score:
                 p.score[key] += val
             else:
                 p.score[key] = val
 
-        for player in self.players:
+        players: list[TrainPlayer] = game.players
+        board: dict[tuple[int, int], TrainTile] = {
+            tile.position: tile for tile in game.tiles
+        }
+
+        for player in players:
             if player.donetime is None:
-                player.donetime = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-        self.players.sort(key=lambda p: p.donetime)
+                player.donetime = datetime.now(timezone.utc)
+        players.sort(key=lambda p: p.donetime)
 
         # Find player prison counts and gun effects before counting score for intersection scoring
         player_prison_counts = {}
         player_starting_anilists = []
 
-        for player in self.players:
+        for player in players:
+            inventory = GameService.get_player_item_counts(game, ctx.user.id, player)
             player.score = {}  # Avoid re-adding to non-zero score
             player_starting_anilists += player.starting_anilist
-            track_resources = [
-                self.board[shot.coords()].resource for shot in player.shots
-            ]
+            track_resources = [board[shot.coords].resource for shot in player.shots]
             player_prison_counts[player.tag] = track_resources.count(
-                game_emoji["prison"]
+                GameEmoji.PRISON.name
             )
-            if player_prison_counts[player.tag] != 0 and "Gun" in player.inventory:
-                player_prison_counts[player.tag] += 0.5 * player.inventory["Gun"].amount
+            if (
+                player_prison_counts[player.tag] != 0
+                and GameEmoji.GUN.name in inventory
+            ):
+                player_prison_counts[player.tag] += 0.5 * inventory[GameEmoji.GUN.name]
 
         city_coords: dict[tuple[int, int], str] = {}
-        for idx, player in enumerate(self.players):
-            # Quest Scoring
-
-            ending_anilist = await al.query_user_animelist(player.anilist_id)
-            anilist_changes = find_anilist_changes(
-                player.starting_anilist, ending_anilist
-            )
+        for idx, player in enumerate(players):
+            inventory = GameService.get_player_item_counts(game, ctx.user.id, player)
 
             # Fast finish scoring
             if idx == 0:
@@ -968,16 +961,22 @@ class GameService:
 
             # Item score bonuses
             axe_bonus = 0
-            if "Axe" in player.inventory:
-                axe_bonus += 0.5 * player.inventory["Axe"].amount
+            if GameEmoji.AXE.name in inventory:
+                axe_bonus += 0.5 * inventory[GameEmoji.AXE.name]
 
-            if "Coin" in player.inventory:
+            if GameEmoji.COIN.name in inventory:
                 add_to_score(
-                    p=player, key="coins", val=2 * player.inventory["Coin"].amount
+                    p=player,
+                    key=GameEmoji.COIN.name,
+                    val=2 * inventory[GameEmoji.COIN.name],
                 )
 
-            has_city = False
-            num_houses = 0
+            # Quest Scoring
+
+            ending_anilist = await al.query_user_animelist(player.anilist_id)
+            anilist_changes = find_anilist_changes(
+                player.starting_anilist, ending_anilist
+            )
 
             least_watched_genre_shots = 0
             anime_sources = []
@@ -987,8 +986,11 @@ class GameService:
             different_player_anime_shots = []
             train_tag_quest_complete = False
 
+            has_city = False
+            num_houses = 0
+
             for shot in player.shots:
-                shot_tile: TrainTile = self.board[shot.coords()]
+                shot_tile: TrainTile = board[shot.coords()]
                 shot_anime_info = self.known_shows[shot.show_id]
 
                 if not train_tag_quest_complete and any(
@@ -1075,8 +1077,6 @@ class GameService:
                 player.score["quest: train tag"] = 3
 
             player.score["total"] = sum(player.score.values())
-
-        self.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{self.name}")
 
     @staticmethod
     async def delete_train_game(
