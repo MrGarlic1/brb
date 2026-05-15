@@ -25,16 +25,21 @@ Response bot for discord, now with trains!
 - Randomly generated bingo boards
 - View your/other player's boards
 - Fully playable through discord
-- TBD: Scoring, stats
+- TBD: Scoring
 
 ### Animanga
 
 - Link discord profile to anilist
 - Generate personalized manga/anime recommendations
+- Daily animanga activity leaderboards per server
+- Configuration options
+  - Set channel to send leaderboard
 
 ### Catgirl Gacha
 
 - Roll a random image of a catgirl. That's it. Seriously.
+- Configuration options
+  - Enable/Disable NSFW content
 
 ## Commands
 
@@ -61,6 +66,8 @@ Response bot for discord, now with trains!
 - /animanga
   - `link [username]`
   - `recommend <genre> <medium> <force>`
+  - `track_daily`
+  - `untrack_daily`
 - /neko
   - `pic`
 - /help
