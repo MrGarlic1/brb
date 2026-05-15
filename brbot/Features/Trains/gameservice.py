@@ -787,13 +787,12 @@ class GameService:
         shot: TrainShot,
     ):
         board = {tile.position: tile for tile in game.tiles}
-        check_gem_time = False
-        if board[shot.coords].resource == GameEmoji.GEMS.name:
-            shot_list: list[TrainShot] = player.shots
-            if GameEmoji.GEMS.name not in [
-                board[shot.coords].resource for shot in shot_list
-            ]:
-                check_gem_time = True
+
+        if (
+            board[shot.coords].resource == GameEmoji.GEMS.name
+            and player.gem_time is None
+        ):
+            player.gem_time = datetime.now(tz=timezone.utc)
 
         shot_player_tile: TrainPlayerTile = next(
             (pt for pt in player.player_tiles if pt.position == shot.coords), None
@@ -809,9 +808,6 @@ class GameService:
 
         player.current_row = shot.row
         player.current_col = shot.column
-
-        if check_gem_time:
-            player.score["GemTime"] = int(shot.time.timestamp())
 
         if board[shot.coords].terrain == GameEmoji.RIVER.name:
             bridge: TrainItem | None = next(
@@ -929,6 +925,9 @@ class GameService:
             if player.donetime is None:
                 player.donetime = datetime.now(timezone.utc)
         players.sort(key=lambda p: p.donetime)
+        players_by_gem_time = sorted(
+            [p for p in players if p.gem_time], key=lambda p: p.gem_time
+        )
 
         # Find player prison counts and gun effects before counting score for intersection scoring
         player_prison_counts = {}
@@ -954,6 +953,10 @@ class GameService:
                 score_dict["speed bonus"] = 2
             elif idx == 1:
                 score_dict["speed bonus"] = 1
+
+            # First-to-gems bonus
+            if players_by_gem_time and player.id == players_by_gem_time[0].id:
+                score_dict["gem time"] = 3
 
             # Item score bonuses
             axe_bonus = 0

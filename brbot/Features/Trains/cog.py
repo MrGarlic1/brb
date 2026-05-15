@@ -275,21 +275,22 @@ class TrainsCog(commands.GroupCog, name="trains"):
                 time=datetime.now(timezone.utc),
             )
             await self.game_service.save_shot(game, player, shot, session)
-            await session.commit()
 
             # Send out board updates to relevant players
-            await ctx.followup.send(content=bd.pass_str)
-            await self.render_service.send_updates_after_shot(
-                game=game, guild=ctx.guild, column=column, row=row
-            )
 
-        if not game.active:
-            await self.game_service.calculate_player_scores(game)
-            embed, image = self.render_service.gen_score_embed(game=game, page=0)
-            view = GameStatsView(
-                game.id, True, self.bot.session_generator, self.render_service
-            )
-            await ctx.followup.send(embed=embed, file=image, view=view)
+            if not game.active:
+                await self.game_service.calculate_player_scores(game)
+                embed, image = self.render_service.gen_score_embed(game=game, page=0)
+                view = GameStatsView(
+                    game.id, True, self.bot.session_generator, self.render_service
+                )
+                await ctx.followup.send(embed=embed, file=image, view=view)
+            await session.commit()
+
+        await ctx.followup.send(content=bd.pass_str)
+        await self.render_service.send_updates_after_shot(
+            game=game, guild=ctx.guild, column=column, row=row
+        )
         return
 
     @app_commands.command(
@@ -395,7 +396,7 @@ class TrainsCog(commands.GroupCog, name="trains"):
             )
             if game is None:
                 await ctx.followup.send(
-                    content="There is no active game! To make one, use /train newgame",
+                    content="There is no active game! To make one, use /trains newgame",
                     ephemeral=True,
                 )
                 return
@@ -411,6 +412,7 @@ class TrainsCog(commands.GroupCog, name="trains"):
                 await ctx.followup.send(
                     content="A transient error occurred while deleting. Please try again!"
                 )
+                return
             await session.commit()
 
         await ctx.followup.send(content=bd.pass_str)
@@ -425,6 +427,14 @@ class TrainsCog(commands.GroupCog, name="trains"):
         # Logic to get game or return error if no game found
         await ctx.response.defer()
         async with self.bot.session_generator() as session:
+            game = await self.game_service.get_guild_train_game(
+                ctx.guild.id, session=session, active=True
+            )
+            if game:
+                await ctx.followup.send(
+                    content="An active game already exists!", ephemeral=True
+                )
+                return
             game = await self.game_service.find_archived_game(
                 ctx.guild_id,
                 session,
