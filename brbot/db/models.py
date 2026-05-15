@@ -364,6 +364,7 @@ class TrainPlayer(Base):
     rails: Mapped[int] = mapped_column(Integer)
     starting_anilist: Mapped[Optional[List[Dict]]] = mapped_column(JSON, nullable=True)
     score: Mapped[Optional[Dict]] = mapped_column(JSON, nullable=True)
+    gem_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     start_col: Mapped[int] = mapped_column(Integer, nullable=True)
     start_row: Mapped[int] = mapped_column(Integer, nullable=True)
     end_col: Mapped[int] = mapped_column(Integer, nullable=True)
