@@ -236,6 +236,7 @@ class AnimangaStatService:
                   chapters
                 }
                 userId
+                status
               }
             }
             pageInfo {
@@ -337,6 +338,8 @@ class AnimangaStatService:
             movies = 0
 
             for activity in activities:
+                if activity.get("status") == "plans to watch":
+                    continue
                 is_manga = activity["media"]["type"] == "MANGA"
                 dict_to_check = manga_list_entries if is_manga else anime_list_entries
                 current_progress = (

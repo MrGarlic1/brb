@@ -343,7 +343,7 @@ class RenderService:
         else:
             player_start = None
             player_end = None
-            vis_tiles = []
+            vis_tiles = {}
             hide_hidden_tiles = False
 
         # Adjustments
