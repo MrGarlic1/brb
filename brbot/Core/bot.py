@@ -226,7 +226,7 @@ class BrBot(commands.AutoShardedBot):
             bd.bot_avatar_url = "https://i.imgur.com/4CW85RL.png"
         bd.bot_id = self.user.id
 
-        load_fonts(f"{bd.parent}/Shared")
+        load_fonts(bd.STATIC_DIRECTORY)
         await self.init_guilds()
 
         await self.change_presence(

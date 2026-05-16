@@ -1,17 +1,15 @@
-from shutil import rmtree
 from re import findall
 from discord import Member as DiscordMember
 from discord.app_commands import Choice
+from pathlib import Path
 
 import logging
 import matplotlib.font_manager
 
-import brbot.Core.botdata as bd
-
 logger = logging.getLogger(__name__)
 
 
-def load_fonts(filepath) -> None:
+def load_fonts(filepath: Path) -> None:
     """
     Initializes fonts upon bot loading.
     Args:
@@ -20,25 +18,8 @@ def load_fonts(filepath) -> None:
     Returns:
         None
     """
-    for font in matplotlib.font_manager.findSystemFonts(filepath):
+    for font in matplotlib.font_manager.findSystemFonts([filepath]):
         matplotlib.font_manager.fontManager.addfont(font)
-
-
-def del_game_files(guild_id: int, game_name: str, game_type: str):
-    """
-    Deletes all game files associated with a specific game type.
-    Args:
-        guild_id: ID of guild with associated game data.
-        game_name: Name of game to delete.
-        game_type: Game type to delete.
-
-    Returns:
-        None
-    """
-    try:
-        rmtree(f"{bd.parent}/Guilds/{guild_id}/{game_type}/{game_name}")
-    except PermissionError:
-        pass
 
 
 async def get_members_from_str(guild, txt: str) -> list[DiscordMember]:
