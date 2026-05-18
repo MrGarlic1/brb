@@ -170,7 +170,7 @@ class AnimangaStatService:
                 select(Member)
                 .where(Member.guild_id == guild_id)
                 .where(Member.stat_tracking_enabled.is_(True))
-                .options(selectinload(Member.user).selectinload(User.animanga_entries))
+                .options(selectinload(Member.user))
             )
             result = await session.execute(stmt)
             members = result.scalars().all()
@@ -182,6 +182,15 @@ class AnimangaStatService:
             )
 
         async with session_generator() as session:
+            stmt = (
+                select(Member)
+                .where(Member.guild_id == guild_id)
+                .where(Member.stat_tracking_enabled.is_(True))
+                .options(selectinload(Member.user).selectinload(User.animanga_entries))
+            )
+            result = await session.execute(stmt)
+            members = result.scalars().all()
+
             daily_stats = await AnimangaStatService.calculate_user_daily_activity(
                 members, daily_activities, session, datetime.now(timezone.utc)
             )
@@ -372,6 +381,7 @@ class AnimangaStatService:
                         previous_progress = 0
                 else:
                     previous_progress = existing_entry.progress
+                    existing_entry.progress = current_progress
 
                     if is_complete:
                         list_entries_to_delete.append(
