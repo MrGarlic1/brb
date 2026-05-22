@@ -347,7 +347,7 @@ class AnimangaStatService:
             movies = 0
 
             for activity in activities:
-                if activity.get("status") == "plans to watch":
+                if activity.get("status") in ("plans to watch", "plans to read"):
                     continue
                 is_manga = activity["media"]["type"] == "MANGA"
                 dict_to_check = manga_list_entries if is_manga else anime_list_entries
