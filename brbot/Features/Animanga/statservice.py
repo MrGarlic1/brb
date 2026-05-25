@@ -349,21 +349,31 @@ class AnimangaStatService:
             for activity in activities:
                 if activity.get("status") in ("plans to watch", "plans to read"):
                     continue
+
+                if activity.get("status") in ("paused reading", "paused watching"):
+                    continue
+
+                if activity.get("status") == "dropped":
+                    continue
+
                 is_manga = activity["media"]["type"] == "MANGA"
                 dict_to_check = manga_list_entries if is_manga else anime_list_entries
-                current_progress = (
-                    1
-                    if activity["progress"] is None
-                    else AnimangaStatService.get_max_progress_from_str(
-                        activity["progress"]
-                    )
-                )
 
-                is_complete = (
-                    current_progress == activity["media"]["chapters"]
-                    or current_progress == activity["media"]["episodes"]
-                    or activity["progress"] is None
+                current_progress = AnimangaStatService.get_max_progress_from_str(
+                    activity["progress"]
                 )
+                is_complete = activity.get("status") == "completed"
+
+                if current_progress is None and is_complete:
+                    current_progress = (
+                        activity["media"]["chapters"]
+                        if is_manga
+                        else activity["media"]["episodes"]
+                    )
+
+                if current_progress is None:
+                    current_progress = 1
+
                 existing_entry = dict_to_check.get(activity["media"]["id"])
 
                 if existing_entry is None:
@@ -388,20 +398,21 @@ class AnimangaStatService:
                             dict_to_check[activity["media"]["id"]]
                         )
 
+                progress_diff = max(current_progress - previous_progress, 0)
+
                 total_minutes += AnimangaStatService.calculate_time_delta(
                     activity["media"]["format"],
-                    current_progress,
-                    previous_progress,
+                    progress_diff,
                     duration=activity["media"]["duration"],
                 )
                 if activity["media"]["format"] == "MANGA":
-                    manga_chapters += current_progress - previous_progress
+                    manga_chapters += progress_diff
                 elif activity["media"]["format"] == "NOVEL":
-                    ln_chapters += current_progress - previous_progress
+                    ln_chapters += progress_diff
                 elif activity["media"]["format"] == "MOVIE":
-                    movies += current_progress - previous_progress
+                    movies += progress_diff
                 else:
-                    episodes += current_progress - previous_progress
+                    episodes += progress_diff
 
             daily_stats.append(
                 AnimangaDailyStats(
@@ -435,8 +446,7 @@ class AnimangaStatService:
     @staticmethod
     def calculate_time_delta(
         media_format: str,
-        updated_progress: int,
-        original_progress: int,
+        progress_diff: int,
         duration: Optional[int],
     ):
         if duration is not None:
@@ -465,7 +475,7 @@ class AnimangaStatService:
                 case "ONA":
                     minutes_per_unit = 23
 
-        return (updated_progress - original_progress) * minutes_per_unit
+        return progress_diff * minutes_per_unit
 
     @staticmethod
     def get_max_progress_from_str(activity_progress_str):
