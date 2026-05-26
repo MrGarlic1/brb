@@ -478,6 +478,8 @@ class AnimangaStatService:
         return progress_diff * minutes_per_unit
 
     @staticmethod
-    def get_max_progress_from_str(activity_progress_str):
+    def get_max_progress_from_str(activity_progress_str: str | None):
+        if activity_progress_str is None:
+            return None
         activity_progress = activity_progress_str.split("-")
         return int(activity_progress[-1])
