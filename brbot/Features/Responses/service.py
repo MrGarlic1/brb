@@ -198,11 +198,15 @@ class ResponseService:
     def get_resp(
         self, guild_id: int, trig: str, text: str = "", behavior: int = None
     ) -> CachedResponse | None:
-        responses = [
-            rsp
-            for rsp_group in self.exact_responses[guild_id].values()
-            for rsp in rsp_group
-        ] + self.phrase_responses[guild_id]
+        responses = (
+            [
+                rsp
+                for rsp_group in self.exact_responses[guild_id].values()
+                for rsp in rsp_group
+            ]
+            + self.phrase_responses[guild_id]
+            + self.correction_responses[guild_id]
+        )
         fetched_response: Optional[CachedResponse] = None
         matches = 0
         for rsp in responses:
@@ -221,11 +225,15 @@ class ResponseService:
         list_msg = Embed(description="*Your response list, sir.*")
 
         # Determine max pg @ 10 entries per pg
-        responses = [
-            rsp
-            for rsp_group in self.exact_responses[guild_id].values()
-            for rsp in rsp_group
-        ] + self.phrase_responses[guild_id]
+        responses = (
+            [
+                rsp
+                for rsp_group in self.exact_responses[guild_id].values()
+                for rsp in rsp_group
+            ]
+            + self.phrase_responses[guild_id]
+            + self.correction_responses[guild_id]
+        )
 
         max_pages: int = 1 if len(responses) <= 10 else len(responses) // 10 + 1
         page: int = 1 + ((page - 1) % max_pages)  # Loop back through pages both ways
