@@ -159,6 +159,9 @@ class ResponsesCog(commands.GroupCog, name="response"):
         for response in self.bot.mentions[ctx.guild_id]:
             if response.trigger not in trigs and current in response.trigger:
                 trigs.add(response.trigger)
+        for response in self.bot.corrections[ctx.guild_id]:
+            if response.trigger not in trigs and current in response.trigger:
+                trigs.add(response.trigger)
         choices = list(map(bu.autocomplete_filter, trigs))
         if len(choices) > 25:
             choices = choices[0:24]
