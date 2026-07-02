@@ -281,6 +281,7 @@ class AnimangaStatService:
                     if data.status_code == 200:
                         response_data = data.json()
                         page += 1
+
                         try:
                             has_next_page = response_data["data"]["Page"]["pageInfo"][
                                 "hasNextPage"
@@ -324,10 +325,11 @@ class AnimangaStatService:
 
         for member in members:
             total_minutes = 0
+
             activities = [
                 activity
                 for activity in daily_activities
-                if activity["userId"] == member.user.anilist_id
+                if activity.get("userId") and activity.get("userId") == member.user.anilist_id
             ]
 
             manga_list_entries: dict[int, AnimangaListEntry] = {
