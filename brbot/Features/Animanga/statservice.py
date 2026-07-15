@@ -480,7 +480,7 @@ class AnimangaStatService:
         daily_stats = sorted(daily_stats, key=lambda d: d.minutes_watched, reverse=True)
         embed = Embed(title=f"Weeb Leaderboard {date.strftime('%Y/%m/%d')}")
         embed.set_author(name=guild.name, icon_url=guild.icon.url)
-        placements = placement_emojis.keys()
+        placements = list(placement_emojis.keys())
         for i in range(min(len(daily_stats), len(placement_emojis))):
             pos = daily_stats[i]
             if i == 0:
