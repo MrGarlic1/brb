@@ -461,6 +461,7 @@ class AnimangaStatService:
         rankings: Sequence[AnimangaDailyStats] = result.scalars().all()
         placements = [r.placement for r in rankings]
         placements_dict = {p: placements.count(p) for p in placements}
+        placements_dict = dict(sorted(placements_dict.items()))
         formats_watched = {"Anime📺": 0, "Movie📽": 0, "Manga💬": 0, "Light Novel📖": 0}
         total_minutes = 0
         for r in rankings:
