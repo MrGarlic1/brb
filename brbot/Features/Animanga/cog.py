@@ -306,7 +306,7 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
             ) = await self.stat_service.get_member_leaderboard_stats(member, session)
 
         embed = self.stat_service.create_leaderboard_stats_embed(
-            member=member,
+            member=ctx.user,
             guild=ctx.guild,
             placements=placements,
             formats_watched=formats,

@@ -520,7 +520,11 @@ class AnimangaStatService:
         formats_watched: dict[str, int],
         minutes_watched: int,
     ) -> Embed:
-        most_frequent_placement = max(placements, key=placements.get)
+        if placements:
+            most_frequent_placement = max(placements, key=placements.get)
+        else:
+            most_frequent_placement = 0
+
         if most_frequent_placement == 1:
             color = 0xD6AF36
         elif most_frequent_placement == 2:
@@ -533,6 +537,14 @@ class AnimangaStatService:
         embed = Embed(title=f"Leaderboard Stats for {member.name}", color=color)
         embed.set_author(name=guild.name, icon_url=guild.icon.url)
         embed.set_thumbnail(url=member.avatar.url)
+
+        # No leaderboards/user is not tracking stats
+        if not placements:
+            embed.add_field(
+                name="\u200b",
+                value="**You have no stats yet!**",
+            )
+            return embed
 
         placement_str = ""
         for rank, count in placements.items():
