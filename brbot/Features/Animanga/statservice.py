@@ -9,11 +9,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from typing import Optional, Dict, List, Sequence
 
 from sqlalchemy.orm import selectinload
-from discord import Guild as DiscordGuild
-from brbot.Features.Animanga.data import MediaType, DailyStatSnapshot
+from brbot.Features.Animanga.data import MediaType, DailyStatSnapshot, placement_emojis
 from brbot.db.models import AnimangaDailyStats, AnimangaListEntry, Member, User
 from httpx import AsyncClient, ReadTimeout
-from discord import Embed
+from discord import (
+    Embed,
+    Guild as DiscordGuild,
+    Member as DiscordMember,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -21,46 +24,6 @@ logger = logging.getLogger(__name__)
 class AnimangaStatService:
     def __init__(self):
         pass
-
-    @staticmethod
-    async def create_leaderboard_embed(
-        guild: DiscordGuild, date: datetime, daily_stats: list[DailyStatSnapshot]
-    ) -> Embed:
-        daily_stats = sorted(daily_stats, key=lambda d: d.minutes_watched, reverse=True)
-        placement_emojis = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"]
-        embed = Embed(title=f"Weeb Leaderboard {date.strftime('%Y/%m/%d')}")
-        embed.set_author(name=guild.name, icon_url=guild.icon.url)
-        for i in range(min(len(daily_stats), len(placement_emojis))):
-            pos = daily_stats[i]
-            if i == 0:
-                member = await guild.fetch_member(pos.user_discord_id)
-                embed.set_thumbnail(url=member.avatar.url)
-
-            user_str = f"**{placement_emojis[i]}: <@{pos.user_discord_id}> ({pos.minutes_watched} minutes**)\n"
-            manga_str = (
-                f"**Manga💬 :** {pos.manga_chapters} chapters\n"
-                if pos.manga_chapters != 0
-                else ""
-            )
-            ln_str = (
-                f"**Light Novel📖 :** {pos.ln_chapters} chapters\n"
-                if pos.ln_chapters != 0
-                else ""
-            )
-            tv_str = (
-                f"**Anime📺 :** {pos.episodes} episodes\n" if pos.episodes != 0 else ""
-            )
-            movie_str = f"**Movie📽️ :** {pos.movies} movies" if pos.movies != 0 else ""
-            embed.add_field(
-                name="\u200b",
-                value=f"{user_str}{manga_str}{ln_str}{tv_str}{movie_str}",
-                inline=False,
-            )
-        embed.set_footer(
-            text="Want to be on the daily leaderboard? /animanga track_daily"
-        )
-
-        return embed
 
     @staticmethod
     async def get_user_list_entries(
@@ -329,7 +292,8 @@ class AnimangaStatService:
             activities = [
                 activity
                 for activity in daily_activities
-                if activity.get("userId") and activity.get("userId") == member.user.anilist_id
+                if activity.get("userId")
+                and activity.get("userId") == member.user.anilist_id
             ]
 
             manga_list_entries: dict[int, AnimangaListEntry] = {
@@ -485,3 +449,116 @@ class AnimangaStatService:
             return None
         activity_progress = activity_progress_str.split("-")
         return int(activity_progress[-1])
+
+    @staticmethod
+    async def get_member_leaderboard_stats(
+        member: Member, session: AsyncSession
+    ) -> tuple[Dict[int, int], Dict[str, int], int]:
+        stmt = select(AnimangaDailyStats).where(
+            AnimangaDailyStats.member_id == member.id
+        )
+        result = await session.execute(stmt)
+        rankings: Sequence[AnimangaDailyStats] = result.scalars().all()
+        placements = [r.placement for r in rankings]
+        placements_dict = {p: placements.count(p) for p in placements}
+        formats_watched = {"Anime📺": 0, "Movie📽": 0, "Manga💬": 0, "Light Novel📖": 0}
+        total_minutes = 0
+        for r in rankings:
+            formats_watched["Anime📺"] += r.episodes
+            formats_watched["Movie📽"] += r.movies
+            formats_watched["Manga💬"] += r.manga_chapters
+            formats_watched["Light Novel📖"] += r.ln_chapters
+            total_minutes += r.minutes_watched
+
+        return placements_dict, formats_watched, total_minutes
+
+    @staticmethod
+    async def create_leaderboard_embed(
+        guild: DiscordGuild, date: datetime, daily_stats: list[DailyStatSnapshot]
+    ) -> Embed:
+        daily_stats = sorted(daily_stats, key=lambda d: d.minutes_watched, reverse=True)
+        embed = Embed(title=f"Weeb Leaderboard {date.strftime('%Y/%m/%d')}")
+        embed.set_author(name=guild.name, icon_url=guild.icon.url)
+        placements = placement_emojis.keys()
+        for i in range(min(len(daily_stats), len(placement_emojis))):
+            pos = daily_stats[i]
+            if i == 0:
+                member = await guild.fetch_member(pos.user_discord_id)
+                embed.set_thumbnail(url=member.avatar.url)
+
+            user_str = f"**{placement_emojis[placements[i]]}: <@{pos.user_discord_id}> ({pos.minutes_watched} minutes**)\n"
+            manga_str = (
+                f"**Manga💬 :** {pos.manga_chapters} chapters\n"
+                if pos.manga_chapters != 0
+                else ""
+            )
+            ln_str = (
+                f"**Light Novel📖 :** {pos.ln_chapters} chapters\n"
+                if pos.ln_chapters != 0
+                else ""
+            )
+            tv_str = (
+                f"**Anime📺 :** {pos.episodes} episodes\n" if pos.episodes != 0 else ""
+            )
+            movie_str = f"**Movie📽️ :** {pos.movies} movies" if pos.movies != 0 else ""
+            embed.add_field(
+                name="\u200b",
+                value=f"{user_str}{manga_str}{ln_str}{tv_str}{movie_str}",
+                inline=False,
+            )
+        embed.set_footer(
+            text="Want to be on the daily leaderboard? /animanga track_daily"
+        )
+
+        return embed
+
+    @staticmethod
+    async def create_leaderboard_stats_embed(
+        member: DiscordMember,
+        guild: DiscordGuild,
+        placements: dict[int, int],
+        formats_watched: dict[str, int],
+        minutes_watched: int,
+    ) -> Embed:
+        most_frequent_placement = max(placements, key=placements.get)
+        if most_frequent_placement == 1:
+            color = 0xD6AF36
+        elif most_frequent_placement == 2:
+            color = 0xA7A7AD
+        elif most_frequent_placement == 3:
+            color = 0xA77044
+        else:
+            color = 0x19356D
+
+        embed = Embed(title=f"Leaderboard Stats for {member.name}", color=color)
+        embed.set_author(name=guild.name, icon_url=guild.icon.url)
+        embed.set_thumbnail(url=member.avatar.url)
+
+        placement_str = ""
+        for rank, count in placements.items():
+            placement_str += f"{placement_emojis[rank]}: {count}\n"
+
+        format_str = ""
+        for media_format, count in formats_watched.items():
+            format_str += f"{formats_watched[media_format]}: {count}\n"
+
+        embed.add_field(
+            name="Placements",
+            value=placement_str,
+            inline=False,
+        )
+        embed.add_field(
+            name="Formats Watched",
+            value=format_str,
+            inline=False,
+        )
+        embed.add_field(
+            name="Minutes Watched",
+            value=minutes_watched,
+            inline=False,
+        )
+        embed.set_footer(
+            text="Want to be on the daily leaderboard? /animanga track_daily"
+        )
+
+        return embed

@@ -12,6 +12,19 @@ logger = logging.getLogger(__name__)
 
 DAILY_UPDATE_HOUR_UTC = 4
 
+placement_emojis = {
+    1: "🥇",
+    2: "🥈",
+    3: "🥉",
+    4: "4️⃣",
+    5: "5️⃣",
+    6: "6️⃣",
+    7: "7️⃣",
+    8: "8️⃣",
+    9: "9️⃣",
+}
+format_emojis = {}
+
 
 @dataclass(frozen=True)
 class DailyStatSnapshot:

@@ -289,6 +289,31 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
         await ctx.response.send_message(content=bd.pass_str)
         return
 
+    @app_commands.command(
+        name="get_stats", description="View your historic daily leaderboard statistics."
+    )
+    async def get_stats(self, ctx: Interaction):
+        await ctx.response.defer()
+
+        async with self.bot.session_generator() as session:
+            member: Member = await get_or_create_member(
+                user_id=ctx.user.id, guild_id=ctx.guild.id, session=session
+            )
+            (
+                placements,
+                formats,
+                minutes,
+            ) = await self.stat_service.get_member_leaderboard_stats(member, session)
+
+        embed = self.stat_service.create_leaderboard_stats_embed(
+            member=member,
+            guild=ctx.guild,
+            placements=placements,
+            formats_watched=formats,
+            minutes_watched=minutes,
+        )
+        await ctx.followup.send(embed=embed)
+
     @tasks.loop(time=time(hour=DAILY_UPDATE_HOUR_UTC, tzinfo=timezone.utc))
     async def send_daily_stat_update(self):
         logger.info(f"Sending daily stat updates to {len(self.bot.guilds)} guilds.")
