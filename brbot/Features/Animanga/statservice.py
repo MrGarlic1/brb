@@ -513,7 +513,7 @@ class AnimangaStatService:
         return embed
 
     @staticmethod
-    async def create_leaderboard_stats_embed(
+    def create_leaderboard_stats_embed(
         member: DiscordMember,
         guild: DiscordGuild,
         placements: dict[int, int],
