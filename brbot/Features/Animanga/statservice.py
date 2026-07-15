@@ -552,7 +552,7 @@ class AnimangaStatService:
 
         format_str = ""
         for media_format, count in formats_watched.items():
-            format_str += f"{formats_watched[media_format]}: {count}\n"
+            format_str += f"{media_format}: {count}\n"
 
         embed.add_field(
             name="Placements",
