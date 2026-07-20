@@ -617,22 +617,20 @@ class AnimangaStatService:
             )
             return embed
 
-        individual_stats_str = "Daily Rankings: "
+        individual_stats_str = "**Daily Rankings:** "
         for rank, count in user_placements.items():
             individual_stats_str += f"{placement_emojis[rank]}: {count} | "
 
+        individual_stats_str += f"\n**Consistency:** {guild_leaderboard_stats[member.id].consistency:.2f}%\n"
         individual_stats_str += (
-            f"\nConsistency: {guild_leaderboard_stats[member.id].consistency}%\n"
-        )
-        individual_stats_str += (
-            f"Most Watched in 1 Day: {guild_leaderboard_stats[member.id].record} on "
+            f"**Most Watched in 1 Day:** {guild_leaderboard_stats[member.id].record} on "
             f"{guild_leaderboard_stats[member.id].record_date}\n"
         )
         individual_stats_str += (
             f"**Missed Days:** {guild_leaderboard_stats[member.id].missed_days}\n"
         )
 
-        individual_stats_str += "Formats Consumed: "
+        individual_stats_str += "**Formats Consumed:** "
         for media_format, count in user_formats_consumed.items():
             individual_stats_str += f"{media_format}: **{count}** | "
 
