@@ -34,6 +34,7 @@ class LeaderboardStats:
     missed_days: int
     record: int
     record_date: datetime
+    total_minutes_watched: int
     placements: dict[int, int]
     first_place_finishes: int
     formats: dict[str, int]

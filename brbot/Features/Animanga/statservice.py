@@ -483,7 +483,10 @@ class AnimangaStatService:
         sorted_member_leaderboard_stats = dict(
             sorted(
                 member_leaderboard_stats.items(),
-                key=lambda kv: (kv[1].first_place_finishes, kv[1].minutes_watched),
+                key=lambda kv: (
+                    kv[1].first_place_finishes,
+                    kv[1].total_minutes_watched,
+                ),
                 reverse=True,
             )
         )
@@ -529,6 +532,7 @@ class AnimangaStatService:
             record_date=record_date,
             first_place_finishes=placements_dict.get(1, 0),
             placements=placements_dict,
+            total_minutes_watched=sum(minutes_watched),
             formats=formats_consumed,
         )
 
