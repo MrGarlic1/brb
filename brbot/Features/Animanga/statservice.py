@@ -1,5 +1,6 @@
 import logging
 from asyncio import sleep
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from random import uniform
 from statistics import stdev
@@ -468,11 +469,11 @@ class AnimangaStatService:
 
         result = await session.execute(stmt)
         daily_rankings: Sequence[AnimangaDailyStats] = result.scalars().all()
-        daily_rankings_by_user_id: Dict[int, List[AnimangaDailyStats]] = {}
+        daily_rankings_by_user_id: Dict[int, List[AnimangaDailyStats]] = defaultdict(
+            list
+        )
         for ranking in daily_rankings:
-            daily_rankings_by_user_id.setdefault(ranking.member.user_id, []).append(
-                ranking
-            )
+            daily_rankings_by_user_id[ranking.member.user_id].append(ranking)
 
         member_leaderboard_stats: dict[int, LeaderboardStats] = {}
         for user_id, rankings in daily_rankings_by_user_id.items():
@@ -517,15 +518,17 @@ class AnimangaStatService:
             if r.minutes_watched == 0:
                 missed_days += 1
 
-        placements_dict = {p: placements.count(p) for p in placements}
-        placements_dict = dict(sorted(placements_dict.items()))
+        placements_dict = dict(sorted(Counter(placements).items()))
 
-        consistency = (
-            1 - stdev(minutes_watched) / (record - min(minutes_watched))
-        ) * 100
-        consistency = max(min(consistency, 100), 0)
+        try:
+            consistency = (
+                1 - stdev(minutes_watched) / (record - min(minutes_watched))
+            ) * 100
+            consistency = max(min(consistency, 100), 0)
+        except ZeroDivisionError:
+            consistency = 100
 
-        result = LeaderboardStats(
+        return LeaderboardStats(
             consistency=consistency,
             missed_days=missed_days,
             record=record,
@@ -535,8 +538,6 @@ class AnimangaStatService:
             total_minutes_watched=sum(minutes_watched),
             formats=formats_consumed,
         )
-
-        return result
 
     @staticmethod
     async def create_leaderboard_embed(
