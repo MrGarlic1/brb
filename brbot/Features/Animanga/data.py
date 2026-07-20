@@ -1,4 +1,6 @@
 import logging
+from datetime import datetime
+
 from brbot.Shared.Discord.buttons import NextPgButton, PrevPgButton
 from dataclasses import dataclass
 from discord.ui import View, Button
@@ -24,6 +26,17 @@ placement_emojis = {
     9: "9️⃣",
 }
 format_emojis = {}
+
+
+@dataclass
+class LeaderboardStats:
+    consistency: float
+    missed_days: int
+    record: int
+    record_date: datetime
+    placements: dict[int, int]
+    first_place_finishes: int
+    formats: dict[str, int]
 
 
 @dataclass(frozen=True)

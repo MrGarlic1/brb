@@ -299,18 +299,14 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
             member: Member = await get_or_create_member(
                 user_id=ctx.user.id, guild_id=ctx.guild.id, session=session
             )
-            (
-                placements,
-                formats,
-                minutes,
-            ) = await self.stat_service.get_member_leaderboard_stats(member, session)
+            guild_leaderboard_stats = await self.stat_service.get_leaderboard_stats(
+                member, session
+            )
 
         embed = self.stat_service.create_leaderboard_stats_embed(
             member=ctx.user,
             guild=ctx.guild,
-            placements=placements,
-            formats_watched=formats,
-            minutes_watched=minutes,
+            guild_leaderboard_stats=guild_leaderboard_stats,
         )
         await ctx.followup.send(embed=embed)
 

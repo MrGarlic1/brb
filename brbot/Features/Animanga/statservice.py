@@ -2,14 +2,20 @@ import logging
 from asyncio import sleep
 from datetime import datetime, timezone
 from random import uniform
-
+from statistics import stdev
 import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from typing import Optional, Dict, List, Sequence
 
 from sqlalchemy.orm import selectinload
-from brbot.Features.Animanga.data import MediaType, DailyStatSnapshot, placement_emojis
+
+from brbot.Features.Animanga.data import (
+    MediaType,
+    DailyStatSnapshot,
+    placement_emojis,
+    LeaderboardStats,
+)
 from brbot.db.models import AnimangaDailyStats, AnimangaListEntry, Member, User
 from httpx import AsyncClient, ReadTimeout
 from discord import (
@@ -451,27 +457,82 @@ class AnimangaStatService:
         return int(activity_progress[-1])
 
     @staticmethod
-    async def get_member_leaderboard_stats(
+    async def get_leaderboard_stats(
         member: Member, session: AsyncSession
-    ) -> tuple[Dict[int, int], Dict[str, int], int]:
-        stmt = select(AnimangaDailyStats).where(
-            AnimangaDailyStats.member_id == member.id
+    ) -> Dict[int, LeaderboardStats]:
+        stmt = (
+            select(AnimangaDailyStats)
+            .where(AnimangaDailyStats.guild_id == member.guild_id)
+            .options(selectinload(AnimangaDailyStats.member).selectinload(Member.user))
         )
+
         result = await session.execute(stmt)
-        rankings: Sequence[AnimangaDailyStats] = result.scalars().all()
-        placements = [r.placement for r in rankings]
+        daily_rankings: Sequence[AnimangaDailyStats] = result.scalars().all()
+        daily_rankings_by_user_id: Dict[int, List[AnimangaDailyStats]] = {}
+        for ranking in daily_rankings:
+            daily_rankings_by_user_id.setdefault(ranking.member.user_id, []).append(
+                ranking
+            )
+
+        member_leaderboard_stats: dict[int, LeaderboardStats] = {}
+        for user_id, rankings in daily_rankings_by_user_id.items():
+            member_leaderboard_stats[user_id] = (
+                AnimangaStatService.calculate_individual_leaderboard_stats(rankings)
+            )
+
+        sorted_member_leaderboard_stats = dict(
+            sorted(
+                member_leaderboard_stats.items(),
+                key=lambda kv: (kv[1].first_place_finishes, kv[1].minutes_watched),
+                reverse=True,
+            )
+        )
+        return sorted_member_leaderboard_stats
+
+    @staticmethod
+    def calculate_individual_leaderboard_stats(
+        daily_rankings: list[AnimangaDailyStats],
+    ) -> LeaderboardStats:
+        formats_consumed = {"Anime📺": 0, "Movie📽": 0, "Manga💬": 0, "Light Novel📖": 0}
+        placements = []
+        minutes_watched = []
+        record = 0
+        missed_days = 0
+        record_date = None
+        for r in daily_rankings:
+            placements.append(r.placement)
+            minutes_watched.append(r.minutes_watched)
+            formats_consumed["Anime📺"] += r.episodes
+            formats_consumed["Movie📽"] += r.movies
+            formats_consumed["Manga💬"] += r.manga_chapters
+            formats_consumed["Light Novel📖"] += r.ln_chapters
+
+            if r.minutes_watched > record:
+                record = r.minutes_watched
+                record_date = r.date
+
+            if r.minutes_watched == 0:
+                missed_days += 1
+
         placements_dict = {p: placements.count(p) for p in placements}
         placements_dict = dict(sorted(placements_dict.items()))
-        formats_watched = {"Anime📺": 0, "Movie📽": 0, "Manga💬": 0, "Light Novel📖": 0}
-        total_minutes = 0
-        for r in rankings:
-            formats_watched["Anime📺"] += r.episodes
-            formats_watched["Movie📽"] += r.movies
-            formats_watched["Manga💬"] += r.manga_chapters
-            formats_watched["Light Novel📖"] += r.ln_chapters
-            total_minutes += r.minutes_watched
 
-        return placements_dict, formats_watched, total_minutes
+        consistency = (
+            1 - stdev(minutes_watched) / (record - min(minutes_watched))
+        ) * 100
+        consistency = max(min(consistency, 100), 0)
+
+        result = LeaderboardStats(
+            consistency=consistency,
+            missed_days=missed_days,
+            record=record,
+            record_date=record_date,
+            first_place_finishes=placements_dict.get(1, 0),
+            placements=placements_dict,
+            formats=formats_consumed,
+        )
+
+        return result
 
     @staticmethod
     async def create_leaderboard_embed(
@@ -517,20 +578,18 @@ class AnimangaStatService:
     def create_leaderboard_stats_embed(
         member: DiscordMember,
         guild: DiscordGuild,
-        placements: dict[int, int],
-        formats_watched: dict[str, int],
-        minutes_watched: int,
+        guild_leaderboard_stats: dict[int, LeaderboardStats],
     ) -> Embed:
-        if placements:
-            most_frequent_placement = max(placements, key=placements.get)
-        else:
-            most_frequent_placement = 0
+        try:
+            member_server_rank = list(guild_leaderboard_stats.keys()).index(member.id)
+        except ValueError:
+            member_server_rank = -1
 
-        if most_frequent_placement == 1:
+        if member_server_rank == 0:
             color = 0xD6AF36
-        elif most_frequent_placement == 2:
+        elif member_server_rank == 1:
             color = 0xA7A7AD
-        elif most_frequent_placement == 3:
+        elif member_server_rank == 2:
             color = 0xA77044
         else:
             color = 0x19356D
@@ -539,35 +598,52 @@ class AnimangaStatService:
         embed.set_author(name=guild.name, icon_url=guild.icon.url)
         embed.set_thumbnail(url=member.avatar.url)
 
+        try:
+            user_placements = guild_leaderboard_stats[member.id].placements
+            user_formats_consumed = guild_leaderboard_stats[member.id].formats
+        except KeyError:
+            user_placements = {}
+            user_formats_consumed = {}
+
         # No leaderboards/user is not tracking stats
-        if not placements:
+        if not user_placements:
             embed.add_field(
                 name="\u200b",
                 value="**You have no stats yet!**",
             )
             return embed
 
-        placement_str = ""
-        for rank, count in placements.items():
-            placement_str += f"{placement_emojis[rank]}: {count}\n"
+        individual_stats_str = "Daily Rankings: "
+        for rank, count in user_placements.items():
+            individual_stats_str += f"{placement_emojis[rank]}: {count} | "
 
-        format_str = ""
-        for media_format, count in formats_watched.items():
-            format_str += f"{media_format}: {count}\n"
+        individual_stats_str += (
+            f"\nConsistency: {guild_leaderboard_stats[member.id].consistency}%\n"
+        )
+        individual_stats_str += (
+            f"Most Watched in 1 Day: {guild_leaderboard_stats[member.id].record} on "
+            f"{guild_leaderboard_stats[member.id].record_date}\n"
+        )
+        individual_stats_str += (
+            f"Missed Days: {guild_leaderboard_stats[member.id].missed_days}\n"
+        )
+
+        individual_stats_str = "Formats Consumed: "
+        for media_format, count in user_formats_consumed.items():
+            individual_stats_str += f"{media_format}: {count} | "
+
+        leaderboard_placement_str = ""
+        for i, user_id in enumerate(list(guild_leaderboard_stats.keys())[0:10]):
+            leaderboard_placement_str += f"{placement_emojis[i + 1]}: <@{user_id}>\n"
 
         embed.add_field(
-            name="Placements",
-            value=placement_str,
+            name="Individual Statistics",
+            value=individual_stats_str,
             inline=False,
         )
         embed.add_field(
-            name="Formats Watched",
-            value=format_str,
-            inline=False,
-        )
-        embed.add_field(
-            name="Minutes Watched",
-            value=minutes_watched,
+            name="Server Overall Rankings",
+            value=leaderboard_placement_str,
             inline=False,
         )
         embed.set_footer(
