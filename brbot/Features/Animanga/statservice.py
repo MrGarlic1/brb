@@ -3,7 +3,7 @@ from asyncio import sleep
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from random import uniform
-from statistics import stdev
+from statistics import mean, stdev
 import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -535,6 +535,7 @@ class AnimangaStatService:
             record_date=record_date,
             first_place_finishes=placements_dict.get(1, 0),
             placements=placements_dict,
+            average_minutes_watched=mean(minutes_watched),
             total_minutes_watched=sum(minutes_watched),
             formats=formats_consumed,
         )
@@ -585,6 +586,10 @@ class AnimangaStatService:
         guild: DiscordGuild,
         guild_leaderboard_stats: dict[int, LeaderboardStats],
     ) -> Embed:
+        color = 0x19356D
+
+        user_stats = guild_leaderboard_stats.get(member.id)
+
         try:
             member_server_rank = list(guild_leaderboard_stats.keys()).index(member.id)
         except ValueError:
@@ -596,22 +601,13 @@ class AnimangaStatService:
             color = 0xA7A7AD
         elif member_server_rank == 2:
             color = 0xA77044
-        else:
-            color = 0x19356D
 
         embed = Embed(title=f"Leaderboard Stats for {member.name}", color=color)
         embed.set_author(name=guild.name, icon_url=guild.icon.url)
         embed.set_thumbnail(url=member.avatar.url)
 
-        try:
-            user_placements = guild_leaderboard_stats[member.id].placements
-            user_formats_consumed = guild_leaderboard_stats[member.id].formats
-        except KeyError:
-            user_placements = {}
-            user_formats_consumed = {}
-
         # No leaderboards/user is not tracking stats
-        if not user_placements:
+        if user_stats is None or not user_stats.placements:
             embed.add_field(
                 name="\u200b",
                 value="**You have no stats yet!**",
@@ -619,20 +615,24 @@ class AnimangaStatService:
             return embed
 
         individual_stats_str = "**Daily Rankings:** "
-        for rank, count in user_placements.items():
+        for rank, count in user_stats.placements.items():
             individual_stats_str += f"{placement_emojis[rank]}: {count} | "
 
-        individual_stats_str += f"\n**Consistency:** {guild_leaderboard_stats[member.id].consistency:.2f}%\n"
+        individual_stats_str += f"\n**Consistency:** {user_stats.consistency:.2f}%\n"
         individual_stats_str += (
-            f"**Most Time in 1 Day:** {guild_leaderboard_stats[member.id].record} minutes on "
-            f"{guild_leaderboard_stats[member.id].record_date.strftime("%b %d %Y")}\n"
+            f"**Most Time in 1 Day:** {user_stats.record} minutes on "
+            f"{user_stats.record_date.strftime("%b %d %Y")}\n"
         )
         individual_stats_str += (
-            f"**Missed Days:** {guild_leaderboard_stats[member.id].missed_days}\n"
+            f"**Average Time:** {user_stats.average_minutes_watched} minutes/day\n"
         )
+        individual_stats_str += (
+            f"**Total Watch Time:** {user_stats.total_minutes_watched} minutes\n"
+        )
+        individual_stats_str += f"**Missed Days:** {user_stats.missed_days}\n"
 
         individual_stats_str += "**Formats Consumed:** "
-        for media_format, count in user_formats_consumed.items():
+        for media_format, count in user_stats.formats.items():
             individual_stats_str += f"{media_format}: **{count}** | "
 
         leaderboard_placement_str = ""
