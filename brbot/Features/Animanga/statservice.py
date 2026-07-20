@@ -623,7 +623,7 @@ class AnimangaStatService:
 
         individual_stats_str += f"\n**Consistency:** {guild_leaderboard_stats[member.id].consistency:.2f}%\n"
         individual_stats_str += (
-            f"**Most Watched in 1 Day:** {guild_leaderboard_stats[member.id].record} on "
+            f"**Most Time in 1 Day:** {guild_leaderboard_stats[member.id].record} minutes on "
             f"{guild_leaderboard_stats[member.id].record_date.strftime("%b %d %Y")}\n"
         )
         individual_stats_str += (
