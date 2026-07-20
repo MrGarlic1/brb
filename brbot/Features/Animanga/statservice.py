@@ -629,12 +629,12 @@ class AnimangaStatService:
             f"{guild_leaderboard_stats[member.id].record_date}\n"
         )
         individual_stats_str += (
-            f"Missed Days: {guild_leaderboard_stats[member.id].missed_days}\n"
+            f"**Missed Days:** {guild_leaderboard_stats[member.id].missed_days}\n"
         )
 
-        individual_stats_str = "Formats Consumed: "
+        individual_stats_str += "Formats Consumed: "
         for media_format, count in user_formats_consumed.items():
-            individual_stats_str += f"{media_format}: {count} | "
+            individual_stats_str += f"{media_format}: **{count}** | "
 
         leaderboard_placement_str = ""
         for i, user_id in enumerate(list(guild_leaderboard_stats.keys())[0:10]):
