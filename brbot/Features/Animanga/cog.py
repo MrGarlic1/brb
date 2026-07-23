@@ -323,7 +323,7 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
                 logger.warning(f"Update channel not found for guild {guild.id}")
                 continue
             try:
-                daily_stats = await self.stat_service.fetch_daily_activities(
+                daily_stats = await self.stat_service.process_daily_activities(
                     guild_id=guild.id, session_generator=self.bot.session_generator
                 )
                 if daily_stats is None:

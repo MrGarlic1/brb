@@ -132,7 +132,7 @@ class AnimangaStatService:
         return None
 
     @staticmethod
-    async def fetch_daily_activities(
+    async def process_daily_activities(
         guild_id, session_generator: async_sessionmaker
     ) -> List[DailyStatSnapshot]:
         async with session_generator() as session:
@@ -161,7 +161,7 @@ class AnimangaStatService:
             result = await session.execute(stmt)
             members = result.scalars().all()
 
-            daily_stats = await AnimangaStatService.calculate_user_daily_activity(
+            daily_stats = await AnimangaStatService.calculate_daily_activity_stats(
                 members, daily_activities, session, datetime.now(timezone.utc)
             )
             daily_stat_snapshots: List[DailyStatSnapshot] = []
@@ -200,9 +200,9 @@ class AnimangaStatService:
         epoch_seconds = int(datetime.now(timezone.utc).timestamp() - day_seconds)
 
         query = """
-        query Page($userIdIn: [Int], $page: Int, $perPage: Int, $createdAtGreater: Int) {
+        query Page($userIdIn: [Int], $page: Int, $perPage: Int, $createdAtGreater: Int, $sort: [ActivitySort]) {
           Page(page: $page, perPage: $perPage) {
-            activities(userId_in: $userIdIn, createdAt_greater: $createdAtGreater) {
+            activities(userId_in: $userIdIn, createdAt_greater: $createdAtGreater, sort: $sort) {
               ... on ListActivity {
                 progress
                 media {
@@ -238,6 +238,7 @@ class AnimangaStatService:
                     "page": page,
                     "perPage": 50,
                     "createdAtGreater": epoch_seconds,
+                    "sort": ["ID"],
                 }
 
                 logger.debug(f"Querying daily activities page {page}")
@@ -282,7 +283,7 @@ class AnimangaStatService:
         return activities
 
     @staticmethod
-    async def calculate_user_daily_activity(
+    async def calculate_daily_activity_stats(
         members: Sequence[Member],
         daily_activities: list[Dict],
         session: AsyncSession,
@@ -352,14 +353,14 @@ class AnimangaStatService:
                 if existing_entry is None:
                     if not is_complete:
                         previous_progress = 0
-                        new_list_entries.append(
-                            AnimangaListEntry(
-                                user_id=member.user_id,
-                                media_id=activity["media"]["id"],
-                                progress=current_progress,
-                                is_manga=is_manga,
-                            )
+                        updated_entry = AnimangaListEntry(
+                            user_id=member.user_id,
+                            media_id=activity["media"]["id"],
+                            progress=current_progress,
+                            is_manga=is_manga,
                         )
+                        new_list_entries.append(updated_entry)
+                        dict_to_check[activity["media"]["id"]] = updated_entry
                     else:
                         previous_progress = 0
                 else:
@@ -367,13 +368,14 @@ class AnimangaStatService:
                     existing_entry.progress = current_progress
 
                     if is_complete:
-                        list_entries_to_delete.append(
-                            dict_to_check[activity["media"]["id"]]
-                        )
+                        if existing_entry in new_list_entries:
+                            new_list_entries.remove(existing_entry)
+                        else:
+                            list_entries_to_delete.append(existing_entry)
 
                 progress_diff = max(current_progress - previous_progress, 0)
 
-                total_minutes += AnimangaStatService.calculate_time_delta(
+                total_minutes += AnimangaStatService.calculate_activity_time(
                     activity["media"]["format"],
                     progress_diff,
                     duration=activity["media"]["duration"],
@@ -417,7 +419,7 @@ class AnimangaStatService:
         return daily_stats
 
     @staticmethod
-    def calculate_time_delta(
+    def calculate_activity_time(
         media_format: str,
         progress_diff: int,
         duration: Optional[int],
@@ -621,7 +623,7 @@ class AnimangaStatService:
         individual_stats_str += f"\n**Consistency:** {user_stats.consistency:.2f}%\n"
         individual_stats_str += (
             f"**Most Time in 1 Day:** {user_stats.record} minutes on "
-            f"{user_stats.record_date.strftime("%b %d %Y")}\n"
+            f"{user_stats.record_date.strftime('%b %d %Y')}\n"
         )
         individual_stats_str += (
             f"**Average Time:** {user_stats.average_minutes_watched} minutes/day\n"
