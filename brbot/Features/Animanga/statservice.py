@@ -505,6 +505,8 @@ class AnimangaStatService:
         record = 0
         missed_days = 0
         record_date = None
+        max_streak = 0
+        current_streak = 0
         for r in daily_rankings:
             placements.append(r.placement)
             minutes_watched.append(r.minutes_watched)
@@ -519,6 +521,11 @@ class AnimangaStatService:
 
             if r.minutes_watched == 0:
                 missed_days += 1
+                current_streak = 0
+            else:
+                current_streak += 1
+                if current_streak >= max_streak:
+                    max_streak = current_streak
 
         placements_dict = dict(sorted(Counter(placements).items()))
 
@@ -538,6 +545,9 @@ class AnimangaStatService:
             first_place_finishes=placements_dict.get(1, 0),
             placements=placements_dict,
             average_minutes_watched=mean(minutes_watched),
+            average_minutes_watched_active=mean([m for m in minutes_watched if m != 0]),
+            current_streak=current_streak,
+            max_streak=max_streak,
             total_minutes_watched=sum(minutes_watched),
             formats=formats_consumed,
         )
@@ -620,14 +630,14 @@ class AnimangaStatService:
         for rank, count in user_stats.placements.items():
             individual_stats_str += f"{placement_emojis[rank]}: {count} | "
 
-        individual_stats_str += f"\n**Consistency:** {user_stats.consistency:.2f}%\n"
+        individual_stats_str += f"\n**Current Streak:** {user_stats.current_streak} days (record {user_stats.max_streak})\n"
+
+        individual_stats_str += f"**Consistency:** {user_stats.consistency:.2f}%\n"
         individual_stats_str += (
             f"**Most Time in 1 Day:** {user_stats.record} minutes on "
             f"{user_stats.record_date.strftime('%b %d %Y')}\n"
         )
-        individual_stats_str += (
-            f"**Average Time:** {user_stats.average_minutes_watched} minutes/day\n"
-        )
+        individual_stats_str += f"**Average Time:** {user_stats.average_minutes_watched:.2f} | {user_stats.average_minutes_watched_active:.2f} minutes/day (all | active only)\n"
         individual_stats_str += (
             f"**Total Watch Time:** {user_stats.total_minutes_watched} minutes\n"
         )

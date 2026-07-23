@@ -36,6 +36,9 @@ class LeaderboardStats:
     record_date: datetime
     total_minutes_watched: int
     average_minutes_watched: float
+    average_minutes_watched_active: float
+    current_streak: int
+    max_streak: int
     placements: dict[int, int]
     first_place_finishes: int
     formats: dict[str, int]
