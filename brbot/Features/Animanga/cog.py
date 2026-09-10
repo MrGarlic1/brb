@@ -326,8 +326,6 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
                 daily_stats = await self.stat_service.process_daily_activities(
                     guild_id=guild.id, session_generator=self.bot.session_generator
                 )
-                if daily_stats is None:
-                    continue
 
                 leaderboard_embed = await self.stat_service.create_leaderboard_embed(
                     guild, datetime.now(timezone.utc), daily_stats
