@@ -332,7 +332,7 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
                 )
                 await channel.send(embed=leaderboard_embed)
             except Exception as e:
-                logger.warning(
+                logger.exception(
                     f"Failed to send daily stats leaderboard in guild {guild.id}: {e}"
                 )
 

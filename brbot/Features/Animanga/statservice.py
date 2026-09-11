@@ -187,9 +187,8 @@ class AnimangaStatService:
 
                     else:
                         if "errors" in response_data:
-                            logger.warning(
-                                f"Request error {"; ".join(response_data["errors"])}"
-                            )
+                            messages = [m["message"] for m in response_data["errors"]]
+                            logger.warning(f"Request error {"; ".join(messages)}")
 
                 except ReadTimeout:
                     logger.warning(f"Daily activity data page {page} timed out")
