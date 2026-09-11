@@ -102,7 +102,7 @@ class AnimangaStatService:
 
     @staticmethod
     async def query_users_daily_activity(
-        anilist_ids: list[int], beginning_timestamp: int | float, client: AsyncClient
+        anilist_ids: list[int], beginning_timestamp: int, client: AsyncClient
     ) -> List[Dict]:
         """
         Args:
@@ -262,7 +262,7 @@ class AnimangaStatService:
                 )
             )
 
-            recent_leaderboard_timestamp = (
+            recent_leaderboard_timestamp = int(
                 recent_leaderboard_datetime.timestamp()
                 if recent_leaderboard_datetime is not None
                 else (datetime.now(timezone.utc) - timedelta(days=1)).timestamp()
