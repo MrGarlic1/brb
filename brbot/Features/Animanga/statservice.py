@@ -427,9 +427,12 @@ class AnimangaStatService:
                 )
             )
 
-        daily_stats = sorted(daily_stats, key=lambda d: d.minutes_watched, reverse=True)
-        for i, stat in enumerate(daily_stats):
-            stat.placement = i + 1
+        if any(d.minutes_watched for d in daily_stats):
+            daily_stats = sorted(
+                daily_stats, key=lambda d: d.minutes_watched, reverse=True
+            )
+            for i, stat in enumerate(daily_stats):
+                stat.placement = i + 1
 
         session.add_all(new_list_entries)
         session.add_all(daily_stats)
@@ -532,7 +535,8 @@ class AnimangaStatService:
         max_streak = 0
         current_streak = 0
         for r in daily_rankings:
-            placements.append(r.placement)
+            if r.placement:
+                placements.append(r.placement)
             minutes_watched.append(r.minutes_watched)
             formats_consumed["Anime📺"] += r.episodes
             formats_consumed["Movie📽"] += r.movies
@@ -552,6 +556,10 @@ class AnimangaStatService:
                     max_streak = current_streak
 
         placements_dict = dict(sorted(Counter(placements).items()))
+        average_minutes_watched = mean(minutes_watched) if minutes_watched else 0
+        average_minutes_watched_active = (
+            mean([m for m in minutes_watched if m != 0]) if minutes_watched else 0
+        )
 
         try:
             consistency = (
@@ -568,8 +576,8 @@ class AnimangaStatService:
             record_date=record_date,
             first_place_finishes=placements_dict.get(1, 0),
             placements=placements_dict,
-            average_minutes_watched=mean(minutes_watched),
-            average_minutes_watched_active=mean([m for m in minutes_watched if m != 0]),
+            average_minutes_watched=average_minutes_watched,
+            average_minutes_watched_active=average_minutes_watched_active,
             current_streak=current_streak,
             max_streak=max_streak,
             total_minutes_watched=sum(minutes_watched),
