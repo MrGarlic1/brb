@@ -9,6 +9,7 @@ from brbot.Features.Animanga.data import (
 )
 from brbot.Shared.Anilist.anilist import query_user_id
 from brbot.Core.bot import BrBot
+from brbot.Core.botutils import get_members_from_str
 from brbot.Shared.Members.repository import get_or_create_member
 from brbot.db.models import User, Member, AnimangaListEntry
 from brbot.Shared.Users.repository import get_or_create_user
@@ -292,19 +293,36 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
     @app_commands.command(
         name="get_stats", description="View your historic daily leaderboard statistics."
     )
-    async def get_stats(self, ctx: Interaction):
+    @app_commands.describe(
+        user="@ a specific user to view their stats",
+    )
+    async def get_stats(self, ctx: Interaction, user: str = None):
         await ctx.response.defer()
+
+        if user:
+            discord_member_list = (
+                await get_members_from_str(ctx.guild, user) if user else ctx.user
+            )
+            if discord_member_list:
+                discord_member = discord_member_list[0]
+                user_id = discord_member_list[0].id
+            else:
+                await ctx.followup.send(content="Please mention a valid user.")
+                return
+        else:
+            user_id = ctx.user.id
+            discord_member = ctx.user
 
         async with self.bot.session_generator() as session:
             member: Member = await get_or_create_member(
-                user_id=ctx.user.id, guild_id=ctx.guild.id, session=session
+                user_id=user_id, guild_id=ctx.guild.id, session=session
             )
             guild_leaderboard_stats = await self.stat_service.get_leaderboard_stats(
                 member, session
             )
 
         embed = self.stat_service.create_leaderboard_stats_embed(
-            member=ctx.user,
+            member=discord_member,
             guild=ctx.guild,
             guild_leaderboard_stats=guild_leaderboard_stats,
         )
