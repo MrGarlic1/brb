@@ -131,6 +131,7 @@ class RecommendationService:
                         popularity
                         title {
                           romaji
+                          english
                         }
                         relations {
                           edges {
@@ -433,11 +434,16 @@ class RecommendationService:
                 )
 
                 if media_rec["id"] not in recommendation_scores:
+                    title = (
+                        media_rec["title"]["english"]
+                        if media_rec["title"]["english"]
+                        else media_rec["title"]["romaji"]
+                    )
                     recommendation_scores[media_rec["id"]] = Recommendation(
                         media_id=media_rec["id"],
                         anilist_user_id=anilist_user_id,
                         is_manga=media_type.value,
-                        title=media_rec["title"]["romaji"],
+                        title=title,
                         score=0,
                         genres=media_rec["genres"],
                         cover_url=media_rec["coverImage"]["large"],
