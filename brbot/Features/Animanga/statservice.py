@@ -3,7 +3,7 @@ from asyncio import sleep
 from collections import Counter, defaultdict
 from datetime import datetime, timezone, timedelta
 from random import uniform
-from statistics import mean, stdev
+from statistics import mean
 import httpx
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -188,7 +188,7 @@ class AnimangaStatService:
                     else:
                         if "errors" in response_data:
                             messages = [m["message"] for m in response_data["errors"]]
-                            logger.warning(f"Request error {"; ".join(messages)}")
+                            logger.warning(f"Request error {'; '.join(messages)}")
 
                 except ReadTimeout:
                     logger.warning(f"Daily activity data page {page} timed out")
@@ -561,13 +561,11 @@ class AnimangaStatService:
             mean([m for m in minutes_watched if m != 0]) if minutes_watched else 0
         )
 
-        try:
-            consistency = (
-                1 - stdev(minutes_watched) / (record - min(minutes_watched))
-            ) * 100
-            consistency = max(min(consistency, 100), 0)
-        except ZeroDivisionError:
-            consistency = 100
+        consistency = (
+            (average_minutes_watched_active - average_minutes_watched)
+            / min(max(1e-4, average_minutes_watched_active), 1)
+            * 100
+        )
 
         return LeaderboardStats(
             consistency=consistency,
