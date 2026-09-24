@@ -561,10 +561,11 @@ class AnimangaStatService:
             mean([m for m in minutes_watched if m != 0]) if minutes_watched else 0
         )
 
-        consistency = (
+        consistency = min(
             (average_minutes_watched_active - average_minutes_watched)
-            / min(max(1e-4, average_minutes_watched_active), 1)
-            * 100
+            / max(1e-4, average_minutes_watched_active)
+            * 100,
+            100,
         )
 
         return LeaderboardStats(
