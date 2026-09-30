@@ -1,0 +1,483 @@
+from datetime import datetime
+from discord.channel import DMChannel
+from discord.member import Member as DiscordMember
+from discord.guild import Guild as DiscordGuild
+from discord.user import User as DiscordUser
+from typing import List, Optional, ClassVar, Dict
+from sqlalchemy import ForeignKey
+from sqlalchemy import (
+    String,
+    Boolean,
+    BigInteger,
+    Float,
+    JSON,
+    DateTime,
+    Integer,
+    Index,
+    UniqueConstraint,
+    false,
+)
+from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.orm import Mapped
+from sqlalchemy.orm import mapped_column
+from sqlalchemy.orm import relationship
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class User(Base):
+    __tablename__ = "users"
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, primary_key=True, autoincrement=False
+    )
+    name: Mapped[str] = mapped_column(String(240))
+    anilist_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    anilist_username: Mapped[Optional[str]] = mapped_column(String(240), nullable=True)
+    rec_timestamp_manga: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
+    rec_timestamp_anime: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
+    memberships = relationship("Member", back_populates="user")
+    ignored_recommendations = relationship("IgnoredRecommendation")
+    animanga_entries = relationship("AnimangaListEntry", back_populates="user")
+
+    discord_user: ClassVar[Optional[DiscordUser]] = None
+    dmchannel: ClassVar[Optional[DMChannel]] = None
+
+    @property
+    def mention_str(self):
+        return f"<@{self.user_id}>"
+
+
+class Guild(Base):
+    __tablename__ = "guilds"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    members = relationship("Member", back_populates="guild")
+    config = relationship("GuildConfig", uselist=False, back_populates="guild")
+    bingo_games = relationship("BingoGame", back_populates="guild")
+    train_games = relationship("TrainGame", back_populates="guild")
+    discord_guild: ClassVar[Optional[DiscordGuild]] = None
+
+
+class GuildConfig(Base):
+    __tablename__ = "guild_configs"
+    guild_id: Mapped[int] = mapped_column(
+        ForeignKey("guilds.id"), primary_key=True, autoincrement=False
+    )
+    guild = relationship("Guild", back_populates="config")
+    allow_phrases: Mapped[bool] = mapped_column(Boolean)
+    limit_user_responses: Mapped[bool] = mapped_column(Boolean)
+    max_user_responses: Mapped[int] = mapped_column(Integer)
+    restrict_response_deletion: Mapped[bool] = mapped_column(Boolean)
+    enable_nsfw: Mapped[bool] = mapped_column(Boolean, server_default=false())
+    update_channel: Mapped[int] = mapped_column(Integer, nullable=True)
+
+    __table_args__ = (UniqueConstraint("guild_id", name="uq_guild_config_guild_id"),)
+
+
+class Member(Base):
+    __tablename__ = "members"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"))
+    user = relationship("User", back_populates="memberships")
+    guild_id: Mapped[int] = mapped_column(ForeignKey("guilds.id"))
+    guild = relationship("Guild", back_populates="members")
+    responses = relationship("Response", back_populates="member")
+    stat_tracking_enabled: Mapped[bool] = mapped_column(Boolean, server_default=false())
+    daily_stats = relationship("AnimangaDailyStats", back_populates="member")
+
+    __table_args__ = (
+        Index("ix_member_guild_id", "guild_id"),
+        UniqueConstraint("guild_id", "user_id", name="uq_member_user_guild"),
+    )
+
+    discord_member: ClassVar[Optional[DiscordMember]] = None
+
+
+class Response(Base):
+    __tablename__ = "responses"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    guild_id: Mapped[int] = mapped_column(ForeignKey("guilds.id"))
+    member_id: Mapped[int] = mapped_column(ForeignKey("members.id"))
+    trigger: Mapped[str] = mapped_column(String(2000))
+    text: Mapped[str] = mapped_column(String(2000))
+    behavior: Mapped[int] = mapped_column(Integer)
+    member = relationship("Member", back_populates="responses")
+
+    __table_args__ = (
+        Index("ix_responses_member_id", "member_id"),
+        Index("ix_responses_trigger", "trigger"),
+        UniqueConstraint(
+            "guild_id",
+            "trigger",
+            "text",
+            "behavior",
+            name="uq_response_guild_trigger_text_behavior",
+        ),
+    )
+
+
+class AnimangaListEntry(Base):
+    __tablename__ = "animanga_list_entries"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"))
+    user = relationship("User", back_populates="animanga_entries")
+    media_id: Mapped[int] = mapped_column(Integer)
+    progress: Mapped[int] = mapped_column(Integer)
+    is_manga: Mapped[bool] = mapped_column(Boolean)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "media_id", name="uq_user_media"),
+        Index("ix_user_id", "user_id"),
+    )
+
+
+class AnimangaDailyStats(Base):
+    __tablename__ = "animanga_daily_stats"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    guild_id: Mapped[int] = mapped_column(ForeignKey("guilds.id"))
+    member_id: Mapped[int] = mapped_column(ForeignKey("members.id"))
+    member = relationship("Member", back_populates="daily_stats")
+    minutes_watched: Mapped[int] = mapped_column(Integer)
+    placement: Mapped[int] = mapped_column(Integer)
+    date: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    episodes: Mapped[int] = mapped_column(Integer)
+    movies: Mapped[int] = mapped_column(Integer)
+    manga_chapters: Mapped[int] = mapped_column(Integer)
+    ln_chapters: Mapped[int] = mapped_column(Integer)
+
+    __table_args__ = (Index("ix_dailystats_guild_id", "guild_id"),)
+
+
+class Recommendation(Base):
+    __tablename__ = "recommendations"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    media_id: Mapped[int] = mapped_column(Integer)
+    anilist_user_id: Mapped[int] = mapped_column(Integer)
+    is_manga: Mapped[bool] = mapped_column(Boolean)
+    title: Mapped[str] = mapped_column(String(400))
+    score: Mapped[float] = mapped_column(Float)
+    genres: Mapped[List[str]] = mapped_column(JSON)
+    cover_url: Mapped[str] = mapped_column(String(400))
+    mean_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    def __lt__(self, other):
+        return self.score < other.score
+
+    def __eq__(self, other):
+        if isinstance(other, Recommendation):
+            return other.media_id == self.media_id
+        else:
+            return other == self.media_id
+
+    __table_args__ = (
+        Index("ix_recommendation_anilist_user_id", "anilist_user_id"),
+        Index("ix_recommendation_anilist_user_id_type", "anilist_user_id", "is_manga"),
+        UniqueConstraint(
+            "media_id",
+            "anilist_user_id",
+            "is_manga",
+            name="uq_recommendation_anilist_user_id_media_id",
+        ),
+    )
+
+
+class IgnoredRecommendation(Base):
+    __tablename__ = "ignored_recommendations"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    media_id: Mapped[int] = mapped_column(Integer)
+    ignoring_user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"))
+    is_manga: Mapped[bool] = mapped_column(Boolean)
+    title: Mapped[str] = mapped_column(String(400))
+    genres: Mapped[List[str]] = mapped_column(JSON)
+    cover_url: Mapped[str] = mapped_column(String(400))
+    mean_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    __table_args__ = (
+        Index("ix_recommendation_ignoring_user_id", "ignoring_user_id"),
+        Index(
+            "ix_recommendation_ignoring_user_id_type", "ignoring_user_id", "is_manga"
+        ),
+        UniqueConstraint(
+            "media_id",
+            "ignoring_user_id",
+            "is_manga",
+            name="uq_ignoring_user_id_media_id",
+        ),
+    )
+
+
+## BINGO
+
+
+class BingoTile(Base):
+    __tablename__ = "bingo_tiles"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    game_id: Mapped[int] = mapped_column(ForeignKey("bingo_games.id"))
+    player_id: Mapped[int] = mapped_column(ForeignKey("bingo_players.id"))
+    row: Mapped[int] = mapped_column(Integer)
+    column: Mapped[int] = mapped_column(Integer)
+    tag: Mapped[str] = mapped_column(String(400))
+    hit: Mapped[bool] = mapped_column(Boolean)
+    player = relationship("BingoPlayer", back_populates="tiles")
+
+    __table_args__ = (
+        Index("ix_bingo_tile_game_id_player_id", "game_id", "player_id"),
+        Index("ix_bingo_tile_row_column", "row", "column"),
+        UniqueConstraint(
+            "game_id",
+            "player_id",
+            "row",
+            "column",
+            name="uq_bingotile_game_member_row_column",
+        ),
+    )
+
+    @property
+    def coordinates(self) -> tuple[int, int]:
+        return self.column, self.row
+
+
+class BingoShot(Base):
+    __tablename__ = "bingo_shots"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    player_id: Mapped[int] = mapped_column(ForeignKey("bingo_players.id"))
+    anilist_entry_id: Mapped[int] = mapped_column(Integer)
+    tag: Mapped[str] = mapped_column(String(400))
+    time: Mapped[datetime] = mapped_column(DateTime)
+    hit: Mapped[bool] = mapped_column(Boolean)
+    info: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
+    player = relationship("BingoPlayer", back_populates="shots")
+
+    __table_args__ = (
+        Index("ix_bingo_shot_player_id", "player_id"),
+        UniqueConstraint("player_id", "tag", name="uq_bingoshot_player_tag"),
+    )
+
+
+class BingoPlayer(Base):
+    __tablename__ = "bingo_players"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    game_id: Mapped[int] = mapped_column(ForeignKey("bingo_games.id"))
+    member_id: Mapped[int] = mapped_column(ForeignKey("members.id"))
+    starting_anilist: Mapped[Optional[Dict]] = mapped_column(JSON, nullable=True)
+    done: Mapped[bool] = mapped_column(Boolean)
+    donetime: Mapped[Optional[DateTime]] = mapped_column(DateTime, nullable=True)
+    shots: Mapped[list[BingoShot]] = relationship(
+        "BingoShot", back_populates="player", cascade="all, delete-orphan"
+    )
+    game = relationship("BingoGame", back_populates="players")
+    tiles: Mapped[list[BingoTile]] = relationship(
+        "BingoTile", back_populates="player", cascade="all, delete-orphan"
+    )
+    member: Mapped[Member] = relationship("Member")
+
+    __table_args__ = (
+        Index("ix_bingo_player_game_id", "game_id"),
+        UniqueConstraint(
+            "game_id", "member_id", name="uq_bingo_player_game_id_member_id"
+        ),
+    )
+
+    @property
+    def anilist_id(self) -> Optional[int]:
+        return self.member.user.anilist_id
+
+    @property
+    def dmchannel(self) -> Optional[DMChannel]:
+        return self.member.user.dmchannel
+
+
+class BingoGame(Base):
+    __tablename__ = "bingo_games"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(400))
+    date: Mapped[datetime] = mapped_column(DateTime)
+    active: Mapped[bool] = mapped_column(Boolean)
+    guild_id: Mapped[int] = mapped_column(ForeignKey("guilds.id"))
+    mode: Mapped[int] = mapped_column(Integer)
+    guild = relationship("Guild", back_populates="bingo_games")
+    players: Mapped[List[BingoPlayer]] = relationship(
+        "BingoPlayer", back_populates="game", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (Index("ix_bingo_game_guild_id", "guild_id"),)
+
+
+## TRAINS
+
+
+class TrainGame(Base):
+    __tablename__ = "train_games"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    guild_id: Mapped[int] = mapped_column(ForeignKey("guilds.id"))
+    guild = relationship("Guild", back_populates="train_games")
+    name: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
+    date: Mapped[datetime] = mapped_column(DateTime)
+    board_height: Mapped[int] = mapped_column(Integer)
+    board_width: Mapped[int] = mapped_column(Integer)
+    active: Mapped[bool] = mapped_column(Boolean)
+    tiles = relationship(
+        "TrainTile", back_populates="game", cascade="all, delete-orphan"
+    )
+    items = relationship(
+        "TrainItem", back_populates="game", cascade="all, delete-orphan"
+    )
+    players = relationship(
+        "TrainPlayer", back_populates="game", cascade="all, delete-orphan"
+    )
+    __table_args__ = (Index("ix_train_game_guild_id", "guild_id"),)
+
+    @property
+    def size(self) -> tuple[int, int]:
+        return self.board_height, self.board_width
+
+
+class TrainItem(Base):
+    __tablename__ = "train_items"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(400))
+    emoji_name: Mapped[str] = mapped_column(String(40))
+    description: Mapped[str] = mapped_column(String(400))
+    uses: Mapped[int] = mapped_column(Integer)
+    showinfo: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
+    cost: Mapped[float] = mapped_column(Float)
+    game_id: Mapped[int] = mapped_column(ForeignKey("train_games.id"))
+    game = relationship("TrainGame", back_populates="items")
+    owner_player_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("train_players.id"), nullable=True
+    )
+    owner = relationship("TrainPlayer", back_populates="items")
+
+
+class TrainPlayer(Base):
+    __tablename__ = "train_players"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    game_id: Mapped[int] = mapped_column(ForeignKey("train_games.id"))
+    game = relationship("TrainGame", back_populates="players")
+    member_id: Mapped[int] = mapped_column(ForeignKey("members.id"))
+    tag: Mapped[str] = mapped_column(String(40))
+    rails: Mapped[int] = mapped_column(Integer)
+    starting_anilist: Mapped[Optional[List[Dict]]] = mapped_column(JSON, nullable=True)
+    score: Mapped[Optional[Dict]] = mapped_column(JSON, nullable=True)
+    gem_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    start_col: Mapped[int] = mapped_column(Integer, nullable=True)
+    start_row: Mapped[int] = mapped_column(Integer, nullable=True)
+    end_col: Mapped[int] = mapped_column(Integer, nullable=True)
+    end_row: Mapped[int] = mapped_column(Integer, nullable=True)
+    current_col: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    current_row: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    done: Mapped[bool] = mapped_column(Boolean)
+    last_bought_col: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    last_bought_row: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    donetime: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    least_watched_genre: Mapped[Optional[str]] = mapped_column(
+        String(400), nullable=True
+    )
+
+    shots = relationship(
+        "TrainShot", back_populates="player", cascade="all, delete-orphan"
+    )
+    player_tiles = relationship(
+        "TrainPlayerTile",
+        back_populates="player",
+        cascade="all, delete-orphan",
+        foreign_keys="TrainPlayerTile.player_id",
+    )
+    member = relationship("Member")
+    items = relationship("TrainItem", back_populates="owner")
+
+    dmchannel: ClassVar[Optional[DMChannel]] = None
+
+    @property
+    def anilist_id(self) -> Optional[int]:
+        return self.member.user.anilist_id
+
+    @property
+    def current_position(self) -> Optional[tuple[int, int]]:
+        if self.current_row is None or self.current_col is None:
+            return None
+        return self.current_col, self.current_row
+
+
+class TrainTile(Base):
+    __tablename__ = "train_tiles"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    row: Mapped[int] = mapped_column(Integer)
+    column: Mapped[int] = mapped_column(Integer)
+    game_id: Mapped[int] = mapped_column(ForeignKey("train_games.id"))
+    resource: Mapped[Optional[str]] = mapped_column(String(400), nullable=True)
+    terrain: Mapped[Optional[str]] = mapped_column(String(400), nullable=True)
+    zone: Mapped[Optional[str]] = mapped_column(String(400), nullable=True)
+    game = relationship("TrainGame", back_populates="tiles")
+    player_tiles = relationship("TrainPlayerTile", back_populates="tile")
+    # rails: list[str] = None,
+
+    @property
+    def position(self) -> tuple[int, int]:
+        return self.column, self.row
+
+
+class TrainPlayerTile(Base):
+    __tablename__ = "player_tiles"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tile_id: Mapped[int] = mapped_column(ForeignKey("train_tiles.id"))
+    row: Mapped[int] = mapped_column(Integer)
+    column: Mapped[int] = mapped_column(Integer)
+    player_id: Mapped[int] = mapped_column(ForeignKey("train_players.id"))
+    player = relationship(
+        "TrainPlayer", back_populates="player_tiles", foreign_keys=[player_id]
+    )
+    tile = relationship("TrainTile", back_populates="player_tiles")
+    has_rail: Mapped[bool] = mapped_column(Boolean)
+    rail_text: Mapped[Optional[str]] = mapped_column(String(400), nullable=True)
+
+    @property
+    def position(self) -> tuple[int, int]:
+        return self.column, self.row
+
+    __table_args__ = (
+        Index("ix_train_player_tile_player_id", "player_id"),
+        Index("ix_train_player_tile_tile_id", "tile_id"),
+        UniqueConstraint(
+            "player_id", "tile_id", name="uq_train_player_tile_player_tile_id"
+        ),
+    )
+
+
+class TrainShot(Base):
+    __tablename__ = "train_shots"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    player_id: Mapped[int] = mapped_column(ForeignKey("train_players.id"))
+    anilist_media_id: Mapped[int] = mapped_column(Integer)
+    row: Mapped[int] = mapped_column(Integer)
+    column: Mapped[int] = mapped_column(Integer)
+    anilist_info: Mapped[Dict] = mapped_column(JSON)
+    info: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
+    time: Mapped[datetime] = mapped_column(DateTime)
+    player = relationship("TrainPlayer", back_populates="shots")
+
+    __table_args__ = (Index("ix_train_shot_player_id", "player_id"),)
+
+    @property
+    def coords(self) -> tuple[int, int]:
+        return self.column, self.row
+
+
+class Neko(Base):
+    __tablename__ = "nekos"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    image_url: Mapped[str] = mapped_column(String(400))
+    nsfw: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    rarity: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    source: Mapped[Optional[str]] = mapped_column(String(400), nullable=True)
+
+    __table_args__ = (
+        Index("ix_neko_rarity", "rarity"),
+        UniqueConstraint("image_url", name="uq_neko_image_url"),
+    )

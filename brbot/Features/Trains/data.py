@@ -1,153 +1,39 @@
 from dataclasses import dataclass
-from discord import Member, DMChannel, Interaction, Embed
+from datetime import datetime
+
+from discord import Interaction, Embed, Member
 from discord.ui import View
-from brbot.Core.botdata import linked_profiles, bot_avatar_url, train_zones_url
-from brbot.Shared.buttons import NextPgButton, PrevPgButton
+from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+
+from brbot.db.models import TrainPlayer, TrainTile, TrainItem
+from brbot.Core.botdata import bot_avatar_url, train_zones_url
+from brbot.Shared.Discord.buttons import NextPgButton, PrevPgButton
+from enum import Enum
+
+from brbot.db.models import TrainGame
+
+DEFAULT_WIDTH = 16
+DEFAULT_HEIGHT = 16
+RIVER_RING = 1
+DEFAULT_RENDER_DISTANCE = 4
 
 
 @dataclass
-class TrainShot:
-    def __init__(self, row: int, col: int, show_id: int, info: str, time: str):
-        self.row = row
-        self.col = col
-        self.show_id = show_id
-        self.info = info
-        self.time = time
-
-    def coords(self) -> tuple[int, int]:
-        return self.row, self.col
+class TrainItemInfo:
+    name: str
+    description: str
+    emoji_name: str
+    uses: int
+    cost: int
 
 
-@dataclass
-class TrainTile:
-    def __init__(
-        self,
-        resource: str = None,
-        terrain: str = None,
-        zone: str = None,
-        rails: list[str] = None,
-    ):
-        self.resource = resource
-        self.terrain = terrain
-        self.zone = zone
-        self.rails = rails
-        if self.rails is None:
-            self.rails = []
-
-
-class TrainItem:
-    def __init__(
-        self,
-        name: str,
-        emoji: str,
-        description: str,
-        amount: int,
-        cost: float,
-        showinfo: str = "",
-        uses: int = -1,
-    ):
-        self.name = name
-        self.emoji = emoji
-        self.description = description
-        self.amount = amount
-        self.cost = cost
-        self.showinfo = showinfo
-        self.uses = uses
-
-    def inv_entry(self):
-        return f"{self.emoji}: (x{self.amount})"
-
-    def shop_entry(self):
-        return f"{self.emoji} {self.name} (x{self.amount}) (Cost {self.cost}): {self.description}"
-
-    def __repr__(self):
-        return f"{self.name} {self.emoji} {self.description} {self.amount} {self.cost} {self.showinfo}"
-
-
-@dataclass
-class TrainPlayer:
-    def __init__(
-        self,
-        member: Member = None,
-        tag: str = None,
-        dmchannel: DMChannel = None,
-        rails: int = 0,
-        shots: list[TrainShot] = None,
-        vis_tiles: list[tuple] = None,
-        score: dict[str, int] = None,
-        start: tuple = None,
-        end: tuple = None,
-        done: bool = False,
-        donetime: str = None,
-        inventory: dict = None,
-        shops_used: list[tuple[int, int]] = None,
-        anilist_id: int = None,
-        least_watched_genre: str = None,
-        starting_anilist: list = None,
-    ):
-        if vis_tiles is None:
-            vis_tiles = []
-        if score is None:
-            score = {}
-        if shots is None:
-            shots = []
-        if inventory is None:
-            inventory = {}
-        if shops_used is None:
-            shops_used = []
-        if anilist_id is None:
-            anilist_id = linked_profiles[member.id]
-
-        self.member = member
-        self.tag = tag
-        self.done = done
-        self.rails = rails
-        self.dmchannel = dmchannel
-        self.start = start
-        self.end = end
-        self.score: dict[str, int] = score
-        self.shots = shots
-        self.donetime = donetime
-        self.vis_tiles = vis_tiles
-        self.inventory = inventory
-        self.shops_used: list[tuple[int, int]] = shops_used
-        self.anilist_id = anilist_id
-        self.least_watched_genre = least_watched_genre
-        self.starting_anilist = starting_anilist
-
-    def asdict(self) -> dict:
-        shot_list = []
-        for shot in self.shots:
-            shot_list.append(shot.__dict__)
-        item_dict = {}
-        for name, item in self.inventory.items():
-            item_dict[name] = item.__dict__
-        return {
-            "member_id": self.member.id,
-            "tag": self.tag,
-            "done": self.done,
-            "rails": self.rails,
-            "dmchannel": self.dmchannel.id,
-            "start": self.start,
-            "end": self.end,
-            "score": self.score,
-            "shots": shot_list,
-            "donetime": self.donetime,
-            "vis_tiles": self.vis_tiles,
-            "inventory": item_dict,
-            "anilist_id": self.anilist_id,
-            "starting_anilist": self.starting_anilist,
-            "least_watched_genre": self.least_watched_genre,
-        }
-
-    def update_item_count(self, itemname) -> None:
-        self.inventory[itemname].uses -= 1
-
-        if self.inventory[itemname].uses == 0:
-            self.inventory[itemname].amount -= 1
-
-        if self.inventory[itemname].amount == 0:
-            self.inventory.pop(itemname)
+class RiverDirection(Enum):
+    RIGHT = 0
+    DOWN_RIGHT = (1,)
+    DOWN = 2
+    DOWN_LEFT = 3
 
 
 def find_anilist_changes(
@@ -191,21 +77,37 @@ class GameStatsView(View):
         page (int): Which response page in server's response list to display
     """
 
-    def __init__(self, game):
+    def __init__(
+        self,
+        game_id: int,
+        game_done: bool,
+        session_generator: async_sessionmaker,
+        render_service,
+    ):
         super().__init__(timeout=60)
         self.add_item(PrevPgButton())
         self.add_item(NextPgButton())
         self.page = 1
-        self.game = game
+        self.game_id = game_id
+        self.render_service = render_service
+        self.session_generator = session_generator
+        self.game_done = game_done
 
-    async def interaction_check(self, interaction: Interaction) -> bool:
-        if interaction.data["custom_id"] == "prev_page":
-            self.page -= 1
+    async def render(self, interaction: Interaction):
+        async with self.session_generator() as session:
+            stmt = select(TrainGame).where(TrainGame.id == self.game_id)
+            stmt = stmt.options(
+                selectinload(TrainGame.players).selectinload(TrainPlayer.member),
+                selectinload(TrainGame.tiles).selectinload(TrainTile.player_tiles),
+                selectinload(TrainGame.players).selectinload(TrainPlayer.shots),
+                selectinload(TrainGame.players).selectinload(TrainPlayer.player_tiles),
+            )
+            result = await session.execute(stmt)
+            game = result.scalars().first()
 
-        elif interaction.data["custom_id"] == "next_page":
-            self.page += 1
-
-        embed, image = self.game.gen_stats_embed(interaction, self.page)
+        embed, image = await self.render_service.gen_stats_embed(
+            game, interaction, self.page, self.game_done
+        )
 
         if not image:
             await interaction.response.edit_message(
@@ -215,7 +117,6 @@ class GameStatsView(View):
             await interaction.response.edit_message(
                 embed=embed, view=self, attachments=[image]
             )
-        return False
 
 
 class GameRulesView(View):
@@ -232,13 +133,7 @@ class GameRulesView(View):
         self.add_item(NextPgButton())
         self.page = page
 
-    async def interaction_check(self, interaction: Interaction) -> bool:
-        if interaction.data["custom_id"] == "prev_page":
-            self.page -= 1
-
-        elif interaction.data["custom_id"] == "next_page":
-            self.page += 1
-
+    async def render(self, interaction: Interaction):
         embed = gen_rules_embed(page=self.page)
 
         await interaction.response.edit_message(embed=embed, view=self)
@@ -267,47 +162,47 @@ genre_colors: dict = {
     "Thriller": (161, 77, 202),
 }
 
-game_emoji: dict = {
-    "wheat": "🌾",
-    "wood": "🌳",
-    "gems": "💎",
-    "city": "🌃",
-    "prison": "🔒",
-    "house": "🏠",
-    "river": "🏞",
-    "telescope": "🔭",
-    "gun": "🔫",
-    "bucket": "🪣",
-    "bridge": "🌉",
-    "axe": "🪓",
-    "coin": "🪙",
-    "maglev": "🚄",
-    "shop": "🛒",
-    "first": "🥇",
-    "second": "🥈",
-    "third": "🥉",
-}
+
+class GameEmoji(Enum):
+    WHEAT = "🌾"
+    WOOD = "🌳"
+    GEMS = "💎"
+    CITY = "🌃"
+    PRISON = "🔒"
+    HOUSE = "🏠"
+    RIVER = "🏞"
+    TELESCOPE = "🔭"
+    GUN = "🔫"
+    BUCKET = "🪣"
+    BRIDGE = "🌉"
+    AXE = "🪓"
+    COIN = "🪙"
+    MAGLEV = "🚄"
+    SHOP = "🛒"
+    FIRST = "🥇"
+    SECOND = "🥈"
+    THIRD = "🥉"
 
 
-def train_game_embed(ctx: Interaction, game) -> Embed:
+def train_game_embed(
+    ctx: Interaction, name: str, width: int, height: int, members: list[Member]
+) -> Embed:
     embed = Embed()
     embed.set_author(name="Anime Trains", icon_url=bot_avatar_url)
     embed.colour = 0xFF9C2C
     embed.title = "It's Train Time"
-    embed.description = f'*{ctx.user.mention} has created "{game.name}"!*'
+    embed.description = f'*{ctx.user.mention} has created "{name}"!*'
     embed.set_thumbnail(url=ctx.user.avatar.url)
 
-    embed.add_field(
-        name="Board Size", value=f"{game.size[0]} by {game.size[1]}", inline=True
-    )
+    embed.add_field(name="Board Size", value=f"{width} by {height}", inline=True)
     player_mentions = []
-    for player in game.players:
-        player_mentions.append(f"<@{player.member.id}>")
+    for member in members:
+        player_mentions.append(member.mention)
     embed.add_field(name="Players", value=", ".join(player_mentions), inline=True)
     embed.add_field(
         name="\u200b", value="**Players, check your DMs to see your board!**"
     )
-    embed.set_footer(text=game.date)
+    embed.set_footer(text=datetime.now())
 
     return embed
 
@@ -337,44 +232,44 @@ def train_symbols_embed() -> Embed:
     embed.colour = 0xFF9C2C
     embed.title = "Symbol Reference"
     embed.add_field(
-        name=f"{game_emoji['wheat']}: Wheat",
+        name=f"{GameEmoji.WHEAT.value}: Wheat",
         value="Plus 1 point if connected to your network. Plus 3 more points if connected to a city. "
         "Each additional wheat is worth 1 point only.",
         inline=True,
     )
     embed.add_field(
-        name=f"{game_emoji['wood']}: Wood",
+        name=f"{GameEmoji.WOOD.value}: Wood",
         value="Provides 2 points for each wood connected to your network.",
         inline=True,
     )
     embed.add_field(
-        name=f"{game_emoji['gems']}: Gems",
+        name=f"{GameEmoji.GEMS.value}: Gems",
         value="Provides 2 points if connected to your network. "
         "The first player to connect gems to their network gets 3 bonus points.",
         inline=True,
     )
     embed.add_field(name="\u200b", value="\u200b", inline=False)
     embed.add_field(
-        name=f"{game_emoji['city']}: City",
+        name=f"{GameEmoji.CITY.value}: City",
         value="Provides stated bonuses. Each city has a favorite season (revealed at end). "
         "Any player who shoots a city with the correct season gets 3 bonus points.",
         inline=True,
     )
     embed.add_field(
-        name=f"{game_emoji['prison']}: Prison",
+        name=f"{GameEmoji.PRISON.value}: Prison",
         value="Reduces points that other players get for intersections with your rails by 1. "
         "Reduces points gained by your own houses by 1 for each house.",
         inline=True,
     )
     embed.add_field(
-        name=f"{game_emoji['house']}: House",
+        name=f"{GameEmoji.HOUSE.value}: House",
         value="Provides 1 points for each house connected to your network. "
         "If the house is connected to a city, then the player gains 1 bonus point per house. "
         "If the house is connected to a prison, the player loses 1 point per house.",
         inline=True,
     )
     embed.add_field(
-        name=f"{game_emoji['river']} Gray dotted tiles: River",
+        name=f"{GameEmoji.RIVER.value} Gray dotted tiles: River",
         value="Shots made on rivers use double the normal amount of rails.",
         inline=False,
     )
@@ -461,67 +356,93 @@ def train_items_embed() -> Embed:
     embed.set_author(name="Anime Trains", icon_url=bot_avatar_url)
     embed.colour = 0xFF9C2C
     embed.title = "Item Reference"
-    for item in default_shop().values():
+    for _, item in DEFAULT_SHOP_DEFINITION:
         embed.add_field(
-            name=f"{item.emoji} {item.name}",
+            name=f"{GameEmoji[item.emoji_name].value} {item.name}",
             value=f"*Cost: {item.cost}*\n{item.description}",
             inline=True,
         )
     return embed
 
 
-def default_shop() -> dict[str, TrainItem]:
-    return {
-        "Telescope": TrainItem(
+DEFAULT_SHOP_DEFINITION = [
+    (
+        3,
+        TrainItemInfo(
             name="Telescope",
-            emoji=game_emoji["telescope"],
+            emoji_name=GameEmoji.TELESCOPE.name,
             description="Permanently increases your vision by 1!",
+            uses=0,
             cost=3,
-            amount=2,
         ),
-        "Gun": TrainItem(
+    ),
+    (
+        1,
+        TrainItemInfo(
             name="Gun",
-            emoji=game_emoji["gun"],
+            emoji_name=GameEmoji.GUN.name,
             description="Increase the prison's intersection penalty for other players by 0.5!",
+            uses=0,
             cost=5,
-            amount=1,
         ),
-        "Bucket": TrainItem(
+    ),
+    (
+        4,
+        TrainItemInfo(
             name="Bucket",
-            emoji=game_emoji["bucket"],
+            emoji_name=GameEmoji.BUCKET.name,
             description="Allows you to create 3 river tiles at locations of your choice! (consumable)",
             cost=1,
-            amount=4,
             uses=3,
         ),
-        "Pontoon Bridge": TrainItem(
+    ),
+    (
+        4,
+        TrainItemInfo(
             name="Pontoon Bridge",
-            emoji=game_emoji["bridge"],
+            emoji_name=GameEmoji.BRIDGE.name,
             description="Allows you to use 0 rails when placing on a river tile! (consumed when entering a river)",
             cost=1,
-            amount=4,
             uses=3,
         ),
-        "Axe": TrainItem(
+    ),
+    (
+        2,
+        TrainItemInfo(
             name="Axe",
-            emoji=game_emoji["axe"],
-            description=f"Increase points gained from {game_emoji['wood']} tiles by 0.5!",
+            emoji_name=GameEmoji.AXE.name,
+            description=f"Increase points gained from {GameEmoji.WOOD.value} tiles by 0.5!",
             cost=3,
-            amount=2,
+            uses=0,
         ),
-        "Coin": TrainItem(
+    ),
+    (
+        4,
+        TrainItemInfo(
             name="Coin",
-            emoji=game_emoji["coin"],
+            emoji_name=GameEmoji.COIN.name,
             description="Increases your score by 2!",
             cost=3,
-            amount=4,
+            uses=0,
         ),
-        "MagLev": TrainItem(
+    ),
+    (
+        2,
+        TrainItemInfo(
             name="MagLev",
-            emoji=game_emoji["maglev"],
+            emoji_name=GameEmoji.MAGLEV.name,
             description="Faster trains! "
             "Permanently decreases the anime requirement for rails from 3 hours to 2 hours.",
             cost=3,
-            amount=2,
+            uses=0,
         ),
-    }
+    ),
+]
+
+
+def make_default_shop(game_id) -> list[TrainItem]:
+    return [
+        TrainItem(game_id=game_id, **vars(defn))
+        for count, defn in DEFAULT_SHOP_DEFINITION
+        for _ in range(count)
+    ]

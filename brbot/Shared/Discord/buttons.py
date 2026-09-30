@@ -1,4 +1,4 @@
-from discord import ButtonStyle
+from discord import ButtonStyle, Interaction
 from discord.ui import Button
 
 
@@ -10,6 +10,10 @@ class NextPgButton(Button):
             custom_id="next_page",
         )
 
+    async def callback(self, interaction: Interaction):
+        self.view.page += 1
+        await self.view.render(interaction)
+
 
 class PrevPgButton(Button):
     def __init__(self):
@@ -18,3 +22,7 @@ class PrevPgButton(Button):
             label="Prev",
             custom_id="prev_page",
         )
+
+    async def callback(self, interaction: Interaction):
+        self.view.page -= 1
+        await self.view.render(interaction)

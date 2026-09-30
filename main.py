@@ -1,12 +1,5 @@
-"""
-Ben Samans
-main.py
-"""
-
 from brbot.Core.bot import BrBot
-
 import logging
-
 from brbot.Core.botdata import token
 
 logger = logging.getLogger(__name__)

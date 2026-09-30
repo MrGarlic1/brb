@@ -1,56 +1,80 @@
 import brbot.Core.botdata as bd
 import brbot.Core.botutils as bu
-import brbot.Features.Responses.data as rsp
+from brbot.Core.bot import BrBot
+from brbot.Features.Responses.service import ResponseService
+from brbot.Features.Responses.data import RspView, ResponseType
+from brbot.Shared.Responses.models import CachedResponse
+from brbot.Shared.Members.repository import get_or_create_member
 from discord import app_commands, Interaction, Message
 from discord.ext import commands
 import logging
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 
 class ResponsesCog(commands.GroupCog, name="response"):
+    def __init__(self, bot: BrBot):
+        self.response_service = ResponseService(
+            exact_cache=bot.responses,
+            phrase_cache=bot.mentions,
+            correction_cache=bot.corrections,
+            guild_config_cache=bot.guild_configs,
+        )
+        self.bot = bot
+
     @app_commands.command(
         name="add",
         description="Add a response",
     )
     @app_commands.describe(
         trigger="Text to respond to",
-        response="What the bot should respond with",
-        exact="If the message should exactly match the trigger phrase to respond",
+        text="What the bot should respond with",
+        behavior="Exact match, phrase match, or correction (returns original message, trig replaced with text)",
     )
-    async def add(self, ctx: Interaction, trigger: str, response: str, exact: bool):
+    @app_commands.choices(
+        behavior=[
+            app_commands.Choice(
+                name=ResponseType.Exact.name, value=ResponseType.Exact.value
+            ),
+            app_commands.Choice(
+                name=ResponseType.Phrase.name, value=ResponseType.Phrase.value
+            ),
+            app_commands.Choice(
+                name=ResponseType.Correction.name, value=ResponseType.Correction.value
+            ),
+        ]
+    )
+    async def add(self, ctx: Interaction, trigger: str, text: str, behavior: int):
         # Config permission checks
-        if not bd.config[ctx.guild_id]["ALLOW_PHRASES"] and not exact:
+        async with self.bot.locks[ctx.guild_id]:
+            async with self.bot.session_generator() as session:
+                member = await get_or_create_member(ctx.user.id, ctx.guild_id, session)
+                error = await self.response_service.get_response_add_validation_error(
+                    ctx.guild_id, member, behavior, session
+                )
+
+        if error:
             await ctx.response.send_message(
-                content="The server does not allow for phrase-based responses.",
+                content=error,
                 ephemeral=True,
             )
-            return True
-        if bd.config[ctx.guild_id]["LIMIT_USER_RESPONSES"]:
-            user_rsps = 0
-            for existing_response in bd.responses[ctx.guild_id]:
-                if existing_response.user_id == int(ctx.user.id):
-                    user_rsps += 1
-            if user_rsps >= bd.config[ctx.guild_id]["MAX_USER_RESPONSES"]:
-                await ctx.response.send_message(
-                    content=f"You currently have the maximum of "
-                    f"{bd.config[ctx.guild_id]['MAX_USER_RESPONSES']} responses.",
-                    ephemeral=True,
+        async with self.bot.locks[ctx.guild_id]:
+            async with self.bot.session_generator() as session:
+                error = await self.response_service.add_response(
+                    ctx.guild_id,
+                    CachedResponse(
+                        trigger=trigger,
+                        text=text,
+                        behavior=behavior,
+                        member_id=member.id,
+                    ),
+                    session,
                 )
-                return True
-
-        error = rsp.add_response(
-            ctx.guild_id,
-            rsp.Response(exact, trigger.lower(), response, int(ctx.user.id)),
-        )
-
-        # Update responses
-        bd.responses[ctx.guild_id] = rsp.load_responses(
-            f"{bd.parent}/Guilds/{ctx.guild_id}/responses.json"
-        )
 
         if not error:
             await ctx.response.send_message(content=bd.pass_str)
+            return False
         else:
             await ctx.response.send_message(content=bd.fail_str)
             return True
@@ -61,64 +85,106 @@ class ResponsesCog(commands.GroupCog, name="response"):
     )
     @app_commands.describe(
         trigger="Text to respond to",
-        response="What the bot should respond with",
-        exact="If the message should exactly match the trigger phrase to respond",
+        text="What the bot should respond with",
+        behavior="Exact match, phrase match, or correction (returns original message, trig replaced with text)",
+    )
+    @app_commands.choices(
+        behavior=[
+            app_commands.Choice(
+                name=ResponseType.Exact.name, value=ResponseType.Exact.value
+            ),
+            app_commands.Choice(
+                name=ResponseType.Phrase.name, value=ResponseType.Phrase.value
+            ),
+            app_commands.Choice(
+                name=ResponseType.Correction.name, value=ResponseType.Correction.value
+            ),
+        ]
     )
     async def remove(
         self,
         ctx: Interaction,
         trigger: str = "",
-        response: str = "",
-        exact: bool = None,
-    ):
+        text: str = "",
+        behavior: Optional[int] = None,
+    ) -> None:
         # Config permission checks
-
-        if (
-            bd.config[ctx.guild_id]["USER_ONLY_DELETE"]
-            and rsp.get_resp(ctx.guild_id, trigger, response, exact).user_id
-            != ctx.user.id
-        ):
+        response_to_delete: Optional[CachedResponse] = self.response_service.get_resp(
+            ctx.guild_id, trigger, text, behavior
+        )
+        if response_to_delete is None:
             await ctx.response.send_message(
-                content="The server settings do not allow you to delete other people's responses.",
+                content="Couldn't find a specific response to delete! Try specifying response or exact arguments.",
                 ephemeral=True,
             )
-            return True
+            return
+        async with self.bot.locks[ctx.guild_id]:
+            async with self.bot.session_generator() as session:
+                member = await get_or_create_member(ctx.user.id, ctx.guild_id, session)
+                error = (
+                    await self.response_service.get_response_remove_validation_error(
+                        ctx.guild_id, member, response_to_delete
+                    )
+                )
 
-        error = rsp.rmv_response(
-            ctx.guild_id, rsp.Response(exact=exact, trig=trigger.lower(), text=response)
-        )
+        if error:
+            await ctx.response.send_message(
+                content=error,
+                ephemeral=True,
+            )
+            return
+
+        async with self.bot.locks[ctx.guild_id]:
+            async with self.bot.session_generator() as session:
+                error = await self.response_service.remove_response(
+                    ctx.guild_id, response_to_delete, session
+                )
+
         if not error:
             await ctx.response.send_message(content=bd.pass_str)
+            return
         else:
             await ctx.response.send_message(content=bd.fail_str)
-            return True
-
-        # Update responses
-        bd.responses[ctx.guild_id] = rsp.load_responses(
-            f"{bd.parent}/Guilds/{ctx.guild_id}/responses.json"
-        )
+            return
 
     @remove.autocomplete("trigger")
     async def trigger_autocomplete(
         self, ctx: Interaction, current: str
     ) -> list[app_commands.Choice[str]]:
-        trigs: list = []
+        trigs: set = set()
         # Add autocomplete options if they match input text, remove duplicates. 25 maximum values (discord limit)
-        for response in bd.responses[ctx.guild_id]:
-            if response.trig not in trigs and current in response.trig:
-                trigs.append(response.trig)
+        for trigger in self.bot.responses[ctx.guild_id]:
+            if trigger not in trigs and current in trigger:
+                trigs.add(trigger)
+        for response in self.bot.mentions[ctx.guild_id]:
+            if response.trigger not in trigs and current in response.trigger:
+                trigs.add(response.trigger)
+        for response in self.bot.corrections[ctx.guild_id]:
+            if response.trigger not in trigs and current in response.trigger:
+                trigs.add(response.trigger)
         choices = list(map(bu.autocomplete_filter, trigs))
         if len(choices) > 25:
             choices = choices[0:24]
         return choices
 
-    @remove.autocomplete("response")
-    async def response_autocomplete(self, ctx: Interaction, current: str):
+    @remove.autocomplete("text")
+    async def response_autocomplete(self, ctx: Interaction, _: str):
         # Add autocomplete response options for the specified trigger.
+        all_responses = (
+            [
+                rsp
+                for rsp_group in self.response_service.exact_responses[
+                    ctx.guild_id
+                ].values()
+                for rsp in rsp_group
+            ]
+            + self.response_service.correction_responses[ctx.guild_id]
+            + self.response_service.phrase_responses[ctx.guild_id]
+        )
         responses = [
             response.text
-            for response in bd.responses[ctx.guild_id]
-            if response.trig == ctx.namespace["trigger"]
+            for response in all_responses
+            if response.trigger == ctx.namespace["trigger"]
         ]
         choices = list(map(bu.autocomplete_filter, responses))
         if len(choices) > 25:
@@ -130,9 +196,9 @@ class ResponsesCog(commands.GroupCog, name="response"):
         description="Show list of all responses for the server",
     )
     async def list(self, ctx: Interaction, page: int = 1):
-        view = rsp.RspView(page=page)
+        view = RspView(response_service=self.response_service, page=page)
         await ctx.response.send_message(
-            embed=rsp.gen_resp_list(ctx.guild, page), view=view
+            embed=self.response_service.gen_resp_list(ctx.guild, page), view=view
         )
         return False
 
@@ -148,16 +214,25 @@ class ResponsesCog(commands.GroupCog, name="response"):
             )
             return True
 
-        f = open(f"{bd.parent}/Guilds/{ctx.guild_id}/responses.json", "w")
-        f.close()
-        bd.responses[ctx.guild_id] = []
-        logger.info(f"Cleared all responses from {ctx.guild_id}.")
+        try:
+            async with self.bot.locks[ctx.guild_id]:
+                async with self.bot.session_generator() as session:
+                    await self.response_service.remove_all_guild_responses(
+                        ctx.guild_id, session
+                    )
+        except Exception as e:
+            logger.warning(
+                f"Error deleting all responses for guild {ctx.guild_id}: {e}"
+            )
+            await ctx.response.send_message(content=bd.fail_str)
+            return True
+
         await ctx.response.send_message(content=bd.pass_str)
         return False
 
     @commands.Cog.listener()
     async def on_message(self, message: Message):
-        response = rsp.generate_response(message)
+        response = self.response_service.generate_response(message)
 
         if response is None:
             return False
@@ -166,5 +241,8 @@ class ResponsesCog(commands.GroupCog, name="response"):
         return False
 
 
-async def setup(bot: commands.Bot):
-    await bot.add_cog(ResponsesCog(bot))
+async def setup(bot: BrBot):
+    cog = ResponsesCog(bot)
+    await bot.add_cog(cog)
+    async with bot.session_generator() as session:
+        await cog.response_service.load_responses(session)

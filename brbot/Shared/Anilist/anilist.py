@@ -30,7 +30,7 @@ def anilist_id_from_url(url: str, is_character: bool = False) -> int | None:
     return None
 
 
-async def query_media(*, media_id: int):
+async def query_media(*, media_id: int) -> dict:
     """
     Retrieves anilist data used in anime games for a media
     Args:
@@ -43,6 +43,12 @@ async def query_media(*, media_id: int):
       Media(id: $mediaId) {
         episodes
         genres
+        status
+        airingSchedule {
+          nodes {
+            episode
+          }
+        }
         format
         meanScore
         popularity
@@ -137,7 +143,7 @@ async def query_user_id(username: str) -> int | None:
     return None
 
 
-async def query_user_animelist(anilist_user_id: int) -> list | None:
+async def query_user_animelist(anilist_user_id: int) -> list:
     """
     Retrieves user anime list data used in anime games
     Args:
@@ -194,7 +200,9 @@ async def query_user_animelist(anilist_user_id: int) -> list | None:
     logger.error(
         f"Failed to retrieve list data for anilist user {anilist_user_id} after {max_attempts} attempts"
     )
-    return None
+    raise httpx.RequestError(
+        f"Failed to retrieve list data for anilist user {anilist_user_id} after {max_attempts} attempts"
+    )
 
 
 async def query_user_genres(anilist_user_id: int) -> str | None:

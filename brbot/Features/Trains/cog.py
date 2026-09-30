@@ -1,22 +1,21 @@
-from brbot.Features.Trains.service import TrainGame, load_trains_game
+from brbot.Core.bot import BrBot
+from brbot.Features.Trains.gameservice import GameService
 from brbot.Features.Trains.data import (
-    TrainShot,
-    TrainPlayer,
-    default_shop,
+    DEFAULT_HEIGHT,
+    DEFAULT_WIDTH,
+    DEFAULT_SHOP_DEFINITION,
     train_game_embed,
     GameStatsView,
     GameRulesView,
     gen_rules_embed,
+    GameEmoji,
 )
-import brbot.Core.anilist as al
+from brbot.Features.Trains.renderservice import RenderService
+from brbot.db.models import TrainShot
 import brbot.Core.botdata as bd
-import asyncio
-from os import path, listdir, mkdir
 import brbot.Core.botutils as bu
-from shutil import copytree, ignore_patterns
-from datetime import datetime
-from io import BytesIO
-from discord import app_commands, Interaction, File, Member
+from datetime import datetime, timezone
+from discord import app_commands, Interaction, File
 from discord.ext import commands
 import logging
 
@@ -24,6 +23,11 @@ logger = logging.getLogger(__name__)
 
 
 class TrainsCog(commands.GroupCog, name="trains"):
+    def __init__(self, bot: BrBot):
+        self.bot = bot
+        self.game_service = GameService()
+        self.render_service = RenderService()
+
     @app_commands.command(name="newgame", description="Create a new trains game")
     @app_commands.describe(
         name="Trains game name",
@@ -36,121 +40,74 @@ class TrainsCog(commands.GroupCog, name="trains"):
         ctx: Interaction,
         name: str,
         players: str,
-        width: int = 16,
-        height: int = 16,
+        width: int = DEFAULT_WIDTH,
+        height: int = DEFAULT_HEIGHT,
     ):
         await ctx.response.defer()
-        river_ring: int = 1
 
         # Return errors if game is active or invalid name/width/height
-        if ctx.guild_id in bd.active_trains:
-            await ctx.followup.send(
-                content=f'The game "{bd.active_trains[ctx.guild_id].name}" is already active in this server.'
-            )
-            return True
-        if path.exists(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{name}"):
-            await ctx.followup.send(content="Name already exists!")
-            return True
-
-        logger.info(f"Creating new trains game {name} in {ctx.guild.name}")
-
-        async def add_trains_player(m: Member):
-            dm_channel = await m.create_dm() if m.dm_channel is None else m.dm_channel
-            players.append(
-                TrainPlayer(
-                    member=m,
-                    dmchannel=dm_channel,
-                    anilist_id=bd.linked_profiles[m.id],
-                )
+        async with self.bot.session_generator() as session:
+            existing_game = await self.game_service.get_guild_train_game(
+                ctx.guild.id, session, active=True
             )
 
-        # Create player list
-        members = await bu.get_members_from_str(ctx.guild, players)
-        players: list = []
-
-        tasks: list = []
-        for member in members:
-            if member.id not in bd.linked_profiles:
-                logger.error(
-                    f"User {member.name} not linked to any anilist profile, aborting game creation"
-                )
+            if existing_game is not None:
                 await ctx.followup.send(
-                    content=f"Could not create game, <@{member.id}> must link their anilist profile! (/animanga link)"
+                    content=f"The game {existing_game.name} is already active in this server."
                 )
-                return True
+                return
 
-            tasks.append(asyncio.create_task(add_trains_player(m=member)))
-        await asyncio.gather(*tasks)
-
-        # Return error if player list is empty
+        # Get valid game players
+        players = await bu.get_members_from_str(ctx.guild, players)
         if not players:
             await ctx.followup.send(content="No valid players specified.")
-            return True
+            return
 
-        # Create game object and set parameters
-        date = datetime.now().strftime(bd.date_format)
-        gameid = int(datetime.now().strftime("%Y%m%d%H%M%S"))
-
-        game = TrainGame(
-            name=name,
-            date=date,
-            players=players,
-            board=None,
-            gameid=gameid,
-            active=True,
-            size=(
-                width + 2 * river_ring,
-                height + 2 * river_ring,
-            ),  # Add space on board for river border
+        error = await self.game_service.create_train_game(
+            ctx.guild,
+            name,
+            players,
+            height=height,
+            width=width,
+            session_generator=self.bot.session_generator,
         )
-        try:
-            game.gen_trains_board(play_area_size=(width, height), river_ring=river_ring)
-            game.gen_player_locations(river_ring=river_ring)
-        except game.BoardGenError as e:
-            await ctx.followup.send(content=str(e))
-            return True
 
-        game.get_player_tags()
-
-        try:
-            await game.set_game_anilist_info()
-        except Exception as e:
-            await ctx.followup.send(
-                content="Error fetching player anilist information. Please try again in a few seconds."
-            )
-            logger.error(f"Could not create game {self.name}: {e}")
-            return True
-
-        try:
-            mkdir(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{name}")
-        except OSError as e:
-            logger.error(f"Could not create game folder for {ctx.guild.name}: {e}")
-            await ctx.followup.send(
-                content="Invalid name! Game must not contain the following characters: / \\ : * ? < > |"
-            )
-            return True
+        if error:
+            await ctx.followup.send(content=error)
+            return
 
         # Push updates to player boards
-        await ctx.followup.send(embed=train_game_embed(ctx=ctx, game=game))
-        await game.update_boards_after_create(ctx=ctx)
-        return False
+        await ctx.followup.send(
+            embed=train_game_embed(
+                ctx=ctx, name=name, width=width, height=height, members=players
+            )
+        )
+        async with self.bot.session_generator() as session:
+            game = await self.game_service.get_guild_train_game(
+                ctx.guild.id, session, load_players=True, active=True
+            )
+            await RenderService.send_updates_after_create(game=game, guild=ctx.guild)
+        return
 
     @app_commands.command(
         name="viewshop", description="View the shop for the active trains game."
     )
     async def viewshop(self, ctx: Interaction):
-        if ctx.guild_id not in bd.active_trains:
-            await ctx.response.send_message(
-                content="There is no active game! To make one, use /trains newgame",
-                ephemeral=True,
+        async with self.bot.session_generator() as session:
+            game = await self.game_service.get_guild_train_game(
+                ctx.guild.id, session, active=True, load_players=True
             )
-            return True
+            if game is None:
+                await ctx.response.send_message(
+                    content="There is no active game! To make one, use /trains newgame",
+                    ephemeral=True,
+                )
+                return
 
-        game = bd.active_trains[ctx.guild_id]
         await ctx.response.send_message(
-            content="\n".join([item.shop_entry() for item in game.shop.values()])
+            content=self.render_service.show_game_inventory(game)
         )
-        return False
+        return
 
     @app_commands.command(name="buy", description="Buy an item from a shop/city.")
     @app_commands.describe(
@@ -159,55 +116,59 @@ class TrainsCog(commands.GroupCog, name="trains"):
     )
     @app_commands.choices(
         name=[
-            app_commands.Choice(name=itemname, value=itemname)
-            for itemname in default_shop()
+            app_commands.Choice(name=item.name, value=item.name)
+            for _, item in DEFAULT_SHOP_DEFINITION
         ]
     )
     async def buy(self, ctx: Interaction, name: str, showinfo: str):
-        if ctx.guild_id not in bd.active_trains:
-            await ctx.response.send_message(
-                content="There is no active game! To make one, use /trains newgame",
-                ephemeral=True,
+        await ctx.response.defer()
+        async with self.bot.session_generator() as session:
+            game = await self.game_service.get_guild_train_game(
+                ctx.guild.id, session, active=True, load_players=True
             )
-            return True
+            if game is None:
+                await ctx.followup.send(
+                    content="There is no active game! To make one, use /trains newgame",
+                    ephemeral=True,
+                )
+                return
 
-        game = bd.active_trains[ctx.guild_id]
+            err = self.game_service.buy_item(
+                game=game, itemname=name, showinfo=showinfo, user_id=ctx.user.id
+            )
+            await session.commit()
 
-        err = game.buy_item(itemname=name, showinfo=showinfo, ctx=ctx)
-        if err:
-            await ctx.response.send_message(content=bd.fail_str)
-            return True
-
-        await ctx.response.send_message(content=bd.pass_str)
-        return False
+        message = bd.fail_str if err else bd.pass_str
+        await ctx.followup.send(content=message)
+        return
 
     @app_commands.command(
         name="inventory", description="View your inventory for the active trains game."
     )
     async def inventory(self, ctx: Interaction):
-        if ctx.guild_id not in bd.active_trains:
-            await ctx.response.send_message(
-                content="There is no active game! To make one, use /trains newgame",
-                ephemeral=True,
+        await ctx.response.defer()
+
+        async with self.bot.session_generator() as session:
+            game = await self.game_service.get_guild_train_game(
+                ctx.guild.id, session, active=True, load_players=True
             )
-            return True
-
-        game = bd.active_trains[ctx.guild_id]
-
-        player_idx, player = game.get_player(ctx.user.id)
-        if player is None:
-            await ctx.response.send_message(
-                content="You are not a player in this game.", ephemeral=True
+            if game is None:
+                await ctx.response.send_message(
+                    content="You are not currently involved in a train game in this server!",
+                    ephemeral=True,
+                )
+                return
+            item_counts = self.game_service.get_player_item_counts(
+                game, discord_id=ctx.user.id
             )
 
-        inv_str = "\n".join([item.inv_entry() for item in player.inventory.values()])
-        if inv_str:
-            await ctx.response.send_message(content=inv_str, ephemeral=True)
+        if item_counts:
+            await ctx.followup.send(
+                content=self.render_service.inventory_string(item_counts)
+            )
         else:
-            await ctx.response.send_message(
-                content="Your inventory is empty!", ephemeral=True
-            )
-        return False
+            await ctx.followup.send(content="Your inventory is empty!", ephemeral=True)
+        return
 
     @app_commands.command(name="use", description="Use an item in your inventory.")
     @app_commands.describe(
@@ -215,25 +176,40 @@ class TrainsCog(commands.GroupCog, name="trains"):
         row="Row to use item on",
         column="Column to use item on",
     )
-    @app_commands.choices(item=[app_commands.Choice(name="Bucket", value="Bucket")])
-    async def use(self, ctx: Interaction, item: str, row: int, column: int):
-        if ctx.guild_id not in bd.active_trains:
-            await ctx.response.send_message(
-                content="There is no active game! To make one, use /trains newgame",
-                ephemeral=True,
+    @app_commands.choices(
+        item=[
+            app_commands.Choice(
+                name=GameEmoji.BUCKET.name.title(), value=GameEmoji.BUCKET.name
             )
-            return True
+        ]
+    )
+    async def use(self, ctx: Interaction, item: str, row: int, column: int):
+        async with self.bot.session_generator() as session:
+            game = await self.game_service.get_guild_train_game(
+                ctx.guild.id, session, active=True, load_players=True
+            )
+            if game is None:
+                await ctx.response.send_message(
+                    content="There is no active game! To make one, use /trains newgame",
+                    ephemeral=True,
+                )
+                return
 
-        game = bd.active_trains[ctx.guild_id]
+            if item == GameEmoji.BUCKET.name:
+                err = self.game_service.use_bucket(
+                    game=game, row=row, col=column, user_id=ctx.user.id
+                )
+                if err:
+                    await ctx.response.send_message(content=bd.fail_str)
+                    return
+                await session.commit()
 
-        if item == "Bucket":
-            err = game.use_bucket(ctx=ctx, row=row, col=column)
-            if err:
-                await ctx.response.send_message(content=bd.fail_str)
-                return True
-            await ctx.response.send_message(content=bd.pass_str)
-            await game.update_boards_after_shot(ctx=ctx, row=row, column=column)
-        return False
+                await self.render_service.send_updates_after_shot(
+                    game=game, guild=ctx.guild, row=row, column=column
+                )
+
+        await ctx.response.send_message(content=bd.pass_str)
+        return
 
     @app_commands.command(name="shot", description="Make a trains shot")
     @app_commands.describe(
@@ -244,114 +220,78 @@ class TrainsCog(commands.GroupCog, name="trains"):
     )
     async def shot(self, ctx: Interaction, row: int, column: int, link: str, info: str):
         await ctx.response.defer(ephemeral=False)
-        if ctx.guild_id not in bd.active_trains:
-            await ctx.followup.send(
-                content="There is no active game! To make one, use /trains newgame",
-                ephemeral=True,
+        async with self.bot.session_generator() as session:
+            game = await self.game_service.get_guild_train_game(
+                ctx.guild_id, session, load_players=True, active=True
             )
-            return True
 
-        game = bd.active_trains[ctx.guild_id]
+            if game is None:
+                await ctx.followup.send(
+                    content="There is no active game! To make one, use /trains newgame",
+                    ephemeral=True,
+                )
+                return
+            if not any(p.member.user_id == ctx.user.id for p in game.players):
+                await ctx.followup.send(
+                    content="You are not a player in this game!", ephemeral=True
+                )
+                return
 
-        # This is bad and needs to be reworked
-        copytree(
-            f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{game.name}",
-            f"{bd.parent}/Guilds/{ctx.guild_id}/TrainBackups/[BACKUP] {game.name}",
-            dirs_exist_ok=True,
-            ignore=ignore_patterns("*.png"),
-        )
         # Get player, validate shot
-        show_id = al.anilist_id_from_url(url=link)
+        show_id = await self.game_service.validate_and_cache_anilist_info(
+            link=link, cache=self.bot.cached_al_media
+        )
         if show_id is None:
             await ctx.followup.send(
-                content="Could not find show, please check anilist URL!"
+                content="Could not find show, please check Anilist URL!"
             )
-            return True
+            return
+        anilist_info = self.bot.cached_al_media.get(show_id)
 
-        sender_idx, player = game.get_player(int(ctx.user.id))
-        if not game.is_valid_shot(player, row, column):
-            await ctx.followup.send(content=bd.fail_str)
-            return True
+        if anilist_info is None:
+            await ctx.followup.send(
+                content="Error connecting to Anilist, please try again."
+            )
+            return
 
-        # Fetch anilist show information if it isn't already cached
-        if show_id not in game.known_shows:
-            logger.info(f"{show_id} not in {game.known_shows}, fetching anilist info")
-            show_info = await al.query_media(media_id=show_id)
-            if show_info is None:
-                await ctx.followup.send(
-                    content="Error connecting to anilist, please check URL and try again."
+        async with self.bot.session_generator() as session:
+            # Update board, player rails
+
+            game = await self.game_service.get_guild_train_game(
+                ctx.guild_id, session, load_players=True, active=True
+            )
+            player = next(p for p in game.players if p.member.user_id == ctx.user.id)
+            if not self.game_service.is_valid_shot(game, player, column, row):
+                await ctx.followup.send(content=bd.fail_str)
+                return
+
+            shot = TrainShot(
+                player_id=player.id,
+                anilist_media_id=show_id,
+                column=column,
+                row=row,
+                anilist_info=anilist_info,
+                info=info,
+                time=datetime.now(timezone.utc),
+            )
+            await self.game_service.save_shot(game, player, shot, session)
+
+            # Send out board updates to relevant players
+
+            if not game.active:
+                await self.game_service.calculate_player_scores(game)
+                embed, image = self.render_service.gen_score_embed(game=game, page=0)
+                view = GameStatsView(
+                    game.id, True, self.bot.session_generator, self.render_service
                 )
-                return True
-            game.known_shows[show_id] = show_info
-
-        # Update board, player rails
-        shot = TrainShot(
-            row=row,
-            col=column,
-            show_id=show_id,
-            info=info,
-            time=datetime.now().strftime(bd.date_format),
-        )
-        game.update_player_stats_after_shot(
-            sender_idx=sender_idx, player=player, shot=shot
-        )
-
-        # Save/update games
-        await ctx.followup.send(content=bd.pass_str)
-        await game.update_boards_after_shot(ctx=ctx, row=row, column=column)
-        if not game.active:
-            await game.calculate_player_scores(ctx=ctx)
-            embed, image = game.gen_score_embed(ctx=ctx, page=0)
-            view = GameStatsView(game=game)
-            await ctx.followup.send(embed=embed, file=image, view=view)
-        return False
-
-    @app_commands.command(name="undo", description="Undo your last shot.")
-    async def undo(self, ctx: Interaction):
-        await ctx.response.defer(ephemeral=True)
-
-        # Determine if undo is valid
-        if ctx.guild_id not in bd.active_trains:
-            await ctx.followup.send(
-                content="There is no active game! To make one, use /trains newgame",
-                ephemeral=True,
-            )
-            return True
-
-        game = bd.active_trains[ctx.guild_id]
-
-        # This is bad and needs to be reworked
-        copytree(
-            f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{game.name}",
-            f"{bd.parent}/Guilds/{ctx.guild_id}/TrainBackups/[BACKUP] {game.name}",
-            dirs_exist_ok=True,
-            ignore=ignore_patterns("*.png"),
-        )
-
-        sender_idx, player = game.get_player(ctx.user.id)
-        if not player.shots:
-            await ctx.followup.send(
-                content="You have not taken any shots yet!", ephemeral=True
-            )
-            return True
-
-        # Delete last shot from record, update active player status
-        shot = game.players[sender_idx].shots[-1]
-
-        if (shot.row, shot.col) in player.shops_used:
-            await ctx.followup.send(
-                content="You have bought an item at this shop, can not undo shot."
-            )
-            return True
-
-        game.update_player_stats_after_shot(
-            sender_idx=sender_idx, player=player, undo=True, shot=shot
-        )
+                await ctx.followup.send(embed=embed, file=image, view=view)
+            await session.commit()
 
         await ctx.followup.send(content=bd.pass_str)
-        # Save/update games
-        await game.update_boards_after_shot(ctx=ctx, row=shot.row, column=shot.col)
-        return False
+        await self.render_service.send_updates_after_shot(
+            game=game, guild=ctx.guild, column=column, row=row
+        )
+        return
 
     @app_commands.command(
         name="stats",
@@ -360,78 +300,78 @@ class TrainsCog(commands.GroupCog, name="trains"):
     @app_commands.describe(
         name="Game name to view stats of (defaults to active)",
     )
-    async def stats(self, ctx: Interaction, name: str = None) -> bool:
+    async def stats(self, ctx: Interaction, name: str = None):
         # Logic to get game or return error if no game found
-        if name is None:
-            if ctx.guild_id not in bd.active_trains:
-                await ctx.response.send_message(
-                    content="No active game found, please specify a game name."
-                )
-                return True
-            game = bd.active_trains[ctx.guild_id]
-
-        else:
-            try:
-                game = await load_trains_game(
-                    filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{name}",
-                    guild=ctx.guild,
-                )
-            except FileNotFoundError:
-                await ctx.response.send_message(content="Game name does not exist.")
-                return True
-            except TypeError or ValueError:
-                return True
         await ctx.response.defer()
+        async with self.bot.session_generator() as session:
+            if name is None:
+                game = await self.game_service.get_guild_train_game(
+                    ctx.guild_id, session, load_players=True, active=True
+                )
+                if game is None:
+                    await ctx.response.send_message(
+                        content="No active game found, please specify a game name."
+                    )
+                    return
+            else:
+                game = await self.game_service.get_guild_train_game(
+                    ctx.guild_id, session, load_players=True, active=False, name=name
+                )
+                if game is None:
+                    names = await self.game_service.get_guild_game_names(
+                        ctx.guild_id, session
+                    )
+                    await ctx.response.send_message(
+                        content=f"No game found! Possible options: {', '.join(names)}"
+                    )
+                    return
 
-        # Send stats
-        embed, image = game.gen_stats_embed(ctx=ctx)
-        view = GameStatsView(game=game)
-        if image:
-            await ctx.followup.send(embed=embed, file=image, view=view)
-        else:
-            await ctx.followup.send(embed=embed, view=view)
-        return False
-
-    @stats.autocomplete("name")
-    async def stats_autocomplete(self, ctx: Interaction, current: str):
-        games: list = listdir(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains")
-        games = [gamename for gamename in games if current in gamename]
-        choices = list(map(bu.autocomplete_filter, games))
-        if len(choices) > 25:
-            choices = choices[:24]
-        return choices
+            # Send stats
+            is_done = self.game_service.is_done(game)
+            embed, image = await self.render_service.gen_stats_embed(
+                game, ctx, game_done=is_done
+            )
+            view = GameStatsView(
+                game.id, is_done, self.bot.session_generator, self.render_service
+            )
+            if image:
+                await ctx.followup.send(embed=embed, file=image, view=view)
+            else:
+                await ctx.followup.send(embed=embed, view=view)
+            return
 
     @app_commands.command(
         name="board", description="View your train board for the active game."
     )
     async def board(self, ctx: Interaction):
-        if ctx.guild_id not in bd.active_trains:
-            await ctx.response.send_message(
-                content="No active game found.", ephemeral=True
+        await ctx.response.defer(ephemeral=True)
+        async with self.bot.session_generator() as session:
+            game = await self.game_service.get_guild_train_game(
+                ctx.guild_id, session, load_players=True
             )
-            return True
+            if game:
+                player = next(
+                    player
+                    for player in game.players
+                    if player.member.user_id == ctx.user.id
+                )
 
-        game = bd.active_trains[ctx.guild_id]
-        player_idx, player = game.get_player(ctx.user.id)
-
-        if not player:
-            await ctx.response.send_message(
-                content="You are not a player in this game.", ephemeral=True
+            if not game or not player:
+                await ctx.followup.send(
+                    content="You are not currently in a train game in this server!",
+                    ephemeral=True,
+                )
+                return True
+            img_bytes = self.render_service.draw_board_img(
+                game_width=game.board_width,
+                game_height=game.board_height,
+                board={tile.position: tile for tile in game.tiles},
+                player=player,
             )
-            return True
 
-        try:
-            with open(
-                f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{game.name}/{ctx.user.id}.png",
-                "rb",
-            ) as f:
-                file = BytesIO(f.read())
-        except FileNotFoundError:
-            await ctx.response.send_message(bd.fail_str, ephemeral=True)
-            return True
-
-        await ctx.response.send_message(
-            file=File(file, filename="board_img.png"), ephemeral=True
+        await ctx.followup.send(
+            file=File(img_bytes, filename="attachment://train_board.png"),
+            ephemeral=True,
         )
         return False
 
@@ -443,32 +383,40 @@ class TrainsCog(commands.GroupCog, name="trains"):
     )
     async def delete(self, ctx: Interaction, keep_files: bool):
         if not ctx.user.guild_permissions.administrator:
-            await ctx.response.send_message(
+            await ctx.followup.send(
                 content="You must be an administrator to use this command!",
                 ephemeral=True,
             )
-            return True
+            return
 
         await ctx.response.defer()
-        if ctx.guild_id not in bd.active_trains:
-            await ctx.followup.send(
-                content="There is no active game! To make one, use /trains newgame",
-                ephemeral=True,
+        async with self.bot.session_generator() as session:
+            game = await self.game_service.get_guild_train_game(
+                ctx.guild_id, session=session
             )
-            return True
+            if game is None:
+                await ctx.followup.send(
+                    content="There is no active game! To make one, use /trains newgame",
+                    ephemeral=True,
+                )
+                return
 
-        game = bd.active_trains[ctx.guild_id]
+            try:
+                await self.game_service.delete_train_game(
+                    game, keep_files=keep_files, session=session
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Error when deleting train game in guild {ctx.guild.id}: {e}"
+                )
+                await ctx.followup.send(
+                    content="A transient error occurred while deleting. Please try again!"
+                )
+                return
+            await session.commit()
 
-        if keep_files:
-            game.active = False
-            game.save_game(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{game.name}")
-        else:
-            bu.del_game_files(
-                guild_id=ctx.guild_id, game_name=game.name, game_type="Trains"
-            )
-        del bd.active_trains[ctx.guild_id]
         await ctx.followup.send(content=bd.pass_str)
-        return False
+        return
 
     @app_commands.command(
         name="restore",
@@ -476,48 +424,36 @@ class TrainsCog(commands.GroupCog, name="trains"):
     )
     @app_commands.describe(name="Name of game to be restored")
     async def restore(self, ctx: Interaction, name: str):
-        if not ctx.user.guild_permissions.administrator:
-            await ctx.response.send_message(
-                content="You must be an administrator to use this command!",
-                ephemeral=True,
+        # Logic to get game or return error if no game found
+        await ctx.response.defer()
+        async with self.bot.session_generator() as session:
+            game = await self.game_service.get_guild_train_game(
+                ctx.guild.id, session=session, active=True
             )
-            return True
-        if ctx.guild_id in bd.active_trains:
-            await ctx.response.send_message(
-                "There is already an active game in this server!"
+            if game:
+                await ctx.followup.send(
+                    content="An active game already exists!", ephemeral=True
+                )
+                return
+            game = await self.game_service.find_archived_game(
+                ctx.guild_id,
+                session,
+                name=name,
             )
-            return True
-        try:
-            test_game = await load_trains_game(
-                filepath=f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{name}",
-                guild=ctx.guild,
-            )
-        except FileNotFoundError:
-            await ctx.response.send_message(content="Game name does not exist.")
-            return True
-        if not any(player.done is False for player in test_game.players):
-            await ctx.response.send_message(
-                "You can not restore a completed game to active status."
-            )
-            return True
+            if game is None:
+                names = await GameService.get_guild_game_names(ctx.guild_id, session)
+                await ctx.followup.send(
+                    content=f"No game found! Possible options: {', '.join(names)}"
+                )
+                return
+            if self.game_service.is_done(game):
+                await ctx.followup.send(content="This game is already complete!")
+                return
 
-        test_game.active = True
-        logger.info(f"Restored game {name} to active status in {ctx.guild.name}")
-        test_game.save_game(
-            f"{bd.parent}/Guilds/{ctx.guild_id}/Trains/{test_game.name}"
-        )
-        bd.active_trains[ctx.guild_id] = test_game
-        await ctx.response.send_message(content=bd.pass_str)
-        return False
-
-    @restore.autocomplete("name")
-    async def restore_autocomplete(self, ctx: Interaction, current: str):
-        games = listdir(f"{bd.parent}/Guilds/{ctx.guild_id}/Trains")
-        games = [gamename for gamename in games if current in gamename]
-        choices = list(map(bu.autocomplete_filter, games))
-        if len(choices) > 25:
-            choices = choices[:24]
-        return choices
+            game.active = True
+            await session.commit()
+            await ctx.followup.send(content=bd.pass_str)
+            return
 
     @app_commands.command(
         name="rules", description="Display the rules for playing trains"
@@ -528,5 +464,5 @@ class TrainsCog(commands.GroupCog, name="trains"):
         await ctx.response.send_message(embed=gen_rules_embed(page=page - 1), view=view)
 
 
-async def setup(bot: commands.Bot):
+async def setup(bot: BrBot):
     await bot.add_cog(TrainsCog(bot))
