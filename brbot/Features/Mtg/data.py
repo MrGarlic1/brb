@@ -6,6 +6,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+class InvalidKeyError(Exception):
+    pass
+
+
 class PlaygroupKeyModal(Modal, title="Playgroup API Key Input"):
     def __init__(self, playgroup_service):
         super().__init__()
@@ -26,17 +30,14 @@ class PlaygroupKeyModal(Modal, title="Playgroup API Key Input"):
 
     async def on_submit(self, interaction: Interaction):
         try:
-            if await self.playgroup_service.api_key_is_valid(self.key.component.value):
-                await self.playgroup_service.encrypt_and_store_api_key(
-                    self.key.component.value, interaction.user
-                )
-                await interaction.response.send_message(
-                    content=pass_str, ephemeral=True
-                )
-            else:
-                await interaction.response.send_message(
-                    content="Invalid API key!", ephemeral=True
-                )
+            await self.playgroup_service.register_api_key(
+                discord_user=interaction.user, key=self.key.component.value
+            )
+            await interaction.response.send_message(content=pass_str, ephemeral=True)
+        except InvalidKeyError:
+            await interaction.response.send_message(
+                content="Invalid API key!", ephemeral=True
+            )
 
         except Exception as e:
             logger.warning(f"Error validating playgroup API key: {e}")
