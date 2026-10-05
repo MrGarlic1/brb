@@ -67,7 +67,18 @@ class ConfigCog(commands.GroupCog, name="config"):
                     name="Please enter a positive integer", value="false"
                 )
             ]
-        elif setting == ConfigKeys.UPDATE_CHANNEL.value:
+
+        elif setting == ConfigKeys.TRACKED_PLAYGROUP_ID.value:
+            choices = [
+                app_commands.Choice(
+                    name="Playgroup ID (shown in playgroup URL)", value="false"
+                )
+            ]
+
+        elif setting in (
+            ConfigKeys.ANIMANGA_CHANNEL.value,
+            ConfigKeys.MTG_CHANNEL.value,
+        ):
             choices = [
                 app_commands.Choice(name=ctx.channel.name, value=str(ctx.channel.id))
             ]

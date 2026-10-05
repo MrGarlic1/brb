@@ -7,4 +7,8 @@ class ConfigKeys(Enum):
     MAX_USER_RESPONSES = "Maximum # of User Responses"
     RESTRICT_RESPONSE_DELETION = "Responses Editable only by Author"
     ENABLE_NSFW = "Enable NSFW Content (limits some commands to NSFW channels)"
-    UPDATE_CHANNEL = "Set the current channel as the daily update channel."
+    ANIMANGA_CHANNEL = "Set the current channel as the animanga leaderboard channel."
+    MTG_CHANNEL = "Set the current channel as the MTG leaderboard channel."
+    TRACKED_PLAYGROUP_ID = (
+        "Set a playgroup ID for the server to send daily updates about."
+    )

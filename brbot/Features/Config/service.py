@@ -42,8 +42,12 @@ class ConfigService:
                 db_guild_config.allow_phrases = bool(value)
             case ConfigKeys.ENABLE_NSFW:
                 db_guild_config.enable_nsfw = bool(value)
-            case ConfigKeys.UPDATE_CHANNEL:
-                db_guild_config.update_channel = value
+            case ConfigKeys.ANIMANGA_CHANNEL:
+                db_guild_config.animanga_channel = value
+            case ConfigKeys.MTG_CHANNEL:
+                db_guild_config.mtg_channel = value
+            case ConfigKeys.TRACKED_PLAYGROUP_ID:
+                db_guild_config.tracked_playgroup_id = int(value)
 
         try:
             await session.commit()

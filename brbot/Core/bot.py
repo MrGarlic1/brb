@@ -135,7 +135,9 @@ class BrBot(commands.AutoShardedBot):
                         restrict_response_deletion=new_config.restrict_response_deletion,
                         max_user_responses=new_config.max_user_responses,
                         enable_nsfw=new_config.enable_nsfw,
-                        update_channel=new_config.update_channel,
+                        animanga_channel=new_config.animanga_channel,
+                        mtg_channel=new_config.mtg_channel,
+                        tracked_playgroup_id=new_config.tracked_playgroup_id,
                     )
                 else:
                     self.guild_configs[guild.id] = CachedGuildConfig(
@@ -144,7 +146,9 @@ class BrBot(commands.AutoShardedBot):
                         restrict_response_deletion=guild.config.restrict_response_deletion,
                         max_user_responses=guild.config.max_user_responses,
                         enable_nsfw=guild.config.enable_nsfw,
-                        update_channel=guild.config.update_channel,
+                        animanga_channel=guild.config.animanga_channel,
+                        mtg_channel=guild.config.mtg_channel,
+                        tracked_playgroup_id=guild.config.tracked_playgroup_id,
                     )
 
             if new_guilds or new_configs:

@@ -23,7 +23,9 @@ def default_config(guild_id: int) -> GuildConfig:
         max_user_responses=10,
         restrict_response_deletion=False,
         enable_nsfw=False,
-        update_channel=None,
+        animanga_channel=None,
+        mtg_channel=None,
+        tracked_playgroup_id=None,
     )
 
 
@@ -42,6 +44,8 @@ except (KeyError, ValueError, TypeError):
 FEATURES_DIRECTORY = Path("brbot/Features")
 DATA_DIRECTORY = Path("brbot/db")
 STATIC_DIRECTORY = Path("brbot/Static")
+
+DAILY_UPDATE_HOUR_UTC = 4
 
 bot_id: int = 0
 bot_avatar_url: str = ""

@@ -11,14 +11,18 @@ class CachedGuildConfig:
         restrict_response_deletion: bool,
         max_user_responses: int,
         enable_nsfw: bool,
-        update_channel: int,
+        animanga_channel: int,
+        mtg_channel: int,
+        tracked_playgroup_id: int,
     ):
         self.allow_phrases = allow_phrases
         self.limit_user_responses = limit_user_responses
         self.restrict_response_deletion = restrict_response_deletion
         self.max_user_responses = max_user_responses
         self.enable_nsfw = enable_nsfw
-        self.update_channel = update_channel
+        self.animanga_channel = animanga_channel
+        self.mtg_channel = mtg_channel
+        self.tracked_playgroup_id = tracked_playgroup_id
 
     @classmethod
     def from_guild_config(cls, guild_config: GuildConfig):
@@ -32,5 +36,7 @@ class CachedGuildConfig:
             restrict_response_deletion=restrict_response_deletion,
             max_user_responses=max_user_responses,
             enable_nsfw=guild_config.enable_nsfw,
-            update_channel=guild_config.update_channel,
+            animanga_channel=guild_config.animanga_channel,
+            mtg_channel=guild_config.mtg_channel,
+            tracked_playgroup_id=guild_config.tracked_playgroup_id,
         )

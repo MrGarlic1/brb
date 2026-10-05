@@ -44,6 +44,8 @@ class User(Base):
     encoded_playgroup_key: Mapped[Optional[str]] = mapped_column(
         String(240), nullable=True
     )
+    playgroup_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    playgroup_name: Mapped[str] = mapped_column(String(240), nullable=True)
 
     memberships = relationship("Member", back_populates="user")
     ignored_recommendations = relationship("IgnoredRecommendation")
@@ -78,7 +80,7 @@ class GuildConfig(Base):
     max_user_responses: Mapped[int] = mapped_column(Integer)
     restrict_response_deletion: Mapped[bool] = mapped_column(Boolean)
     enable_nsfw: Mapped[bool] = mapped_column(Boolean, server_default=false())
-    update_channel: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    animanga_channel: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     mtg_channel: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     tracked_playgroup_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
