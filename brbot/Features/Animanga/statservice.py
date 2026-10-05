@@ -255,6 +255,9 @@ class AnimangaStatService:
             members = result.scalars().all()
             anilist_ids = [m.user.anilist_id for m in members]
 
+        if not anilist_ids:
+            return None
+
         async with session_generator() as session:
             recent_leaderboard_datetime = await session.scalar(
                 select(func.max(AnimangaDailyStats.date)).where(

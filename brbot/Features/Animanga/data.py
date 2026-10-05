@@ -11,9 +11,6 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-
-DAILY_UPDATE_HOUR_UTC = 4
-
 placement_emojis = {
     1: "🥇",
     2: "🥈",

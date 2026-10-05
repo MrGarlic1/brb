@@ -5,7 +5,6 @@ from brbot.Features.Animanga.data import (
     RecView,
     IgnoredRecView,
     MediaType,
-    DAILY_UPDATE_HOUR_UTC,
 )
 from brbot.Shared.Anilist.anilist import query_user_id
 from brbot.Core.bot import BrBot
@@ -258,7 +257,7 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
             )
 
         await ctx.followup.send(content=bd.pass_str)
-        if self.bot.guild_configs[ctx.guild.id].update_channel is None:
+        if self.bot.guild_configs[ctx.guild.id].animanga_channel is None:
             await ctx.channel.send(
                 content="An update channel currently isn't set! Leaderboards won't be sent. "
                 "To set a server update channel, an admin must run /config set update_channel."
@@ -328,14 +327,14 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
         )
         await ctx.followup.send(embed=embed)
 
-    @tasks.loop(time=time(hour=DAILY_UPDATE_HOUR_UTC, tzinfo=timezone.utc))
+    @tasks.loop(time=time(hour=bd.DAILY_UPDATE_HOUR_UTC, tzinfo=timezone.utc))
     async def send_daily_stat_update(self):
         logger.info(f"Sending daily stat updates to {len(self.bot.guilds)} guilds.")
         for guild in self.bot.guilds:
-            if self.bot.guild_configs[guild.id].update_channel is None:
+            if self.bot.guild_configs[guild.id].animanga_channel is None:
                 continue
             channel = self.bot.get_channel(
-                self.bot.guild_configs[guild.id].update_channel
+                self.bot.guild_configs[guild.id].animanga_channel
             )
             if channel is None:
                 logger.warning(f"Update channel not found for guild {guild.id}")
@@ -344,6 +343,11 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
                 daily_stats = await self.stat_service.process_daily_activities(
                     guild_id=guild.id, session_generator=self.bot.session_generator
                 )
+                if daily_stats is None:
+                    logger.info(
+                        f"No registered animanga stat tracking users for guild {guild.id}, skipping."
+                    )
+                    continue
 
                 leaderboard_embed = await self.stat_service.create_leaderboard_embed(
                     guild, datetime.now(timezone.utc), daily_stats
