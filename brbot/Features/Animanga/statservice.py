@@ -270,7 +270,10 @@ class AnimangaStatService:
             stmt = (
                 select(User)
                 .join(Member)
-                .where(Member.stat_tracking_enabled.is_(True))
+                .where(
+                    Member.stat_tracking_enabled.is_(True),
+                    User.anilist_id.is_not(None),
+                )
                 .options(selectinload(User.animanga_entries))
                 .options(selectinload(User.memberships))
                 .distinct()
@@ -281,7 +284,7 @@ class AnimangaStatService:
             daily_stats_guild_map = await self.calculate_global_daily_activity_stats(
                 users, daily_activities, datetime.now(timezone.utc), session
             )
-            await self.calculate_daily_activity_guild_placements(
+            self.calculate_daily_activity_guild_placements(
                 daily_stats_guild_map, session
             )
 
@@ -439,7 +442,7 @@ class AnimangaStatService:
         return daily_stats_guild_map
 
     @staticmethod
-    async def calculate_daily_activity_guild_placements(
+    def calculate_daily_activity_guild_placements(
         daily_stats_guild_map: dict[int, list[AnimangaDailyStats]],
         session: AsyncSession,
     ):
@@ -448,8 +451,7 @@ class AnimangaStatService:
         for guild_id in daily_stats_guild_map:
             guild_daily_stat_entries = daily_stats_guild_map[guild_id]
             if any(d.minutes_watched for d in guild_daily_stat_entries):
-                daily_stats_guild_map[guild_id] = sorted(
-                    guild_daily_stat_entries,
+                daily_stats_guild_map[guild_id].sort(
                     key=lambda d: d.minutes_watched,
                     reverse=True,
                 )
@@ -619,7 +621,7 @@ class AnimangaStatService:
             pos = daily_stats[i]
             if i == 0:
                 member = await guild.fetch_member(pos.user_discord_id)
-                embed.set_thumbnail(url=member.avatar.url)
+                embed.set_thumbnail(url=member.display_avatar.url)
 
             user_str = f"**{placement_emojis[placements[i]]}: <@{pos.user_discord_id}> ({pos.minutes_watched} minutes**)\n"
             manga_str = (
