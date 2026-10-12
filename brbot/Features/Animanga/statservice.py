@@ -5,8 +5,8 @@ from datetime import datetime, timezone, timedelta
 from random import uniform
 from statistics import mean
 import httpx
-from sqlalchemy import select, func
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy import select, insert
+from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
 from typing import Optional, Dict, List, Sequence
 
 from sqlalchemy.orm import selectinload
@@ -16,8 +16,12 @@ from brbot.Features.Animanga.data import (
     DailyStatSnapshot,
     placement_emojis,
     LeaderboardStats,
+    ProfileNotLinkedError,
+    ApiConnectionError,
 )
 from brbot.db.models import AnimangaDailyStats, AnimangaListEntry, Member, User
+from brbot.Shared.Users.repository import get_or_create_user
+from brbot.Shared.Members.repository import get_or_create_member
 from httpx import AsyncClient, ReadTimeout
 from discord import (
     Embed,
@@ -28,13 +32,9 @@ from discord import (
 logger = logging.getLogger(__name__)
 
 
-class AniListAPIError(Exception):
-    """AniList API request failed after all retries."""
-
-
 class AnimangaStatService:
-    def __init__(self):
-        pass
+    def __init__(self, async_session_generator: async_sessionmaker):
+        self.session_generator = async_session_generator
 
     @staticmethod
     async def query_user_list_entries(
@@ -114,7 +114,7 @@ class AnimangaStatService:
             List[Dict]: List of  graphQL activity objects from the last 24 hours
 
         Raises:
-            AniListAPIError if either user statistics or list data is empty, or if request failed
+            ApiConnectionError if either user statistics or list data is empty, or if request failed
         """
 
         query = """
@@ -201,7 +201,7 @@ class AnimangaStatService:
                 logger.warning(
                     f"Failed to get activity data for page {page} after {max_attempts} attempts"
                 )
-                raise AniListAPIError()
+                raise ApiConnectionError()
 
         return activities
 
@@ -240,105 +240,99 @@ class AnimangaStatService:
             )
         return new_list_entries
 
-    @staticmethod
-    async def process_daily_activities(
-        guild_id, session_generator: async_sessionmaker
-    ) -> Optional[List[DailyStatSnapshot]]:
-        async with session_generator() as session:
+    async def process_all_daily_activities(self) -> Dict[int, List[DailyStatSnapshot]]:
+        async with self.session_generator() as session:
             stmt = (
-                select(Member)
-                .where(Member.guild_id == guild_id)
-                .where(Member.stat_tracking_enabled.is_(True))
-                .options(selectinload(Member.user))
+                select(User)
+                .join(Member)
+                .where(
+                    Member.stat_tracking_enabled.is_(True), User.anilist_id.is_not(None)
+                )
+                .distinct()
             )
             result = await session.execute(stmt)
-            members = result.scalars().all()
-            anilist_ids = [m.user.anilist_id for m in members]
+            users = result.scalars().all()
+            anilist_ids = [u.anilist_id for u in users]
 
         if not anilist_ids:
-            return None
+            return {}
 
-        async with session_generator() as session:
-            recent_leaderboard_datetime = await session.scalar(
-                select(func.max(AnimangaDailyStats.date)).where(
-                    AnimangaDailyStats.guild_id == guild_id
-                )
-            )
-
-            recent_leaderboard_timestamp = int(
-                recent_leaderboard_datetime.timestamp()
-                if recent_leaderboard_datetime is not None
-                else (datetime.now(timezone.utc) - timedelta(days=1)).timestamp()
-            )
+        recent_leaderboard_timestamp = int(
+            (datetime.now(timezone.utc) - timedelta(days=1)).timestamp()
+        )
 
         async with httpx.AsyncClient() as client:
-            try:
-                daily_activities = await AnimangaStatService.query_users_daily_activity(
-                    anilist_ids, recent_leaderboard_timestamp, client
-                )
-            except AniListAPIError:
-                return None
+            daily_activities = await AnimangaStatService.query_users_daily_activity(
+                anilist_ids, recent_leaderboard_timestamp, client
+            )
 
-        async with session_generator() as session:
+        async with self.session_generator() as session:
             stmt = (
-                select(Member)
-                .where(Member.guild_id == guild_id)
+                select(User)
+                .join(Member)
                 .where(Member.stat_tracking_enabled.is_(True))
-                .options(selectinload(Member.user).selectinload(User.animanga_entries))
+                .options(selectinload(User.animanga_entries))
+                .options(selectinload(User.memberships))
+                .distinct()
             )
             result = await session.execute(stmt)
-            members = result.scalars().all()
+            users: Sequence[User] = result.scalars().all()
 
-            daily_stats = await AnimangaStatService.calculate_daily_activity_stats(
-                members, daily_activities, session, datetime.now(timezone.utc)
+            daily_stats_guild_map = await self.calculate_global_daily_activity_stats(
+                users, daily_activities, datetime.now(timezone.utc), session
             )
-            daily_stat_snapshots: List[DailyStatSnapshot] = []
-            for stat in daily_stats:
-                daily_stat_snapshots.append(
-                    DailyStatSnapshot(
-                        user_discord_id=stat.member.user_id,
-                        placement=stat.placement,
-                        minutes_watched=stat.minutes_watched,
-                        manga_chapters=stat.manga_chapters,
-                        episodes=stat.episodes,
-                        ln_chapters=stat.ln_chapters,
-                        movies=stat.movies,
+            await self.calculate_daily_activity_guild_placements(
+                daily_stats_guild_map, session
+            )
+
+            daily_stat_snapshots: Dict[int, List[DailyStatSnapshot]] = defaultdict(list)
+            for guild_id in daily_stats_guild_map:
+                guild_daily_stats = daily_stats_guild_map[guild_id]
+                for stat in guild_daily_stats:
+                    daily_stat_snapshots[guild_id].append(
+                        DailyStatSnapshot(
+                            user_discord_id=stat.member.user_id,
+                            placement=stat.placement,
+                            minutes_watched=stat.minutes_watched,
+                            manga_chapters=stat.manga_chapters,
+                            episodes=stat.episodes,
+                            ln_chapters=stat.ln_chapters,
+                            movies=stat.movies,
+                        )
                     )
-                )
             await session.commit()
 
         return daily_stat_snapshots
 
     @staticmethod
-    async def calculate_daily_activity_stats(
-        members: Sequence[Member],
+    async def calculate_global_daily_activity_stats(
+        users: Sequence[User],
         daily_activities: list[Dict],
-        session: AsyncSession,
         date: datetime,
-    ):
+        session: AsyncSession,
+    ) -> Dict[int, List[AnimangaDailyStats]]:
         daily_stats: List[AnimangaDailyStats] = []
         new_list_entries: List[AnimangaListEntry] = []
         list_entries_to_delete: List[AnimangaListEntry] = []
-        member_map = {m.id: m for m in members}
 
-        for member in members:
+        activities_by_user = defaultdict(list)
+        for activity in daily_activities:
+            if activity.get("userId"):
+                activities_by_user[activity.get("userId")].append(activity)
+
+        for user in users:
             total_minutes = 0
 
-            activities = [
-                activity
-                for activity in daily_activities
-                if activity.get("userId")
-                and activity.get("userId") == member.user.anilist_id
-            ]
+            activities = activities_by_user[user.anilist_id]
 
             manga_list_entries: dict[int, AnimangaListEntry] = {
                 entry.media_id: entry
-                for entry in member.user.animanga_entries
+                for entry in user.animanga_entries
                 if entry.is_manga
             }
             anime_list_entries: dict[int, AnimangaListEntry] = {
                 entry.media_id: entry
-                for entry in member.user.animanga_entries
+                for entry in user.animanga_entries
                 if not entry.is_manga
             }
 
@@ -381,7 +375,7 @@ class AnimangaStatService:
                     if not is_complete:
                         previous_progress = 0
                         updated_entry = AnimangaListEntry(
-                            user_id=member.user_id,
+                            user_id=user.user_id,
                             media_id=activity["media"]["id"],
                             progress=current_progress,
                             is_manga=is_manga,
@@ -416,8 +410,11 @@ class AnimangaStatService:
                 else:
                     episodes += progress_diff
 
-            daily_stats.append(
-                AnimangaDailyStats(
+            for member in user.memberships:
+                if not member.stat_tracking_enabled:
+                    continue
+
+                stat = AnimangaDailyStats(
                     guild_id=member.guild_id,
                     member_id=member.id,
                     minutes_watched=total_minutes,
@@ -428,25 +425,40 @@ class AnimangaStatService:
                     movies=movies,
                     episodes=episodes,
                 )
-            )
-
-        if any(d.minutes_watched for d in daily_stats):
-            daily_stats = sorted(
-                daily_stats, key=lambda d: d.minutes_watched, reverse=True
-            )
-            for i, stat in enumerate(daily_stats):
-                stat.placement = i + 1
+                stat.member = member
+                daily_stats.append(stat)
 
         session.add_all(new_list_entries)
-        session.add_all(daily_stats)
-
         for list_entry in list_entries_to_delete:
             await session.delete(list_entry)
 
-        for stat in daily_stats:
-            stat.member = member_map[stat.member_id]
+        daily_stats_guild_map = defaultdict(list)
+        for daily_stat in daily_stats:
+            daily_stats_guild_map[daily_stat.guild_id].append(daily_stat)
 
-        return daily_stats
+        return daily_stats_guild_map
+
+    @staticmethod
+    async def calculate_daily_activity_guild_placements(
+        daily_stats_guild_map: dict[int, list[AnimangaDailyStats]],
+        session: AsyncSession,
+    ):
+        # Add placements to daily stats by guild
+
+        for guild_id in daily_stats_guild_map:
+            guild_daily_stat_entries = daily_stats_guild_map[guild_id]
+            if any(d.minutes_watched for d in guild_daily_stat_entries):
+                daily_stats_guild_map[guild_id] = sorted(
+                    guild_daily_stat_entries,
+                    key=lambda d: d.minutes_watched,
+                    reverse=True,
+                )
+                for i, stat in enumerate(guild_daily_stat_entries):
+                    stat.placement = i + 1
+
+            session.add_all(guild_daily_stat_entries)
+
+        return daily_stats_guild_map
 
     @staticmethod
     def calculate_activity_time(
@@ -489,18 +501,21 @@ class AnimangaStatService:
         activity_progress = activity_progress_str.split("-")
         return int(activity_progress[-1])
 
-    @staticmethod
     async def get_leaderboard_stats(
-        member: Member, session: AsyncSession
+        self,
+        guild_id: int,
     ) -> Dict[int, LeaderboardStats]:
-        stmt = (
-            select(AnimangaDailyStats)
-            .where(AnimangaDailyStats.guild_id == member.guild_id)
-            .options(selectinload(AnimangaDailyStats.member).selectinload(Member.user))
-        )
+        async with self.session_generator() as session:
+            stmt = (
+                select(AnimangaDailyStats)
+                .where(AnimangaDailyStats.guild_id == guild_id)
+                .options(
+                    selectinload(AnimangaDailyStats.member).selectinload(Member.user)
+                )
+            )
 
-        result = await session.execute(stmt)
-        daily_rankings: Sequence[AnimangaDailyStats] = result.scalars().all()
+            result = await session.execute(stmt)
+            daily_rankings: Sequence[AnimangaDailyStats] = result.scalars().all()
         daily_rankings_by_user_id: Dict[int, List[AnimangaDailyStats]] = defaultdict(
             list
         )
@@ -706,3 +721,67 @@ class AnimangaStatService:
         )
 
         return embed
+
+    async def get_user_tracking_enabled_guilds(self, user_id: int) -> List[int]:
+        async with self.session_generator() as session:
+            stmt = (
+                select(Member)
+                .where(Member.user_id == user_id)
+                .where(Member.stat_tracking_enabled.is_(True))
+            )
+            result = await session.execute(stmt)
+            tracking_enabled_members: Sequence[Member] = result.scalars().all()
+            tracking_enabled_guilds = [m.guild_id for m in tracking_enabled_members]
+            return tracking_enabled_guilds
+
+    async def toggle_member_anilist_tracking(
+        self, discord_member: DiscordMember
+    ) -> bool:
+        """
+        Args:
+            discord_member: Discord member
+
+        Returns:
+            Boolean representing if tracking was enabled or disabled for UX.
+        """
+        async with self.session_generator() as session:
+            user: User = await get_or_create_user(
+                discord_member.id, discord_member.name, session
+            )
+            if user.anilist_id is None:
+                raise ProfileNotLinkedError
+
+            user_id = user.user_id
+            anilist_id = user.anilist_id
+
+        tracking_guild_ids = await self.get_user_tracking_enabled_guilds(user_id)
+
+        if not tracking_guild_ids:
+            initial_list_entries = await self.get_user_list_entries(user_id, anilist_id)
+
+            if initial_list_entries is None:
+                raise ApiConnectionError
+
+            async with self.session_generator() as session:
+                stmt = (
+                    insert(AnimangaListEntry)
+                    .values(initial_list_entries)
+                    .prefix_with("OR IGNORE")
+                )
+                await session.execute(stmt)
+                await session.commit()
+
+        async with self.session_generator() as session:
+            member: Member = await get_or_create_member(
+                discord_member.id, discord_member.guild.id, session
+            )
+            enable_tracking = discord_member.guild.id not in tracking_guild_ids
+
+            member.stat_tracking_enabled = enable_tracking
+            await session.commit()
+
+        logger.info(
+            f"{'Added' if enable_tracking else 'Removed'} tracking for user {discord_member.name} "
+            f"in guild {discord_member.guild.id}"
+        )
+        return enable_tracking

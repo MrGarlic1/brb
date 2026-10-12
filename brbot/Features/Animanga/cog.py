@@ -5,19 +5,19 @@ from brbot.Features.Animanga.data import (
     RecView,
     IgnoredRecView,
     MediaType,
+    ProfileNotLinkedError,
+    ApiConnectionError,
 )
 from brbot.Shared.Anilist.anilist import query_user_id
 from brbot.Core.bot import BrBot
 from brbot.Core.botutils import get_members_from_str
-from brbot.Shared.Members.repository import get_or_create_member
-from brbot.db.models import User, Member, AnimangaListEntry
+from brbot.db.models import User
 from brbot.Shared.Users.repository import get_or_create_user
 from httpx import RequestError
 from datetime import datetime, timezone, time
 from discord import app_commands, Interaction
 from discord.ext import commands, tasks
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import delete, insert
 import logging
 
 logger = logging.getLogger(__name__)
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 class AnimangaCog(commands.GroupCog, name="animanga"):
     def __init__(self, bot: BrBot):
         self.rec_service = RecommendationService()
-        self.stat_service = AnimangaStatService()
+        self.stat_service = AnimangaStatService(bot.session_generator)
         self.bot = bot
         self.send_daily_stat_update.start()
 
@@ -209,84 +209,38 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
 
     @app_commands.command(
         name="track_daily",
-        description="Add yourself to Anilist stat tracking for the daily leaderboard.",
+        description="Toggle Anilist stat tracking for the daily leaderboard.",
     )
-    async def add_tracking(self, ctx: Interaction):
+    async def track_daily(self, ctx: Interaction):
         await ctx.response.defer()
 
-        async with self.bot.session_generator() as session:
-            user: User = await get_or_create_user(ctx.user.id, ctx.user.name, session)
-
-            if user.anilist_id is None:
-                await ctx.followup.send(
-                    content="Your anilist profile isn't linked! (/animanga link)"
-                )
-                return
-
-            user_id = user.user_id
-            anilist_id = user.anilist_id
-
-        initial_list_entries = await self.stat_service.get_user_list_entries(
-            user_id, anilist_id
-        )
-
-        if initial_list_entries is None:
+        try:
+            tracking_enabled = await self.stat_service.toggle_member_anilist_tracking(
+                discord_member=ctx.user
+            )
+        except ProfileNotLinkedError:
             await ctx.followup.send(
-                "An error occurred connecting to Anilist. Please try again later."
+                content="Your anilist profile is not linked! Use /animanga link",
+                ephemeral=True,
+            )
+            return
+        except ApiConnectionError:
+            await ctx.followup.send(
+                content="An error occurred connecting to Anilist. Please try again later.",
+                ephemeral=True,
             )
             return
 
-        async with self.bot.session_generator() as session:
-            stmt = (
-                insert(AnimangaListEntry)
-                .values(initial_list_entries)
-                .prefix_with("OR IGNORE")
-            )
-            await session.execute(stmt)
+        if tracking_enabled:
+            await ctx.followup.send(content="Anilist daily tracking has been enabled!")
+        else:
+            await ctx.followup.send(content="Anilist daily tracking has been disabled!")
 
-            member: Member = await get_or_create_member(
-                ctx.user.id, ctx.guild.id, session
-            )
-            if member.stat_tracking_enabled:
-                await ctx.followup.send("Stat tracking is already enabled.")
-                return
-            member.stat_tracking_enabled = True
-            await session.commit()
-            logger.info(
-                f"Added tracking for user {ctx.user.name} in guild {ctx.guild.id}"
-            )
-
-        await ctx.followup.send(content=bd.pass_str)
         if self.bot.guild_configs[ctx.guild.id].animanga_channel is None:
             await ctx.channel.send(
                 content="An update channel currently isn't set! Leaderboards won't be sent. "
                 "To set a server update channel, an admin must run /config set update_channel."
             )
-        return
-
-    @app_commands.command(
-        name="untrack_daily",
-        description="Remove yourself from Anilist stat tracking for the daily leaderboard.",
-    )
-    async def remove_tracking(self, ctx: Interaction):
-        async with self.bot.session_generator() as session:
-            member: Member = await get_or_create_member(
-                ctx.user.id, ctx.guild.id, session
-            )
-
-            if not member.stat_tracking_enabled:
-                await ctx.response.send_message(
-                    content="Stat tracking is already disabled!"
-                )
-                return
-            member.stat_tracking_enabled = False
-            stmt = delete(AnimangaListEntry).where(
-                AnimangaListEntry.user_id == ctx.user.id
-            )
-            await session.execute(stmt)
-            await session.commit()
-
-        await ctx.response.send_message(content=bd.pass_str)
         return
 
     @app_commands.command(
@@ -304,21 +258,15 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
             )
             if discord_member_list:
                 discord_member = discord_member_list[0]
-                user_id = discord_member_list[0].id
             else:
                 await ctx.followup.send(content="Please mention a valid user.")
                 return
         else:
-            user_id = ctx.user.id
             discord_member = ctx.user
 
-        async with self.bot.session_generator() as session:
-            member: Member = await get_or_create_member(
-                user_id=user_id, guild_id=ctx.guild.id, session=session
-            )
-            guild_leaderboard_stats = await self.stat_service.get_leaderboard_stats(
-                member, session
-            )
+        guild_leaderboard_stats = await self.stat_service.get_leaderboard_stats(
+            guild_id=ctx.guild.id
+        )
 
         embed = self.stat_service.create_leaderboard_stats_embed(
             member=discord_member,
@@ -330,19 +278,33 @@ class AnimangaCog(commands.GroupCog, name="animanga"):
     @tasks.loop(time=time(hour=bd.DAILY_UPDATE_HOUR_UTC, tzinfo=timezone.utc))
     async def send_daily_stat_update(self):
         logger.info(f"Sending daily stat updates to {len(self.bot.guilds)} guilds.")
+
+        try:
+            daily_stats_by_guild = (
+                await self.stat_service.process_all_daily_activities()
+            )
+        except ApiConnectionError:
+            logger.error("An error occurred connecting to Anilist.")
+            return
+
+        if not daily_stats_by_guild:
+            logger.info("Skipped leaderboard send; no users are tracking daily stats.")
+            return
+
         for guild in self.bot.guilds:
+            if guild.id not in daily_stats_by_guild:
+                logger.warning(f"No stats found for guild {guild.id} ({guild.name}).")
+                continue
+            daily_stats = daily_stats_by_guild[guild.id]
             if self.bot.guild_configs[guild.id].animanga_channel is None:
                 continue
             channel = self.bot.get_channel(
                 self.bot.guild_configs[guild.id].animanga_channel
             )
             if channel is None:
-                logger.warning(f"Update channel not found for guild {guild.id}")
+                logger.info(f"Update channel not found for guild {guild.id}")
                 continue
             try:
-                daily_stats = await self.stat_service.process_daily_activities(
-                    guild_id=guild.id, session_generator=self.bot.session_generator
-                )
                 if daily_stats is None:
                     logger.info(
                         f"No registered animanga stat tracking users for guild {guild.id}, skipping."

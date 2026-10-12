@@ -52,6 +52,14 @@ class DailyStatSnapshot:
     movies: int
 
 
+class ProfileNotLinkedError(Exception):
+    pass
+
+
+class ApiConnectionError(Exception):
+    pass
+
+
 class IgnoreRecButton(Button):
     def __init__(self):
         super().__init__(
