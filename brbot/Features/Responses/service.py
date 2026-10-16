@@ -289,7 +289,7 @@ class ResponseService:
         to_send = [
             response.text
             for response in self.phrase_responses[message.guild.id]
-            if response.trigger in content
+            if response.trigger_lower in content
         ]
         logger.debug(
             f"Phrase response match found, 1/{len(to_send)} possible responses"
